@@ -1,0 +1,198 @@
+<div class="card">
+    <div class="card-header" style="flex-wrap:wrap;">
+        <h2>品势比赛查询</h2>
+        <div class="toolbar" style="margin: 0;">
+            <label style="font-size:13px;font-weight:bold;color:#303133;">裁判人数</label>
+            <select id="poomsaeJudgeCount" style="padding:4px 8px;border:1px solid #dcdfe6;border-radius:4px;font-size:13px;cursor:pointer;position:relative;z-index:10;">
+                <option value="3">3人</option>
+                <option value="5">5人</option>
+                <option value="7">7人</option>
+            </select>
+            <button class="btn btn-default" onclick="resetPoomsaeMatchFilter()">🔄 重置</button>
+            <button class="btn btn-success" onclick="showPoomsaePrintDialog()">🖨️ 打印赛程表</button>
+        </div>
+    </div>
+    <div class="table-container" style="display:flex;flex-direction:column;gap:12px;">
+        <div style="border:1px solid #e4e7ed;border-radius:8px;box-shadow:0 2px 8px rgba(0,21,41,0.06);overflow:hidden;">
+            <div style="display:none;">
+                <select id="poomsaeMatchFilterVenue1" onchange="renderPoomsaeTable(1)">
+                    <option value="">全部场地</option>
+                </select>
+            </div>
+            <div style="overflow:auto;max-height:45vh;">
+            <table id="poomsaeMatchesTable1" class="matches-split-table poomsae-matches-table">
+                <colgroup>
+                    <col style="width:50px">
+                    <col style="width:50px">
+                    <col style="width:56px">
+                    <col style="width:76px">
+                    <col style="width:42px">
+                    <col style="width:56px">
+                    <col style="width:56px">
+                    <col style="width:76px">
+                    <col style="width:120px">
+                    <col style="width:120px">
+                    <col style="width:76px">
+                    <col style="width:100px">
+                    <col style="width:56px">
+                    <col style="width:60px">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th class="filterable" data-table="1" data-col="0">场地 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-table="1" data-col="1">场次 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-table="1" data-col="2">轮次 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-table="1" data-col="3">品势类型 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-table="1" data-col="4">性别 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-table="1" data-col="5">组别 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-table="1" data-col="6">级别 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-table="1" data-col="7">出场顺序 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-table="1" data-col="8">姓名 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-table="1" data-col="9">代表队 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-table="1" data-col="10">表演套路 <span class="filter-arrow">▼</span></th>
+                        <th>录入成绩</th>
+                        <th>总分</th>
+                        <th class="filterable" data-table="1" data-col="13">状态 <span class="filter-arrow">▼</span></th>
+                    </tr>
+                </thead>
+                <tbody id="poomsaeMatchesTable1Body"></tbody>
+            </table>
+        </div>
+        </div>
+        <div style="border:1px solid #e4e7ed;border-radius:8px;box-shadow:0 2px 8px rgba(0,21,41,0.06);overflow:hidden;">
+            <div style="display:none;">
+                <select id="poomsaeMatchFilterVenue2" onchange="renderPoomsaeTable(2)">
+                    <option value="">全部场地</option>
+                </select>
+            </div>
+            <div style="overflow:auto;max-height:45vh;">
+            <table id="poomsaeMatchesTable2" class="matches-split-table poomsae-matches-table">
+                <colgroup>
+                    <col style="width:50px">
+                    <col style="width:50px">
+                    <col style="width:56px">
+                    <col style="width:76px">
+                    <col style="width:42px">
+                    <col style="width:56px">
+                    <col style="width:56px">
+                    <col style="width:76px">
+                    <col style="width:120px">
+                    <col style="width:120px">
+                    <col style="width:76px">
+                    <col style="width:100px">
+                    <col style="width:56px">
+                    <col style="width:60px">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th class="filterable" data-table="2" data-col="0">场地 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-table="2" data-col="1">场次 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-table="2" data-col="2">轮次 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-table="2" data-col="3">品势类型 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-table="2" data-col="4">性别 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-table="2" data-col="5">组别 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-table="2" data-col="6">级别 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-table="2" data-col="7">出场顺序 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-table="2" data-col="8">姓名 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-table="2" data-col="9">代表队 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-table="2" data-col="10">表演套路 <span class="filter-arrow">▼</span></th>
+                        <th>录入成绩</th>
+                        <th>总分</th>
+                        <th class="filterable" data-table="2" data-col="13">状态 <span class="filter-arrow">▼</span></th>
+                    </tr>
+                </thead>
+                <tbody id="poomsaeMatchesTable2Body"></tbody>
+            </table>
+        </div>
+        </div>
+    </div>
+</div>
+
+<div id="poomsaeScoreModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 600px;">
+        <h2>📝 品势评分录入</h2>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:10px;background:#f5f7fa;border-radius:6px;">
+            <div style="flex:1;">
+                <div style="font-size:12px;color:#909399;">运动员</div>
+                <div style="font-size:15px;font-weight:bold;color:#303133;" id="poomsaeScoreAthleteName">-</div>
+            </div>
+            <div style="flex:1;">
+                <div style="font-size:12px;color:#909399;">代表队</div>
+                <div style="font-size:14px;color:#606266;" id="poomsaeScoreAthleteUnit">-</div>
+            </div>
+            <div style="flex:1;">
+                <div style="font-size:12px;color:#909399;">级别</div>
+                <div style="font-size:14px;color:#606266;" id="poomsaeScoreClass">-</div>
+            </div>
+        </div>
+        <div style="margin-bottom:12px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <label style="font-size:13px;font-weight:bold;color:#303133;">裁判人数</label>
+                <select id="poomsaeScoreJudgeCount" onchange="buildPoomsaeScoreForm()" style="padding:4px 8px;border:1px solid #dcdfe6;border-radius:4px;font-size:13px;">
+                    <option value="3">3人</option>
+                    <option value="5">5人</option>
+                    <option value="7">7人</option>
+                </select>
+            </div>
+        </div>
+        <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                <thead>
+                    <tr style="background:linear-gradient(to right,#8B0000,#00008B);">
+                        <th style="padding:8px;border:1px solid #ebeef5;background:transparent;color:#fff;text-align:center;width:80px;">裁判</th>
+                        <th style="padding:8px;border:1px solid #ebeef5;background:transparent;color:#fff;text-align:center;">准确度<br><span style="font-size:11px;color:rgba(255,255,255,0.7);">(0.0 ~ 4.0)</span></th>
+                        <th style="padding:8px;border:1px solid #ebeef5;background:transparent;color:#fff;text-align:center;">表现力<br><span style="font-size:11px;color:rgba(255,255,255,0.7);">(0.0 ~ 6.0)</span></th>
+                        <th style="padding:8px;border:1px solid #ebeef5;background:transparent;color:#fff;text-align:center;width:80px;">小计</th>
+                    </tr>
+                </thead>
+                <tbody id="poomsaeScoreFormBody"></tbody>
+                <tfoot>
+                    <tr style="background:#fafafa;">
+                        <td style="padding:8px;border:1px solid #ebeef5;text-align:center;font-weight:bold;font-size:12px;">平均分</td>
+                        <td style="padding:8px;border:1px solid #ebeef5;text-align:center;font-weight:bold;color:#e6a23c;" id="poomsaeAccAvg">-</td>
+                        <td style="padding:8px;border:1px solid #ebeef5;text-align:center;font-weight:bold;color:#e6a23c;" id="poomsaePresAvg">-</td>
+                        <td style="padding:8px;border:1px solid #ebeef5;text-align:center;font-weight:bold;color:#409eff;" id="poomsaeTotalAvg">-</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        <div id="poomsaeScoreSummary" style="margin-top:12px;padding:10px;background:#ecf5ff;border-radius:6px;display:none;">
+            <div style="display:flex;justify-content:space-around;font-size:13px;">
+                <span>去掉最高: <strong id="poomsaeScoreMax" style="color:#f56c6c;">-</strong></span>
+                <span>去掉最低: <strong id="poomsaeScoreMin" style="color:#909399;">-</strong></span>
+                <span>最终得分: <strong id="poomsaeScoreFinal" style="color:#409eff;font-size:16px;">-</strong></span>
+            </div>
+        </div>
+        <input type="hidden" id="poomsaeScoreMatchId">
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="closePoomsaeScoreModal()">取消</button>
+            <button class="btn btn-primary" onclick="savePoomsaeScore()">💾 保存评分</button>
+        </div>
+    </div>
+</div>
+
+<div id="poomsaePrintDialog" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;justify-content:center;align-items:center;">
+    <div style="background:#fff;border-radius:8px;padding:24px 32px;width:400px;box-shadow:0 4px 20px rgba(0,0,0,0.3);">
+        <h3 style="margin:0 0 20px;text-align:center;font-size:16px;">打印赛程表</h3>
+        <div style="margin-bottom:16px;">
+            <label style="display:block;margin-bottom:6px;font-weight:bold;font-size:13px;">场地</label>
+            <select id="poomsaePrintVenue" style="width:100%;padding:8px;border:1px solid #dcdfe6;border-radius:4px;font-size:13px;">
+                <option value="">全部场地</option>
+            </select>
+        </div>
+        <div style="display:flex;gap:16px;margin-bottom:20px;">
+            <div style="flex:1;">
+                <label style="display:block;margin-bottom:6px;font-weight:bold;font-size:13px;">起始场次</label>
+                <input type="number" id="poomsaePrintFrom" min="1" placeholder="从第几场" style="width:100%;padding:8px;border:1px solid #dcdfe6;border-radius:4px;font-size:13px;">
+            </div>
+            <div style="flex:1;">
+                <label style="display:block;margin-bottom:6px;font-weight:bold;font-size:13px;">结束场次</label>
+                <input type="number" id="poomsaePrintTo" min="1" placeholder="到第几场" style="width:100%;padding:8px;border:1px solid #dcdfe6;border-radius:4px;font-size:13px;">
+            </div>
+        </div>
+        <div style="display:flex;gap:12px;justify-content:flex-end;">
+            <button onclick="closePoomsaePrintDialog()" style="padding:8px 20px;border:1px solid #dcdfe6;border-radius:4px;background:#fff;cursor:pointer;font-size:13px;">取消</button>
+            <button onclick="doPoomsaePrint()" style="padding:8px 20px;border:none;border-radius:4px;background:#67C23A;color:#fff;cursor:pointer;font-size:13px;font-weight:bold;">打印</button>
+        </div>
+    </div>
+</div>

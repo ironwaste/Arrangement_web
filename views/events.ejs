@@ -1,0 +1,26 @@
+<div class="card">
+    <div class="card-header">
+        <h2>赛事列表</h2>
+        <div class="toolbar" style="margin: 0;">
+            <button class="btn btn-primary" onclick="showEventModal()">➕ 新增赛事</button>
+            <button class="btn btn-default" onclick="loadEvents()">🔄 刷新</button>
+        </div>
+    </div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>选择</th>
+                    <th>赛事名称</th>
+                    <th>赛事类型</th>
+                    <th>场馆</th>
+                    <th>比赛时间</th>
+                    <th>状态</th>
+                    <th>修改</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="eventsTable"></tbody>
+        </table>
+    </div>
+</div>

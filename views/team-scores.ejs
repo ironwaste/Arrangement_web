@@ -1,0 +1,173 @@
+<div class="card">
+    <style>
+        #teamScoresTable { table-layout: fixed; width: 100%; }
+        #teamScoresTable th, #teamScoresTable td { text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid #dcdfe6; }
+        #teamScoresTable .filter-arrow { font-size: 10px; opacity: 0.7; cursor: pointer; }
+        #teamScoresTable thead { position: sticky; top: 0; z-index: 10; background: linear-gradient(to right, #8B0000, #00008B); }
+        #teamScoresTable thead th { 
+            position: sticky; 
+            top: 0; 
+            z-index: 10; 
+            background: transparent;
+        }
+    </style>
+    <div class="card-header">
+        <h2>🏅 团体总分统计</h2>
+        <div class="toolbar">
+            <button class="btn btn-primary" onclick="exportTeamScores()">📥 所有成绩</button>
+            <button class="btn btn-success" onclick="openResultBookModal()">📋 总成绩册下载</button>
+        </div>
+    </div>
+    <div class="table-container" style="max-height:450px;overflow-y:auto;">
+        <table id="teamScoresTable">
+            <colgroup>
+                <col style="width:7%">
+                <col style="width:16%">
+                <col style="width:10%">
+                <col style="width:7%">
+                <col style="width:7%">
+                <col style="width:7%">
+                <col style="width:9%">
+                <col style="width:9%">
+                <col style="width:11%">
+                <col style="width:17%">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th class="filterable" data-col="0">排名 <span class="filter-arrow">▼</span></th>
+                    <th class="filterable" data-col="1">单位 <span class="filter-arrow">▼</span></th>
+                    <th class="filterable" data-col="2">组别 <span class="filter-arrow">▼</span></th>
+                    <th class="filterable" data-col="3">金牌 <span class="filter-arrow">▼</span></th>
+                    <th class="filterable" data-col="4">银牌 <span class="filter-arrow">▼</span></th>
+                    <th class="filterable" data-col="5">铜牌 <span class="filter-arrow">▼</span></th>
+                    <th class="filterable" data-col="6">第四名 <span class="filter-arrow">▼</span></th>
+                    <th class="filterable" data-col="7">第五名 <span class="filter-arrow">▼</span></th>
+                    <th class="filterable" data-col="8">总分 <span class="filter-arrow">▼</span></th>
+                    <th class="filterable" data-col="9">参赛人数 <span class="filter-arrow">▼</span></th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>📊 计分规则</h2>
+        <div class="toolbar" style="margin: 0;">
+            <button class="btn btn-warning" onclick="showRuleModal()">📝 制定规则</button>
+        </div>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+        <div style="background: linear-gradient(135deg, #fff8e1, #ffe082); padding: 16px; border-radius: 8px; text-align: center; border: 1px solid #ffd54f;">
+            <div style="color: #8d6e00;">🥇 金牌</div>
+            <div style="font-size: 24px; font-weight: bold; color: #c6930a; margin-top: 8px;">9分</div>
+        </div>
+        <div style="background: linear-gradient(135deg, #f5f5f5, #e0e0e0); padding: 16px; border-radius: 8px; text-align: center; border: 1px solid #bdbdbd;">
+            <div style="color: #616161;">🥈 银牌</div>
+            <div style="font-size: 24px; font-weight: bold; color: #757575; margin-top: 8px;">7分</div>
+        </div>
+        <div style="background: linear-gradient(135deg, #efebe9, #d7ccc8); padding: 16px; border-radius: 8px; text-align: center; border: 1px solid #bcaaa4;">
+            <div style="color: #6d4c41;">🥉 铜牌</div>
+            <div style="font-size: 24px; font-weight: bold; color: #8d6e63; margin-top: 8px;">5.5分</div>
+        </div>
+        <div style="background: linear-gradient(135deg, #e8f5e9, #c8e6c9); padding: 16px; border-radius: 8px; text-align: center; border: 1px solid #a5d6a7;">
+            <div style="color: #2e7d32;">4️⃣ 第四名</div>
+            <div style="font-size: 24px; font-weight: bold; color: #388e3c; margin-top: 8px;">4分</div>
+        </div>
+        <div style="background: linear-gradient(135deg, #eceff1, #cfd8dc); padding: 16px; border-radius: 8px; text-align: center; border: 1px solid #b0bec5;">
+            <div style="color: #546e7a;">5️⃣ 第五名</div>
+            <div style="font-size: 24px; font-weight: bold; color: #607d8b; margin-top: 8px;">2分</div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="stats-row" id="scoreStats"></div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>📁 模板下载</h2>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+        <div style="background: #f5f7fa; padding: 16px; border-radius: 8px; text-align: center;">
+            <div style="font-size: 36px; margin-bottom: 8px;">📊</div>
+            <div style="font-weight: bold; color: #303133; margin-bottom: 8px;">团体总分表模板</div>
+            <div style="font-size: 12px; color: #909399; margin-bottom: 12px;">团体总分统计用</div>
+            <button class="btn btn-primary" onclick="downloadTeamScoreTemplate()">下载</button>
+        </div>
+        <div style="background: #f5f7fa; padding: 16px; border-radius: 8px; text-align: center;">
+            <div style="font-size: 36px; margin-bottom: 8px;">🏅</div>
+            <div style="font-weight: bold; color: #303133; margin-bottom: 8px;">奖牌统计表模板</div>
+            <div style="font-size: 12px; color: #909399; margin-bottom: 12px;">各单位奖牌统计</div>
+            <button class="btn btn-primary" onclick="downloadMedalTemplate()">下载</button>
+        </div>
+        <div style="background: #f5f7fa; padding: 16px; border-radius: 8px; text-align: center;">
+            <div style="font-size: 36px; margin-bottom: 8px;">📋</div>
+            <div style="font-weight: bold; color: #303133; margin-bottom: 8px;">成绩汇总表模板</div>
+            <div style="font-size: 12px; color: #909399; margin-bottom: 12px;">各级别成绩汇总</div>
+            <button class="btn btn-primary" onclick="downloadResultSummaryTemplate()">下载</button>
+        </div>
+    </div>
+</div>
+
+<div id="ruleModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;justify-content:center;align-items:center;">
+    <div style="background:#fff;border-radius:8px;padding:24px;width:560px;max-height:85vh;overflow-y:auto;position:relative;">
+        <h3 style="margin:0 0 20px;text-align:center;font-size:16px;">制定计分规则</h3>
+        <div class="form-group">
+            <label>规则名称</label>
+            <input type="text" id="ruleName" placeholder="如：1,2,3,3,5,5,5,5规则" style="width:100%;padding:8px;border:1px solid #dcdfe6;border-radius:4px;font-size:13px;">
+        </div>
+        <div class="form-group">
+            <label>选择预设规则</label>
+            <select id="rulePreset" onchange="applyRulePreset()" style="width:100%;padding:8px;border:1px solid #dcdfe6;border-radius:4px;font-size:13px;">
+                <option value="">自定义</option>
+                <option value="1,2,3,3,5,5,5,5">1,2,3,3,5,5,5,5（1金1银2铜4个第五）</option>
+                <option value="1-8">1-8名（每名1人递减）</option>
+                <option value="1,2,3,4">1,2,3,4名（4人）</option>
+                <option value="1,2,2,3,3,3">1,2,2,3,3,3名（6人）</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>名次分配模式</label>
+            <div id="rankPatternDisplay" style="padding:10px;background:#f5f7fa;border-radius:4px;min-height:36px;line-height:28px;"></div>
+            <div style="display:flex;gap:8px;margin-top:8px;">
+                <button class="btn btn-default" onclick="addRankPosition()" style="flex:1;font-size:12px;">➕ 添加位置</button>
+                <button class="btn btn-default" onclick="removeRankPosition()" style="flex:1;font-size:12px;">➖ 删除位置</button>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>各名次分数设置</label>
+            <div id="scoreInputs" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;"></div>
+        </div>
+        <div style="margin-top:12px;padding:12px;background:#f5f7fa;border-radius:4px;font-size:12px;color:#606266;">
+            <strong>预览：</strong><span id="rulePreview"></span>
+        </div>
+        <div style="margin-top:16px;display:flex;gap:12px;">
+            <button class="btn btn-default" onclick="closeRuleModal()" style="flex:1;">取消</button>
+            <button class="btn btn-primary" onclick="saveRule()" style="flex:1;">保存并启用</button>
+        </div>
+        <div style="margin-top:16px;">
+            <label style="font-weight:bold;margin-bottom:8px;display:block;">已保存规则</label>
+            <div id="savedRulesList" style="max-height:150px;overflow-y:auto;"></div>
+        </div>
+    </div>
+</div>
+
+<div id="resultBookModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;justify-content:center;align-items:center;">
+    <div style="background:#fff;border-radius:8px;padding:24px;width:720px;max-height:85vh;overflow-y:auto;position:relative;">
+        <h3 style="margin:0 0 16px;text-align:center;font-size:16px;">📋 总成绩册下载 - 自定义附加内容</h3>
+        <div style="margin-bottom:12px;padding:10px;background:#f0f9eb;border-radius:4px;font-size:12px;color:#67c23a;">
+            以下内容将输出到"团体总分"sheet的排名数据下方。可添加优秀运动队、体育道德风尚奖、最佳技术奖、优秀裁判员、优秀教练员、精英奖运动员等自定义区块。
+        </div>
+        <div id="customSections"></div>
+        <div style="margin-top:12px;display:flex;gap:8px;">
+            <button class="btn btn-primary" onclick="addCustomSection()" style="flex:1;">➕ 添加区块</button>
+        </div>
+        <div style="margin-top:16px;display:flex;gap:12px;">
+            <button class="btn btn-default" onclick="closeResultBookModal()" style="flex:1;">取消</button>
+            <button class="btn btn-success" onclick="downloadResultBook()" style="flex:1;">📥 下载总成绩册</button>
+        </div>
+    </div>
+</div>

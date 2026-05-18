@@ -1,0 +1,166 @@
+数据库表结构
+1. events  赛事表
+event_id 赛事编号 主键 自增
+event_name 赛事名称
+event_venue 赛事场馆
+event_date  赛事日期
+event_type 赛事类型（默认跆拳道比赛,分为 跆拳道品势、跆拳道竞技、中国式摔跤、国际式摔跤、拳击）
+event_status 赛事状态  （‘报名中’、‘进行中’、‘已结束’、等状态）
+comp_start 赛事开始日期
+comp_end  赛事结束日期
+reg_start 报名开始日期时间
+reg_end 报名结束日期时间
+created_at  赛事创建时间
+
+2. events_config  全局配置表
+event_id  赛事编号 和 赛事表链接
+eventconfig_win_methods 赛事获胜方式列表
+eventconfig_default_rounds 赛事默认基本轮次
+eventconfig_break_duration 赛事局间休息 时长
+eventconfig_weighing_tolerance  赛事称重上下浮动区间
+
+
+
+3. athletes 运动员表  （跆拳道竞技、中国式摔跤、国际式摔跤、拳击的运动员在这个表格中）
+id             主键 自增
+event_id   赛事编号
+athlete_id 运动员编号
+athlete_name  运动员姓名
+athlete_gender 运动员性别
+athlete_team  运动员代表队
+athlete_draw_num 运动员签号
+athlete_pre_draw_num  上一次的运动员签号记录（用于退回操作）
+athlete_age_group 组别  (可能会出现 幼儿 小学 初中 等类型，或者 小学甲组）
+athlete_category 级别  (例如 : 男子甲组46KG ，男子组 ， 或者 男甲32KG，男子甲组32KG)
+athlete_rank 运动员排名
+
+(event_id,athlete_id)两个合并为unique
+
+4. athletes_weighing 运动员称重表
+event_id   赛事 id
+weighing_id  称重记录 id
+athlete_id  运动员编号 id FK 
+frist_weight_record           第一次称重记录  （浮点数，保留小数点后两位）
+second_weight_record      第二次称重记录（浮点数，保留小数点后两位）
+athlete_weight_qualified   称重结果是否合格
+created_at    称重记录创建时间
+record_time  称重记录时间  
+(event_id,athlete_id)两个合并为unique
+
+
+5. category_mode  级别 竞赛方式 及 场地分配  日期分配表
+
+event_id  FK  赛事编号
+category_id   类别编号
+weight_class  级别   （根据赛事编号选择后，该赛事中的所有运动员中的级别去重显示）
+category_venue  该级别 场地号
+category_date_num  该级别  单元选择 （根据赛事天数来分n个单元，并根据该单元设置 matchs表格中的场次号首位 如第一单元 1001，第二单元2001，第三单元3001，依次类推）
+categroy_count 该级别人数 (统计该赛事编号下的，该赛事的该级别内的人数)
+categroy_mode_num    级别竞赛方式 数字表示
+categroy_mode_name 级别竞赛方式 (' 单败淘汰赛 '、' 双败淘汰赛 '、' 单循环赛 '、' 分区循环赛 ' ) 
+category_mode_description   级别模式备注   
+
+ 6. bracket_*  对阵图表组
+在所有的bracket_* 表组中的表，加入event_id 和 category_id，并且根据这两个进行标识、存储以及前端显示的操作
+
+
+
+7. matchs   对阵表 数据库表
+id  主键 自增 unique
+match_venue  场次场地号
+match_id  场次号 
+match_categroy  场次级别
+match_round_num  轮次
+match_round_name  轮次名称 （跆拳道使用final、1/2、1/4、1/8等样式、摔跤使用 淘汰赛1、淘汰赛2、淘汰赛决赛以及循环赛1、循环赛2、分区循环赛决赛的样式）
+match_category_total_rounds 该级别总轮次数
+blue_athlete_id   青/蓝方运动员号（和athletes表中的athlete_id 号码相同）  跆拳道竞技赛事中使用青方，其他赛事使用蓝方 
+blue_athlete_name 青/蓝方运动员姓名 
+blue_athlete_team 青/蓝方运动员代表队
+blue_prev_winner
+
+red_athlete_id 红方运动员号 和athletes表中的athlete_id 号码相同
+red_athlete_name 红方运动员姓名 
+red_athlete_team 红方运动员代表队
+red_prev_winner
+
+match_status  场次状态
+win_method  场次胜利方式
+
+
+品势表组
+1. athletes_poomsae 品势运动员表
+event_id  关联赛事id
+poomsae_athlete_group_id  关联组别id
+poomsae_athlete_id      运动员号
+poomsae_athlete_team   运动员代表队
+poomsae_athlete_draw_num  运动员签号
+poomsae_athlete_colored_belt  运动员段位/运动员带色（白带、白黄、黄绿、蓝带、品位、红黑）
+
+
+
+2.  poomsae_groups   品势组别表
+event_id 用于关联赛事
+poomsae_group_id  品势组别名称
+poomsae_group_name 品势组别名称
+poomsae_group_type   品势组别类型    (存在 ： 个人/团体/混双/   ...等类型)
+poomsae_age_group      品势年龄组别  （幼儿组、少年组、成人组、等类型）
+poomsae_group_gender 品势组别性别    (男 、 女 、 混合)
+poomsae_form_name_1     预赛品势套路名称1 （如 太极一章、太极三章、高丽、金刚）
+poomsae_form_name_2     预赛品势套路名称2
+poomsae_form_name_3     复赛品势套路名称1 
+poomsae_form_name_4     复赛品势套路名称2 
+poomsae_form_name_5     决赛品势套路名称1  
+poomsae_form_name_6     决赛品势套路名称2
+
+poomsae_status              品势组别状态   (未开始/准备中/进行中/已结束)
+
+(event_id,poomsae_id) 合并应该为 unique
+
+poomsae_groups 表的相关用处
+- 导入品势运动员时自动创建组别
+- 编排品势赛程时按组别分组
+- 查询特定组别的参赛人员
+
+
+3. poomsae_matchs 品势对阵表
+poomsae_match_id  品势对阵表 id  
+event_id  关联赛事id
+
+poomsae_match_id  品势场次id
+poomsae_venue  品势场地号 （A/B/C/D）
+poomsae_match_num 品势场次号 （1001，1002.2002）
+poomsae_type  品势类型(个人、团体、混双)
+poomsae_group_id   品势组别id  （其他信息 如gender，品势套路） 
+~~poomsae_athlete_id  品势运动员id号 编号~~  因为存在全体品势，其人数不为1个无法实现使用运动员id进行查询
+poomsae_athlete_name  品势运动员姓名
+poomsae_athlete_team  品势运动员 代表队/ 单位
+poomsae_match_status  品势场次对阵状态
+poomsae_round_num   品势第几轮次 数字
+poomsae_round_name  品势轮次名称 （预赛、复赛、决赛）
+poomsae_final_score  品势最终分数
+poomsae_presentation_avg  品势表现力平均分
+poomsae_accuracy_avg 品势准确度平均分
+routine  品势章节
+poomsae_advanced_rank  上一轮次 排名
+format  \[预赛、预赛+决赛、预赛+复赛+决赛、预赛+预赛、预赛+预赛+决赛+决赛、预赛+预赛+复赛+复赛+决赛+决赛]
+{
+    'final_1':              ['决赛', '', '', '', '', ''],
+    'final_2':              ['决赛', '决赛', '', '', '', ''],
+    'prelim_final_1':       ['预赛', '', '决赛', '', '', ''],  // ← 这里
+    'prelim_final_2':       ['预赛', '预赛', '决赛', '决赛', '', ''],
+    'prelim_semi_final_1':  ['预赛', '', '复赛', '', '决赛', ''],
+    'prelim_semi_final_2':  ['预赛', '预赛', '复赛', '复赛', '决赛', '决赛']
+};
+4. poomsae_scores 品势评分表
+poomsae_scores_id  品势评分表id
+poomase_match_id 品势场次id
+poomase_referee_count  裁判人数
+poomsae_final_score   品势最终分数
+poomsae_presentation    品势表现力
+poomsae_accuracy    品势准确度
+poomsae_detail_score   品势详细分数 格式为JSON
+**{{"refereeCount": 7, "red_poomsae_1": [{"referee": 1, "accuracy": null, "presentation": 1}, {"referee": 2, "accuracy": null, "presentation": null}, {"referee": 3, "accuracy": null, "presentation": null}, {"referee": 4, "accuracy": null, "presentation": null}, {"referee": 5, "accuracy": null, "presentation": null}, {"referee": 6, "accuracy": null, "presentation": null}, {"referee": 7, "accuracy": null, "presentation": null}], "red_poomsae_2": [{"referee": 1, "accuracy": null, "presentation": null}, {"referee": 2, "accuracy": null, "presentation": null}, {"referee": 3, "accuracy": 1, "presentation": null}, {"referee": 4, "accuracy": null, "presentation": null}, {"referee": 5, "accuracy": null, "presentation": null}, {"referee": 6, "accuracy": null, "presentation": null}, {"referee": 7, "accuracy": null, "presentation": null}], "blue_poomsae_1": [{"referee": 1, "accuracy": null, "presentation": null}, {"referee": 2, "accuracy": null, "presentation": null}, {"referee": 3, "accuracy": null, "presentation": null}, {"referee": 4, "accuracy": 1, "presentation": null}, {"referee": 5, "accuracy": null, "presentation": null}, {"referee": 6, "accuracy": null, "presentation": null}, {"referee": 7, "accuracy": null, "presentation": null}], "blue_poomsae_2": [{"referee": 1, "accuracy": null, "presentation": null}, {"referee": 2, "accuracy": null, "presentation": null}, {"referee": 3, "accuracy": null, "presentation": 1}, {"referee": 4, "accuracy": null, "presentation": null}, {"referee": 5, "accuracy": null, "presentation": null}, {"referee": 6, "accuracy": null, "presentation": null}, {"referee": 7, "accuracy": null, "presentation": null}]}}**
+ created_at    创建时间
+updated_at    创建时间
+
+

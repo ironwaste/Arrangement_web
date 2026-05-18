@@ -1,0 +1,457 @@
+<div class="card">
+    <div class="card-header">
+        <h2>品势编排</h2>
+        <div class="toolbar" style="margin: 0;">
+            <div class="poomsae-tab-bar">
+                <button class="poomsae-tab active" onclick="switchPoomsaeTab('arrange')" id="poomsaeTabArrange">📋 编排</button>
+                <button class="poomsae-tab" onclick="switchPoomsaeTab('schedule')" id="poomsaeTabSchedule">📅 赛程</button>
+            </div>
+            <div id="poomsaeArrangeToolbar">
+                <input type="file" id="poomsaeArrangeImportFile" accept=".xls,.xlsx" style="display:none;" onchange="handlePoomsaeArrangeImport(event)">
+                <button class="btn btn-info" onclick="document.getElementById('poomsaeArrangeImportFile').click()">📥 导入数据</button>
+                <button class="btn btn-warning" onclick="exportPoomsaeArrangeData()">📤 导出数据</button>
+                <button class="btn btn-primary" onclick="savePoomsaeArrange()">💾 保存</button>
+                <button class="btn btn-success" onclick="executePoomsaeArrange()" style="background:#e6a23c;border-color:#e6a23c;">⚡ 执行编排</button>
+                <button class="btn btn-info" onclick="showPoomsaeAutoAssignVenueModal()" style="background:#8e44ad;border-color:#8e44ad;">🏟️ 自动分配场地</button>
+            </div>
+            <div id="poomsaeScheduleToolbar" style="display:none;">
+                <button class="btn btn-success" onclick="generatePoomsaeSchedule()">📅 生成赛程</button>
+                <button class="btn btn-danger" onclick="clearPoomsaeSchedule()">🗑️ 清除赛程</button>
+                <select id="poomsaeScheduleVenueFilter" onchange="loadPoomsaeSchedule()" style="padding:4px 8px;border:1px solid #dcdfe6;border-radius:4px;font-size:13px;">
+                    <option value="">全部场地</option>
+                </select>
+                <button class="btn btn-warning" onclick="exportPoomsaeSchedule()">📤 导出赛程</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="poomsaeArrangePanel">
+        <div class="brackets-layout">
+            <div class="brackets-sidebar">
+                <div class="sidebar-header">
+                    <h3>📋 待编排级别</h3>
+                    <span id="poomsaePendingCount" class="pending-badge">0</span>
+                </div>
+                <div id="poomsaePendingClassList" class="pending-class-list"></div>
+            </div>
+            <div class="brackets-sidebar">
+                <div class="sidebar-header">
+                    <h3>场地分配</h3>
+                    <div style="display:flex;gap:4px;align-items:center;">
+                        <select id="poomsaeVenueFilter" onchange="filterPoomsaeVenueAllocation()" style="font-size:12px;padding:2px 6px;border:1px solid #dcdfe6;border-radius:3px;">
+                            <option value="">全部</option>
+                        </select>
+                        <button onclick="resetPoomsaeVenueFilter()" style="font-size:11px;padding:2px 8px;border:1px solid #dcdfe6;border-radius:3px;background:#fff;cursor:pointer;color:#606266;" title="重置筛选">🔄</button>
+                    </div>
+                </div>
+                <div style="margin-bottom:8px;">
+                    <select id="poomsaeUnitFilter" onchange="filterByPoomsaeUnit()" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid #dcdfe6;border-radius:3px;">
+                        <option value="">全部单元</option>
+                        <option value="1">第1单元</option>
+                        <option value="2">第2单元</option>
+                        <option value="3">第3单元</option>
+                        <option value="4">第4单元</option>
+                        <option value="5">第5单元</option>
+                        <option value="6">第6单元</option>
+                        <option value="7">第7单元</option>
+                        <option value="8">第8单元</option>
+                        <option value="9">第9单元</option>
+                        <option value="10">第10单元</option>
+                    </select>
+                </div>
+                <div id="poomsaeVenueAllocationList" class="venue-allocation-list"></div>
+            </div>
+            <div class="brackets-main">
+                <div class="auto-arrange-table-wrapper">
+                    <table class="auto-arrange-table">
+                        <thead>
+                            <tr>
+                                <th>序号</th>
+                                <th>场地</th>
+                                <th>单元</th>
+                                <th>顺序</th>
+                                <th>品势类型</th>
+                                <th>性别</th>
+                                <th>组别</th>
+                                <th>级别</th>
+                                <th>人数</th>
+                                <th>赛制</th>
+                                <th>套路1</th>
+                                <th>套路2</th>
+                                <th>套路3</th>
+                                <th>套路4</th>
+                                <th>套路5</th>
+                                <th>套路6</th>
+                            </tr>
+                        </thead>
+                        <tbody id="poomsaeArrangeTableBody"></tbody>
+                    </table>
+                </div>
+                <div class="auto-arrange-summary">
+                    <span>共：<strong id="poomsaeArrangeTotalAthletes">0</strong> 人</span>
+                    <span><strong id="poomsaeArrangeTotalClasses">0</strong> 级别</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="poomsaeSchedulePanel" style="display:none;">
+        <div class="schedule-layout">
+            <div class="schedule-sidebar">
+                <div class="sidebar-header">
+                    <h3>📋 级别列表</h3>
+                    <span id="poomsaeScheduleClassCount" class="pending-badge" style="background:#409eff;">0</span>
+                </div>
+                <div id="poomsaeScheduleClassList" class="pending-class-list"></div>
+            </div>
+            <div class="schedule-main">
+                <div class="schedule-table-wrapper">
+                    <table class="schedule-table">
+                        <thead>
+                            <tr>
+                                <th>场次</th>
+                                <th>场地</th>
+                                <th>品势类型</th>
+                                <th>性别</th>
+                                <th>组别</th>
+                                <th>级别</th>
+                                <th>签号</th>
+                                <th>姓名</th>
+                                <th>代表队</th>
+                                <th>状态</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="poomsaeScheduleTableBody"></tbody>
+                    </table>
+                </div>
+                <div class="auto-arrange-summary">
+                    <span>共：<strong id="poomsaeScheduleTotal">0</strong> 人</span>
+                    <span><strong id="poomsaeScheduleDone">0</strong> 已完成</span>
+                    <span><strong id="poomsaeSchedulePending">0</strong> 待比赛</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.poomsae-tab-bar {
+    display: inline-flex;
+    border: 1px solid #dcdfe6;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-right: 12px;
+}
+.poomsae-tab {
+    padding: 6px 16px;
+    font-size: 13px;
+    border: none;
+    background: #fff;
+    color: #606266;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.poomsae-tab:hover {
+    color: #409eff;
+}
+.poomsae-tab.active {
+    background: #409eff;
+    color: #fff;
+}
+.brackets-layout {
+    display: flex;
+    gap: 16px;
+}
+.brackets-sidebar {
+    width: 220px;
+    min-width: 220px;
+    border: 1px solid #ebeef5;
+    border-radius: 4px;
+    background: #fafafa;
+    padding: 12px;
+    max-height: calc(100vh - 260px);
+    overflow-y: auto;
+}
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #ebeef5;
+}
+.sidebar-header h3 {
+    margin: 0;
+    font-size: 14px;
+    color: #303133;
+}
+.pending-badge {
+    background: #f56c6c;
+    color: #fff;
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: bold;
+}
+.pending-class-list, .venue-allocation-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.pending-class-list.drag-over {
+    background: #fef0f0;
+    border: 2px dashed #f56c6c;
+    border-radius: 4px;
+}
+.pending-class-item {
+    padding: 6px 10px;
+    background: #fff;
+    border: 1px solid #fde2e2;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #303133;
+    cursor: grab;
+    transition: all 0.2s;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.pending-class-item:hover {
+    background: #fef0f0;
+    border-color: #f56c6c;
+}
+.pending-class-item.dragging {
+    opacity: 0.4;
+}
+.pending-class-item .class-count {
+    color: #f56c6c;
+    font-weight: bold;
+    font-size: 11px;
+}
+.pending-class-group-title {
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: bold;
+    color: #409eff;
+    background: #ecf5ff;
+    border-radius: 4px;
+    margin-top: 4px;
+}
+.venue-allocation-list.drag-over {
+    background: #ecf5ff;
+    border: 2px dashed #409eff;
+    border-radius: 4px;
+}
+.venue-group {
+    margin-bottom: 8px;
+    min-height: 30px;
+}
+.venue-group.drag-over {
+    background: #ecf5ff;
+    border: 2px dashed #409eff;
+    border-radius: 4px;
+}
+.venue-group-header {
+    font-size: 13px;
+    font-weight: bold;
+    color: #409eff;
+    padding: 4px 8px;
+    background: #ecf5ff;
+    border-radius: 4px;
+    margin-bottom: 4px;
+}
+.venue-class-item {
+    padding: 5px 10px;
+    background: #fff;
+    border: 1px solid #d9ecff;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #303133;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.venue-class-item .venue-info {
+    color: #409eff;
+    font-size: 11px;
+}
+.venue-group-summary {
+    display: flex;
+    justify-content: space-around;
+    padding: 4px 8px;
+    margin-top: 4px;
+    border-top: 1px dashed #dcdfe6;
+    font-size: 11px;
+    color: #909399;
+}
+.venue-summary {
+    display: flex;
+    justify-content: space-around;
+    padding: 10px 8px;
+    margin-top: 8px;
+    border-top: 1px solid #ebeef5;
+    font-size: 12px;
+    color: #606266;
+    background: #f5f7fa;
+    border-radius: 4px;
+}
+.brackets-main {
+    flex: 1;
+    min-width: 0;
+}
+.auto-arrange-table-wrapper, .schedule-table-wrapper {
+    overflow-x: auto;
+    max-height: calc(100vh - 320px);
+    overflow-y: auto;
+}
+.auto-arrange-table, .schedule-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13px;
+}
+.auto-arrange-table th,
+.auto-arrange-table td,
+.schedule-table th,
+.schedule-table td {
+    padding: 6px 8px;
+    text-align: center;
+    border-bottom: 1px solid #ebeef5;
+    white-space: nowrap;
+}
+.auto-arrange-table th,
+.schedule-table th {
+    background: linear-gradient(to right, #8B0000, #00008B);
+    color: #fff;
+    font-weight: bold;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+.auto-arrange-table thead tr,
+.schedule-table thead tr {
+    background: linear-gradient(to right, #8B0000, #00008B);
+}
+.auto-arrange-table tr:hover,
+.schedule-table tr:hover {
+    background: #ecf5ff;
+}
+.auto-arrange-summary {
+    display: flex;
+    gap: 24px;
+    padding: 12px 16px;
+    background: #f5f7fa;
+    border-radius: 4px;
+    margin-top: 12px;
+    font-size: 13px;
+    color: #606266;
+}
+.schedule-layout {
+    display: flex;
+    gap: 16px;
+}
+.schedule-sidebar {
+    width: 220px;
+    min-width: 220px;
+    border: 1px solid #ebeef5;
+    border-radius: 4px;
+    background: #fafafa;
+    padding: 12px;
+    max-height: calc(100vh - 260px);
+    overflow-y: auto;
+}
+.schedule-main {
+    flex: 1;
+    min-width: 0;
+}
+.schedule-class-item {
+    padding: 6px 10px;
+    background: #fff;
+    border: 1px solid #e4e7ed;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #303133;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.schedule-class-item:hover {
+    background: #ecf5ff;
+    border-color: #409eff;
+}
+.schedule-class-item.active {
+    background: #409eff;
+    color: #fff;
+    border-color: #409eff;
+}
+.schedule-class-item .class-count {
+    font-weight: bold;
+    font-size: 11px;
+}
+.schedule-class-group-title {
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: bold;
+    color: #409eff;
+    background: #ecf5ff;
+    border-radius: 4px;
+    margin-top: 4px;
+}
+.schedule-row-pending {
+    color: #909399;
+}
+.schedule-row-playing {
+    background: #fdf6ec !important;
+    color: #e6a23c;
+    font-weight: bold;
+}
+.schedule-row-done {
+    color: #67c23a;
+}
+.schedule-level-header td {
+    background: #ecf5ff !important;
+    font-weight: bold;
+    color: #409eff;
+    font-size: 13px;
+    padding: 8px;
+    border-bottom: 2px solid #409eff !important;
+}
+.status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: bold;
+}
+.status-pending {
+    background: #f4f4f5;
+    color: #909399;
+}
+.status-playing {
+    background: #fdf6ec;
+    color: #e6a23c;
+}
+.status-done {
+    background: #f0f9eb;
+    color: #67c23a;
+}
+</style>
+
+<div id="poomsaeAutoAssignVenueModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 400px;">
+        <h2>🏟️ 自动分配场地</h2>
+        <p style="color: #606266; font-size: 13px; margin-bottom: 15px;">选择场地数量，系统将自动按级别均分到各场地</p>
+        <div class="form-group">
+            <label>场地数量（1-26，对应 A-Z）</label>
+            <input type="number" id="poomsaeVenueCountInput" min="1" max="26" value="2" style="width: 80px; padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 4px; font-size: 14px; text-align: center;">
+        </div>
+        <div id="poomsaeVenuePreview" style="margin: 12px 0; padding: 10px; background: #f5f7fa; border-radius: 4px; font-size: 13px; color: #409eff;"></div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="closePoomsaeAutoAssignVenueModal()">取消</button>
+            <button class="btn btn-primary" onclick="applyPoomsaeAutoAssignVenue()">确认分配</button>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,393 @@
+<div class="card">
+    <div class="card-header">
+        <h2>摔跤编排</h2>
+        <div class="toolbar" style="margin: 0;">
+            <input type="file" id="testArrangeImportFile" accept=".xls,.xlsx" style="display:none;" onchange="handleTestArrangeImport(event)">
+            <button class="btn btn-info" onclick="document.getElementById('testArrangeImportFile').click()">📥 导入数据</button>
+            <button class="btn btn-warning" onclick="exportTestArrangeData()">📤 导出数据</button>
+            <button class="btn btn-primary" onclick="saveTestAutoArrange()">💾 保存</button>
+            <button class="btn btn-success" onclick="executeTestAutoArrange()">🤖 执行编排</button>
+            <button class="btn btn-secondary" onclick="switchToTestManualArrange()">✏️ 手工编排</button>
+            <button class="btn btn-info" onclick="showCompetitionModeConfig()">🎲 级别竞赛方式</button>
+            <button class="btn btn-danger" onclick="clearTestArrange()">🗑️ 清除编排</button>
+        </div>
+    </div>
+    <div class="brackets-layout">
+        <div class="brackets-sidebar">
+            <div class="sidebar-header">
+                <h3>📋 待编排级别</h3>
+                <span id="testPendingCount" class="pending-badge">0</span>
+            </div>
+            <div id="testPendingClassList" class="pending-class-list"></div>
+        </div>
+        <div class="brackets-sidebar">
+            <div class="sidebar-header">
+                <h3>场地分配</h3>
+                <div style="display:flex;gap:4px;align-items:center;">
+                    <select id="testVenueFilter" onchange="filterTestVenueAllocation()" style="font-size:12px;padding:2px 6px;border:1px solid #dcdfe6;border-radius:3px;">
+                        <option value="">全部</option>
+                    </select>
+                    <button onclick="resetTestVenueFilter()" style="font-size:11px;padding:2px 8px;border:1px solid #dcdfe6;border-radius:3px;background:#fff;cursor:pointer;color:#606266;" title="重置筛选">🔄</button>
+                </div>
+            </div>
+            <div id="testVenueAllocationList" class="venue-allocation-list"></div>
+        </div>
+        <div class="brackets-main">
+            <div class="auto-arrange-table-wrapper">
+                <table class="auto-arrange-table">
+                    <thead>
+                        <tr>
+                            <th>序号</th>
+                            <th>轮次</th>
+                            <th>场次</th>
+                            <th>顺序</th>
+                            <th>场地</th>
+                            <th>单元</th>
+                            <th>级别</th>
+                            <th>人数</th>
+                            <th>总场次</th>
+                            <th>决赛</th>
+                            <th id="dynamicRoundHeader1">轮次1</th>
+                            <th id="dynamicRoundHeader2">轮次2</th>
+                            <th id="dynamicRoundHeader3">轮次3</th>
+                            <th id="dynamicRoundHeader4">轮次4</th>
+                            <th id="dynamicRoundHeader5">轮次5</th>
+                            <th id="dynamicRoundHeader6">轮次6</th>
+                            <th id="dynamicRoundHeader7">轮次7</th>
+                            <th id="dynamicRoundHeader8">轮次8</th>
+                            <th>Gold</th>
+                            <th>Silver</th>
+                            <th>Bronze</th>
+                            <th>Rep.</th>
+                        </tr>
+                    </thead>
+                    <tbody id="testAutoArrangeTableBody"></tbody>
+                </table>
+            </div>
+            <div class="auto-arrange-summary">
+                <span>共：<strong id="testAutoArrangeTotalAthletes">0</strong> 人</span>
+                <span><strong id="testAutoArrangeTotalClasses">0</strong> 级别</span>
+                <span><strong id="testAutoArrangeTotalMatches">0</strong> 场</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 手工编排模态框 -->
+<div id="testManualArrangeModal" class="modal" style="display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; background-color:rgba(0,0,0,0.5);">
+    <div class="modal-content" style="background-color:#fefefe; margin:5% auto; padding:20px; border:1px solid #888; width:90%; max-width:1200px; border-radius:8px; max-height:80vh; overflow-y:auto;">
+        <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <h2>手工编排对阵</h2>
+            <span class="close" onclick="closeTestManualArrangeModal()" style="color:#aaa; font-size:28px; font-weight:bold; cursor:pointer;">&times;</span>
+        </div>
+        <div class="modal-body">
+            <div class="manual-arrange-toolbar" style="margin-bottom:15px; display:flex; gap:10px; flex-wrap:wrap;">
+                <select id="testManualWeightClassSelect" class="form-control" style="width:200px;" onchange="loadTestManualArrangeData()">
+                    <option value="">选择级别</option>
+                </select>
+                <button class="btn btn-primary" onclick="saveTestManualArrange()">💾 保存手工编排</button>
+                <button class="btn btn-info" onclick="clearTestManualArrange()">🔄 清空重排</button>
+                <button class="btn btn-warning" onclick="autoFillTestManualArrange()">🤖 自动填充</button>
+            </div>
+            <div class="manual-arrange-container" style="display:flex; gap:20px;">
+                <div class="athletes-panel" style="flex:1; min-width:250px;">
+                    <h3>运动员列表</h3>
+                    <div class="athletes-list" id="testManualAthletesList" style="border:1px solid #ddd; border-radius:4px; padding:10px; min-height:400px; max-height:500px; overflow-y:auto;">
+                        <p style="color:#909399; text-align:center;">请先选择级别</p>
+                    </div>
+                </div>
+                <div class="bracket-panel" style="flex:2;">
+                    <h3>对阵表</h3>
+                    <div id="testManualBracketContainer" style="border:1px solid #ddd; border-radius:4px; padding:10px; min-height:400px;">
+                        <p style="color:#909399; text-align:center;">请先选择级别</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.brackets-layout {
+    display: flex;
+    gap: 16px;
+}
+.brackets-sidebar {
+    width: 220px;
+    min-width: 220px;
+    border: 1px solid #ebeef5;
+    border-radius: 4px;
+    background: #fafafa;
+    padding: 12px;
+    max-height: calc(100vh - 260px);
+    overflow-y: auto;
+}
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #ebeef5;
+}
+.sidebar-header h3 {
+    margin: 0;
+    font-size: 14px;
+    color: #303133;
+}
+.pending-badge {
+    background: #f56c6c;
+    color: #fff;
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: bold;
+}
+.arranged-badge {
+    background: #67c23a;
+    color: #fff;
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: bold;
+}
+.pending-class-list, .arranged-class-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.pending-class-list.drag-over {
+    background: #fef0f0;
+    border: 2px dashed #f56c6c;
+    border-radius: 4px;
+}
+.pending-class-item {
+    padding: 6px 10px;
+    background: #fff;
+    border: 1px solid #fde2e2;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #303133;
+    cursor: grab;
+    transition: all 0.2s;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.pending-class-item:hover {
+    background: #fef0f0;
+    border-color: #f56c6c;
+}
+.pending-class-item.dragging {
+    opacity: 0.4;
+}
+.pending-class-item .class-count {
+    color: #f56c6c;
+    font-weight: bold;
+    font-size: 11px;
+}
+.arranged-class-item {
+    padding: 6px 10px;
+    background: #fff;
+    border: 1px solid #e1f3d8;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #303133;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.arranged-class-item:hover {
+    background: #f0f9eb;
+    border-color: #67c23a;
+}
+.arranged-class-item .class-count {
+    color: #67c23a;
+    font-weight: bold;
+    font-size: 11px;
+}
+.venue-allocation-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.venue-allocation-list.drag-over {
+    background: #ecf5ff;
+    border: 2px dashed #409eff;
+    border-radius: 4px;
+}
+.venue-group {
+    margin-bottom: 8px;
+    min-height: 30px;
+}
+.venue-group.drag-over {
+    background: #ecf5ff;
+    border: 2px dashed #409eff;
+    border-radius: 4px;
+}
+.venue-group-header {
+    font-size: 13px;
+    font-weight: bold;
+    color: #409eff;
+    padding: 4px 8px;
+    background: #ecf5ff;
+    border-radius: 4px;
+    margin-bottom: 4px;
+}
+.venue-class-item {
+    padding: 5px 10px;
+    background: #fff;
+    border: 1px solid #d9ecff;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #303133;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.venue-class-item .venue-info {
+    color: #409eff;
+    font-size: 11px;
+}
+.venue-group-summary {
+    display: flex;
+    justify-content: space-around;
+    padding: 4px 8px;
+    margin-top: 4px;
+    border-top: 1px dashed #dcdfe6;
+    font-size: 11px;
+    color: #909399;
+}
+.venue-summary {
+    display: flex;
+    justify-content: space-around;
+    padding: 10px 8px;
+    margin-top: 8px;
+    border-top: 1px solid #ebeef5;
+    font-size: 12px;
+    color: #606266;
+    background: #f5f7fa;
+    border-radius: 4px;
+}
+.brackets-main {
+    flex: 1;
+    min-width: 0;
+}
+.athlete-item {
+    padding:8px 12px;
+    margin:5px 0;
+    background:#f5f7fa;
+    border:1px solid #e4e7ed;
+    border-radius:4px;
+    cursor:grab;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+}
+.athlete-item:hover {
+    background:#ecf5ff;
+    border-color:#409eff;
+}
+.athlete-item.dragging {
+    opacity:0.5;
+}
+.bracket-position {
+    width:120px;
+    height:40px;
+    border:2px dashed #dcdfe6;
+    border-radius:4px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    margin:5px;
+    background:#fff;
+    cursor:pointer;
+    transition:all 0.3s;
+}
+.bracket-position:hover {
+    border-color:#409eff;
+    background:#ecf5ff;
+}
+.bracket-position.occupied {
+    border-style:solid;
+    border-color:#67c23a;
+    background:#f0f9eb;
+}
+.bracket-position .athlete-name {
+    font-size:12px;
+    font-weight:500;
+}
+.bracket-match {
+    display:flex;
+    align-items:center;
+    margin:10px 0;
+    padding:10px;
+    background:#fafafa;
+    border-radius:4px;
+}
+.bracket-round {
+    margin:15px 0;
+    padding:10px;
+    background:#f5f7fa;
+    border-radius:4px;
+}
+.bracket-round h4 {
+    margin:0 0 10px 0;
+    color:#606266;
+}
+</style>
+
+<!-- 竞赛方式配置弹窗 -->
+<div id="competitionModeModal" class="modal" style="display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; background-color:rgba(0,0,0,0.5);">
+    <div class="modal-content" style="background-color:#fefefe; margin:3% auto; padding:20px; border:1px solid #888; width:90%; max-width:1000px; border-radius:8px; max-height:85vh; overflow-y:auto;">
+        <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; padding-bottom:10px; border-bottom:2px solid #409eff;">
+            <h2>🎲 级别竞赛方式配置</h2>
+            <span class="close" onclick="closeCompetitionModeModal()" style="color:#aaa; font-size:28px; font-weight:bold; cursor:pointer;">&times;</span>
+        </div>
+        <div class="modal-body">
+            <div class="alert alert-info" style="background:#ecf5ff; border:1px solid #d9ecff; color:#606266; padding:10px 15px; border-radius:4px; margin-bottom:15px; font-family:'Microsoft YaHei','SimHei',sans-serif;">
+                <strong>竞赛方式说明：</strong>
+                <ul style="margin:5px 0; padding-left:20px;">
+                    <li><strong>单循环赛</strong>：每人都与其他所有人比赛一场</li>
+                    <li><strong>分区循环赛</strong>：将运动员分为两组进行循环赛，各组第一名进入决赛</li>
+                    <li><strong>单败淘汰赛</strong>：输一场即淘汰，直到决出冠军</li>
+                </ul>
+            </div>
+            <table class="table" style="width:100%; border-collapse:collapse;">
+                <thead>
+                    <tr style="background:#f5f7fa;">
+                        <th style="padding:10px; border:1px solid #dcdfe6; text-align:left;">级别</th>
+                        <th style="padding:10px; border:1px solid #dcdfe6; text-align:center;">人数</th>
+                        <th style="padding:10px; border:1px solid #dcdfe6; text-align:center;">推荐方式</th>
+                        <th style="padding:10px; border:1px solid #dcdfe6; text-align:center;">选择方式</th>
+                        <th style="padding:10px; border:1px solid #dcdfe6; text-align:center;">详情</th>
+                    </tr>
+                </thead>
+                <tbody id="competitionModeTableBody">
+                </tbody>
+            </table>
+        </div>
+        <div class="modal-footer" style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px; padding-top:15px; border-top:1px solid #ebeef5;">
+            <button class="btn btn-default" onclick="closeCompetitionModeModal()">取消</button>
+            <button class="btn btn-primary" onclick="saveCompetitionModes()">保存配置</button>
+        </div>
+    </div>
+</div>
+
+<!-- 竞赛方式详情弹窗 -->
+<div id="competitionModeDetailModal" class="modal" style="display:none; position:fixed; z-index:1001; left:0; top:0; width:100%; height:100%; background-color:rgba(0,0,0,0.5);">
+    <div class="modal-content" style="background-color:#fefefe; margin:5% auto; padding:20px; border:1px solid #888; width:80%; max-width:600px; border-radius:8px;">
+        <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <h3 id="competitionModeDetailTitle">竞赛方式详情</h3>
+            <span class="close" onclick="closeCompetitionModeDetail()" style="color:#aaa; font-size:28px; font-weight:bold; cursor:pointer;">&times;</span>
+        </div>
+        <div class="modal-body" id="competitionModeDetailContent">
+        </div>
+        <div class="modal-footer" style="display:flex; justify-content:flex-end; margin-top:20px;">
+            <button class="btn btn-default" onclick="closeCompetitionModeDetail()">关闭</button>
+        </div>
+    </div>
+</div>
+

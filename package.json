@@ -1,0 +1,29 @@
+{
+  "name": "taekwondo-manager",
+  "version": "1.0.0",
+  "description": "跆拳道比赛管理系统 - Node.js 后端服务",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "init-db": "node scripts/init-db.js"
+  },
+  "dependencies": {
+    "brackets-manager": "^1.9.1",
+    "brackets-memory-db": "^1.0.4",
+    "brackets-viewer": "^1.6.2",
+    "cors": "^2.8.5",
+    "ejs": "^5.0.2",
+    "exceljs": "^4.4.0",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^1.4.5-lts.1",
+    "mysql2": "^3.22.3",
+    "uuid": "^9.0.0",
+    "ws": "^8.14.2",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}

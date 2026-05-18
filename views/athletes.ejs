@@ -1,0 +1,46 @@
+<div class="card">
+    <div class="card-header">
+        <h2>运动员管理</h2>
+        <div class="toolbar" style="margin: 0;">
+            <button class="btn btn-primary" onclick="showAddAthleteModal()">➕ 添加运动员</button>
+            <button class="btn btn-success" onclick="showBatchAthleteModal()">📥 批量添加</button>
+            <button class="btn btn-warning" onclick="doDraw(selectedClass)">🎲 抽签</button>
+            <button class="btn btn-danger" onclick="clearDraw()">🗑️ 清除签号</button>
+            <button class="btn btn-danger" onclick="clearAllAthletes()" style="background: #909399; border-color: #909399;">⚠️ 全部清除</button>
+            <button class="btn btn-info" onclick="printAllAthletes()">🖨️ 打印全部名单</button>
+            <button class="btn btn-default" onclick="loadAthletes()">🔄 刷新</button>
+        </div>
+    </div>
+    <div class="athlete-layout">
+        <aside class="class-list-panel">
+            <div class="class-list-title">📋 待抽签</div>
+            <ul class="class-list" id="classList"></ul>
+        </aside>
+        <div class="athlete-main">
+            <div class="table-container" style="max-height: calc(100vh - 300px); overflow-y: auto;">
+                <table style="text-align: center; background: #C7EDCC;">
+                    <thead style="position: sticky; top: 0; z-index: 1; background: linear-gradient(to right, #8B0000, #00008B);">
+                        <tr>
+                            <th style="text-align: center; color: #fff; background: transparent;">序号</th>
+                            <th style="text-align: center; color: #fff; background: transparent;">类型</th>
+                            <th style="text-align: center; color: #fff; background: transparent;">运动员号</th>
+                            <th style="text-align: center; color: #fff; background: transparent;">签号</th>
+                            <th style="text-align: center; color: #fff; background: transparent;">姓名</th>
+                            <th style="text-align: center; color: #fff; background: transparent;">性别</th>
+                            <th style="text-align: center; color: #fff; background: transparent;">单位</th>
+                            <th style="text-align: center; color: #fff; background: transparent;">组别</th>
+                            <th style="text-align: center; color: #fff; background: transparent;">级别</th>
+                            <th style="text-align: center; color: #fff; background: transparent;">修改级别</th>
+                            <th style="text-align: center; color: #fff; background: transparent;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="athletesTable"></tbody>
+                </table>
+            </div>
+        </div>
+        <aside class="class-list-panel class-list-panel-right">
+            <div class="class-list-title">✅ 已抽签</div>
+            <ul class="class-list" id="drawnClassList"></ul>
+        </aside>
+    </div>
+</div>

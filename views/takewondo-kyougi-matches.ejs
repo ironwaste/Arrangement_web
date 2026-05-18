@@ -1,0 +1,159 @@
+<div class="card">
+    <div class="card-header">
+        <h2>对阵表</h2>
+        <div class="toolbar" style="margin: 0;">
+            <button class="btn btn-warning" onclick="exportMedalBoard()">📥 奖牌榜</button>
+            <button class="btn btn-primary" onclick="exportRankAnnouncement()">📥 名次公告</button>
+            <button class="btn btn-info" onclick="exportTeamScores()">📥 所有成绩</button>
+            <button class="btn btn-success" onclick="openResultBookModal()">📋 总成绩册下载</button>
+            <button class="btn btn-success" onclick="showPrintDialog()">🖨️ 打印对阵表</button>
+            <button class="btn btn-default" onclick="resetMatchFilter()">🔄 重置</button>
+        </div>
+    </div>
+    <div class="table-container" style="display:flex;flex-direction:column;gap:12px;">
+        <div style="border:1px solid #e4e7ed;border-radius:8px;box-shadow:0 2px 8px rgba(0,21,41,0.06);overflow:hidden;">
+            <div style="overflow:auto;max-height:45vh;">
+            <table id="matchesTableLeft" class="matches-split-table">
+                <thead>
+                    <tr>
+                        <th class="filterable" data-col="0">场地 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-col="1">场次 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-col="2">轮次 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-col="3">青方 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-col="4">代表队 <span class="filter-arrow">▼</span></th>
+                        <th></th>
+                        <th class="filterable" data-col="6">红方 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-col="7">代表队 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-col="8">级别 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-col="9">状态 <span class="filter-arrow">▼</span></th>
+                        <th>比分</th>
+                        <th>方式</th>
+                        <th class="filterable" data-col="12">获胜方 <span class="filter-arrow">▼</span></th>
+                    </tr>
+                </thead>
+                <tbody id="matchesTableLeftBody"></tbody>
+            </table>
+        </div>
+        </div>
+        <div style="border:1px solid #e4e7ed;border-radius:8px;box-shadow:0 2px 8px rgba(0,21,41,0.06);overflow:hidden;">
+            <div style="overflow:auto;max-height:45vh;">
+            <table id="matchesTableRight" class="matches-split-table">
+                <thead>
+                    <tr>
+                        <th class="filterable" data-col="0">场地 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-col="1">场次 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-col="2">轮次 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-col="3">青方 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-col="4">代表队 <span class="filter-arrow">▼</span></th>
+                        <th></th>
+                        <th class="filterable" data-col="6">红方 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-col="7">代表队 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-col="8">级别 <span class="filter-arrow">▼</span></th>
+                        <th class="filterable" data-col="9">状态 <span class="filter-arrow">▼</span></th>
+                        <th>比分</th>
+                        <th>方式</th>
+                        <th class="filterable" data-col="12">获胜方 <span class="filter-arrow">▼</span></th>
+                    </tr>
+                </thead>
+                <tbody id="matchesTableRightBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="resultBookModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;justify-content:center;align-items:center;">
+    <div style="background:#fff;border-radius:8px;padding:24px;width:720px;max-height:85vh;overflow-y:auto;position:relative;">
+        <h3 style="margin:0 0 16px;text-align:center;font-size:16px;">📋 总成绩册下载 - 自定义附加内容</h3>
+        <div style="margin-bottom:12px;padding:10px;background:#f0f9eb;border-radius:4px;font-size:12px;color:#67c23a;">
+            以下内容将输出到"团体总分"sheet的排名数据下方。可添加优秀运动队、体育道德风尚奖、最佳技术奖、优秀裁判员、优秀教练员、精英奖运动员等自定义区块。
+        </div>
+        <div id="customSections"></div>
+        <div style="margin-top:12px;display:flex;gap:8px;">
+            <button class="btn btn-primary" onclick="addCustomSection()" style="flex:1;">➕ 添加区块</button>
+        </div>
+        <div style="margin-top:16px;display:flex;gap:12px;">
+            <button class="btn btn-default" onclick="closeResultBookModal()" style="flex:1;">取消</button>
+            <button class="btn btn-success" onclick="downloadResultBook()" style="flex:1;">📥 下载总成绩册</button>
+        </div>
+    </div>
+</div>
+
+<div id="printDialog" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;justify-content:center;align-items:center;">
+    <div style="background:#fff;border-radius:8px;padding:24px 32px;width:400px;box-shadow:0 4px 20px rgba(0,0,0,0.3);">
+        <h3 style="margin:0 0 20px;text-align:center;font-size:16px;">打印对阵表</h3>
+        <div style="margin-bottom:16px;">
+            <label style="display:block;margin-bottom:6px;font-weight:bold;font-size:13px;">场地</label>
+            <select id="printVenue" style="width:100%;padding:8px;border:1px solid #dcdfe6;border-radius:4px;font-size:13px;">
+                <option value="">全部场地</option>
+            </select>
+        </div>
+        <div style="display:flex;gap:16px;margin-bottom:20px;">
+            <div style="flex:1;">
+                <label style="display:block;margin-bottom:6px;font-weight:bold;font-size:13px;">起始场次</label>
+                <input type="number" id="printFrom" min="1" placeholder="从第几场" style="width:100%;padding:8px;border:1px solid #dcdfe6;border-radius:4px;font-size:13px;">
+            </div>
+            <div style="flex:1;">
+                <label style="display:block;margin-bottom:6px;font-weight:bold;font-size:13px;">结束场次</label>
+                <input type="number" id="printTo" min="1" placeholder="到第几场" style="width:100%;padding:8px;border:1px solid #dcdfe6;border-radius:4px;font-size:13px;">
+            </div>
+        </div>
+        <div style="display:flex;gap:12px;justify-content:flex-end;">
+            <button onclick="closePrintDialog()" style="padding:8px 20px;border:1px solid #dcdfe6;border-radius:4px;background:#fff;cursor:pointer;font-size:13px;">取消</button>
+            <button onclick="doPrint()" style="padding:8px 20px;border:none;border-radius:4px;background:#67C23A;color:#fff;cursor:pointer;font-size:13px;font-weight:bold;">打印</button>
+        </div>
+    </div>
+</div>
+
+<div id="scoreModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 420px;">
+        <h2>录入比赛成绩</h2>
+        <input type="hidden" id="scoreMatchId">
+        <input type="hidden" id="scoreMatchType">
+        <input type="hidden" id="scoreDisplayNum">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+            <div style="flex:1;text-align:center;">
+                <div style="color:#409EFF;font-weight:bold;font-size:15px;" id="scoreBlueName">青方</div>
+                <div style="color:#909399;font-size:12px;" id="scoreBlueUnit"></div>
+            </div>
+            <div style="font-size:18px;font-weight:bold;color:#909399;">VS</div>
+            <div style="flex:1;text-align:center;">
+                <div style="color:#F56C6C;font-weight:bold;font-size:15px;" id="scoreRedName">红方</div>
+                <div style="color:#909399;font-size:12px;" id="scoreRedUnit"></div>
+            </div>
+        </div>
+        <div style="display:flex;gap:16px;margin-bottom:16px;">
+            <div style="flex:1;">
+                <label style="display:block;margin-bottom:4px;font-weight:bold;font-size:13px;color:#409EFF;">青方得分</label>
+                <input type="number" id="scoreBlueScore" min="0" style="width:100%;padding:8px;border:1px solid #dcdfe6;border-radius:4px;font-size:16px;text-align:center;">
+            </div>
+            <div style="flex:1;">
+                <label style="display:block;margin-bottom:4px;font-weight:bold;font-size:13px;color:#F56C6C;">红方得分</label>
+                <input type="number" id="scoreRedScore" min="0" style="width:100%;padding:8px;border:1px solid #dcdfe6;border-radius:4px;font-size:16px;text-align:center;">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>获胜方</label>
+            <input type="hidden" id="scoreWinner" value="">
+            <div style="display:flex;gap:12px;">
+                <div id="winnerBlue" onclick="selectWinner('青方')" style="flex:1;text-align:center;padding:12px 0;border:2px solid #dcdfe6;border-radius:8px;cursor:pointer;font-size:16px;font-weight:bold;color:#409EFF;transition:all 0.2s;">青方</div>
+                <div id="winnerRed" onclick="selectWinner('红方')" style="flex:1;text-align:center;padding:12px 0;border:2px solid #dcdfe6;border-radius:8px;cursor:pointer;font-size:16px;font-weight:bold;color:#F56C6C;transition:all 0.2s;">红方</div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>获胜方式</label>
+            <select id="scoreWinMethod" style="width:100%;padding:8px;border:1px solid #dcdfe6;border-radius:4px;font-size:14px;">
+                <option value="">请选择</option>
+                <option value="比分胜">比分胜</option>
+                <option value="分差优势胜">分差优势胜</option>
+                <option value="终止比赛胜">终止比赛胜</option>
+                <option value="弃权胜">弃权胜</option>
+                <option value="失格胜">失格胜</option>
+            </select>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-danger" onclick="resetScore()" style="background:#E6A23C;border-color:#E6A23C;">🔄 重新比赛</button>
+            <button class="btn btn-default" onclick="closeScoreModal()">取消</button>
+            <button class="btn btn-primary" onclick="saveScore()">确认保存</button>
+        </div>
+    </div>
+</div>

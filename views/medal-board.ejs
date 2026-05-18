@@ -1,0 +1,103 @@
+<div class="card">
+    <style>
+        #medalBoardTable thead, #rankAnnouncementTable thead { position: sticky; top: 0; z-index: 10; background: linear-gradient(to right, #8B0000, #00008B); }
+        #medalBoardTable thead th, #rankAnnouncementTable thead th { position: sticky; top: 0; z-index: 10; background: transparent; }
+    </style>
+    <div class="card-header">
+        <h2>🥇 奖牌榜</h2>
+        <div class="toolbar">
+            <button class="btn btn-primary" onclick="exportMedalBoard()">📥 奖牌榜</button>
+            <button class="btn btn-primary" onclick="exportRankAnnouncement()">📥 名次公告</button>
+        </div>
+    </div>
+    <div class="stats-row" id="medalStats"></div>
+    <div class="table-container" style="max-height:450px;overflow-y:auto;">
+        <table id="medalBoardTable">
+            <thead>
+                <tr>
+                    <th>排名</th>
+                    <th>单位</th>
+                    <th style="text-align: center;">🥇 金牌</th>
+                    <th style="text-align: center;">🥈 银牌</th>
+                    <th style="text-align: center;">🥉 铜牌</th>
+                    <th style="text-align: center;">总计</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>📋 名次公告</h2>
+    </div>
+    <div class="table-container" style="max-height:450px;overflow-y:auto;">
+        <table id="rankAnnouncementTable">
+            <thead>
+                <tr>
+                    <th>名次</th>
+                    <th>代表队</th>
+                    <th style="text-align: center;">🥇 金</th>
+                    <th style="text-align: center;">🥈 银</th>
+                    <th style="text-align: center;">🥉 铜</th>
+                    <th style="text-align: center;">4</th>
+                    <th style="text-align: center;">5</th>
+                    <th style="text-align: center;">6</th>
+                    <th style="text-align: center;">7</th>
+                    <th style="text-align: center;">8</th>
+                    <th style="text-align: center;">总计</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>🏆 各级别冠军</h2>
+    </div>
+    <div class="table-container">
+        <table id="championsTable">
+            <thead>
+                <tr>
+                    <th>级别</th>
+                    <th>🥇 冠军</th>
+                    <th>单位</th>
+                    <th>🥈 亚军</th>
+                    <th>单位</th>
+                    <th>🥉 季军</th>
+                    <th>单位</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>📁 模板下载</h2>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+        <div style="background: #f5f7fa; padding: 16px; border-radius: 8px; text-align: center;">
+            <div style="font-size: 36px; margin-bottom: 8px;">🏅</div>
+            <div style="font-weight: bold; color: #303133; margin-bottom: 8px;">奖牌榜模板</div>
+            <div style="font-size: 12px; color: #909399; margin-bottom: 12px;">各单位奖牌统计</div>
+            <button class="btn btn-primary" onclick="downloadMedalTemplate()">下载</button>
+        </div>
+        <div style="background: #f5f7fa; padding: 16px; border-radius: 8px; text-align: center;">
+            <div style="font-size: 36px; margin-bottom: 8px;">🏆</div>
+            <div style="font-weight: bold; color: #303133; margin-bottom: 8px;">冠军汇总表模板</div>
+            <div style="font-size: 12px; color: #909399; margin-bottom: 12px;">各级别冠军记录</div>
+            <button class="btn btn-primary" onclick="downloadChampionTemplate()">下载</button>
+        </div>
+        <div style="background: #f5f7fa; padding: 16px; border-radius: 8px; text-align: center;">
+            <div style="font-size: 36px; margin-bottom: 8px;">📊</div>
+            <div style="font-weight: bold; color: #303133; margin-bottom: 8px;">团体总分表模板</div>
+            <div style="font-size: 12px; color: #909399; margin-bottom: 12px;">团体总分统计用</div>
+            <button class="btn btn-primary" onclick="downloadTeamScoreTemplate()">下载</button>
+        </div>
+    </div>
+</div>

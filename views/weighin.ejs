@@ -1,0 +1,38 @@
+<div class="card">
+    <div class="card-header">
+        <h2>称重管理</h2>
+        <div class="toolbar" style="margin: 0;">
+            <button class="btn btn-primary" onclick="exportWeighInSheet()">📥 导出称重表</button>
+            <button class="btn btn-success" onclick="document.getElementById('weighinFileInput').click()">📤 导入称重结果</button>
+            <input type="file" id="weighinFileInput" accept=".xlsx,.xls" style="display: none;" onchange="importWeighInResult(event)">
+            <button class="btn btn-danger" onclick="removeUnqualifiedAthletes()">🗑️ 删除不合格</button>
+            <button class="btn btn-success" onclick="markAllQualified()" style="background: #67c23a; border-color: #67c23a;">✅ 全部合格</button>
+        </div>
+    </div>
+    <div style="padding: 12px 16px; background: #f5f7fa; border-radius: 6px; margin-bottom: 16px;">
+        <div style="font-size: 13px; font-weight: 600; color: #303133; margin-bottom: 8px;">⚖️ 称重规则设定</div>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 12px; color: #606266; white-space: nowrap; min-width: 160px;">① 普通级别：级别体重 ±</span>
+                <input type="number" id="weighinTolerance" step="0.01" min="0" style="width: 60px; padding: 3px 6px; border: 1px solid #dcdfe6; border-radius: 3px; font-size: 12px; text-align: center;" value="0.3">
+                <span style="font-size: 12px; color: #909399;">Kg 为合格范围</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 12px; color: #606266; white-space: nowrap; min-width: 160px;">② 最大级别(带+)：不超过级别+</span>
+                <input type="number" id="weighinMaxLevelLimit" step="0.1" min="0" style="width: 60px; padding: 3px 6px; border: 1px solid #dcdfe6; border-radius: 3px; font-size: 12px; text-align: center;" value="6">
+                <span style="font-size: 12px; color: #909399;">Kg</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 12px; color: #606266; white-space: nowrap; min-width: 160px;">③ 最小级别：不得小于级别-</span>
+                <input type="number" id="weighinMinLevelLimit" step="0.1" min="0" style="width: 60px; padding: 3px 6px; border: 1px solid #dcdfe6; border-radius: 3px; font-size: 12px; text-align: center;" value="5">
+                <span style="font-size: 12px; color: #909399;">Kg</span>
+            </div>
+        </div>
+        <div style="margin-top: 8px; text-align: right;">
+            <button class="btn btn-primary" onclick="saveWeighinRules()" style="padding: 4px 16px; font-size: 12px;">保存规则</button>
+        </div>
+    </div>
+    <div id="weighinDisplay">
+        <p style="text-align: center; color: #909399; padding: 40px 0;">导出称重表供运动员称重，然后导入称重结果并删除不合格运动员</p>
+    </div>
+</div>

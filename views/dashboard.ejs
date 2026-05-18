@@ -1,0 +1,63 @@
+<div class="stats-row">
+    <div class="stat-card">
+        <div class="stat-icon blue">👤</div>
+        <div class="stat-info">
+            <div class="stat-value" id="totalAthletes">0</div>
+            <div class="stat-label">参赛运动员</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon green">⚔️</div>
+        <div class="stat-info">
+            <div class="stat-value" id="totalMatches">0</div>
+            <div class="stat-label">总比赛场数</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon orange">▶️</div>
+        <div class="stat-info">
+            <div class="stat-value" id="activeMatches">0</div>
+            <div class="stat-label">进行中</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon red">⏸️</div>
+        <div class="stat-info">
+            <div class="stat-value" id="pendingMatches">0</div>
+            <div class="stat-label">未开始</div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>当前赛事</h2>
+    </div>
+    <div id="currentEventInfo">
+        <p style="color: #909399; text-align: center; padding: 40px 0;">暂无进行中的赛事，请先创建或选择赛事</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>快捷操作</h2>
+    </div>
+    <div class="quick-grid">
+        <div class="quick-item" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);" onclick="location.href='/events';">
+            <span class="icon">➕</span>
+            <span class="text">新增赛事</span>
+        </div>
+        <div class="quick-item" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);" onclick="location.href='/athletes';">
+            <span class="icon">📥</span>
+            <span class="text">批量导入</span>
+        </div>
+        <div class="quick-item" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);" onclick="location.href='/brackets';">
+            <span class="icon">⚙️</span>
+            <span class="text">生成对阵</span>
+        </div>
+        <div class="quick-item" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);" onclick="location.href='/weighin';">
+            <span class="icon">📄</span>
+            <span class="text">导出称重表</span>
+        </div>
+    </div>
+</div>

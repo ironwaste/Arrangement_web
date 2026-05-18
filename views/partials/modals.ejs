@@ -1,0 +1,197 @@
+<div id="athleteModal" class="modal-overlay">
+    <div class="modal-content">
+        <h2>添加运动员</h2>
+        <div class="form-group">
+            <label for="newAthleteNo">编号</label>
+            <input type="text" id="newAthleteNo">
+        </div>
+        <div class="form-group">
+            <label for="newAthleteName">姓名</label>
+            <input type="text" id="newAthleteName">
+        </div>
+        <div class="form-group">
+            <label for="newAthleteGender">性别</label>
+            <select id="newAthleteGender">
+                <option value="男">男</option>
+                <option value="女">女</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="newAthleteUnit">单位</label>
+            <input type="text" id="newAthleteUnit">
+        </div>
+        <div class="form-group">
+            <label for="newAthleteAgeGroup">组别</label>
+            <input type="text" id="newAthleteAgeGroup" placeholder="如：小学、初中、高中">
+        </div>
+        <div class="form-group">
+            <label for="newAthleteClass">级别</label>
+            <input type="text" id="newAthleteClass" placeholder="如：58kg">
+        </div>
+        <div class="form-group">
+            <label for="newAthleteSeed">种子号</label>
+            <input type="number" id="newAthleteSeed" value="0">
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="closeModal()">取消</button>
+            <button class="btn btn-primary" onclick="saveAthlete()">保存</button>
+        </div>
+    </div>
+</div>
+
+<div id="poomsaeBatchModal" class="modal-overlay">
+    <div class="modal-content wide">
+        <h2>批量添加品势运动员</h2>
+        <div style="background: #fef6f0; border: 2px dashed #e6a23c; border-radius: 8px; padding: 20px; text-align: center; margin-bottom: 20px;">
+            <p style="color: #606266; margin-bottom: 10px;">📁 上传品势运动员Excel文件 (.xls / .xlsx)</p>
+            <input type="file" id="poomsaeExcelFileInput" accept=".xls,.xlsx" style="display: none;" onchange="handlePoomsaeExcelUpload(event)">
+            <button class="btn btn-warning" onclick="document.getElementById('poomsaeExcelFileInput').click()">选择Excel文件</button>
+            <p id="poomsaeExcelFileName" style="color: #909399; margin-top: 10px; font-size: 13px;"></p>
+        </div>
+        <div style="text-align: center; color: #909399; margin-bottom: 15px;">— 或手动粘贴 —</div>
+        <div class="form-group" style="margin-bottom: 15px;">
+            <label for="poomsaeBatchType">品势类型</label>
+            <select id="poomsaeBatchType" style="padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 4px; font-size: 14px; width: 100%;">
+                <option value="个人">🥋 个品（个人品势）</option>
+                <option value="混双">🥋 混双（混双品势）</option>
+                <option value="团体">🥋 团品（团体品势）</option>
+            </select>
+        </div>
+        <p style="color: #606266; margin-bottom: 10px;">品势运动员格式：</p>
+        <p style="color: #909399; margin-bottom: 5px; font-size: 13px;">格式: 姓名,单位,性别,组别,级别</p>
+        <p style="color: #909399; margin-bottom: 15px; font-size: 13px;">示例: 张三,北京队,男,少年组,太极一章</p>
+        <div class="form-group">
+            <textarea id="poomsaeBatchData" rows="8" style="width: 100%; padding: 12px; border: 1px solid #dcdfe6; border-radius: 4px; background: #fff; color: #333; font-family: monospace; font-size: 14px; resize: vertical;" placeholder="张三,北京队,男,少年组,太极一章&#10;李四,上海队,女,少年组,太极一章"></textarea>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-info" onclick="downloadPoomsaeTemplate()">📥 下载模板</button>
+            <button class="btn btn-default" onclick="closePoomsaeBatchModal()">取消</button>
+            <button class="btn btn-warning" onclick="saveBatchPoomsaeAthletes()">批量保存品势运动员</button>
+        </div>
+        <div id="poomsaeBatchResult" style="margin-top: 15px; display: none;"></div>
+    </div>
+</div>
+
+<div id="formatConfigModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 1100px; padding: 20px;">
+        <h2 style="margin-bottom: 10px;">配置品势套路</h2>
+        <p style="color: #606266; margin-bottom: 12px; font-size: 13px;">为每个级别配置赛制，选择赛制后在空格中填写比赛套路名称，保存后自动填充到对应运动员</p>
+        <div id="formatConfigContent" style="max-height: 65vh; overflow-y: auto;"></div>
+        <div class="modal-footer" style="margin-top: 12px;">
+            <button class="btn btn-default" onclick="exportPoomsaeRoutineTemplate()">📄 导出模板</button>
+            <button class="btn btn-success" onclick="importPoomsaeRoutine()">📥 品势套路导入</button>
+            <button class="btn btn-default" onclick="closeFormatConfigModal()">取消</button>
+            <button class="btn btn-primary" onclick="saveFormatConfig()">💾 保存配置</button>
+        </div>
+    </div>
+</div>
+
+<div id="eventModal" class="modal-overlay">
+    <div class="modal-content">
+        <h2 id="eventModalTitle">新增赛事</h2>
+        <input type="hidden" id="editEventId" value="">
+        <div class="form-group">
+            <label for="newEventName">赛事名称</label>
+            <input type="text" id="newEventName" placeholder="如：龙湾区青少年跆拳道比赛">
+        </div>
+        <div class="form-group">
+            <label for="newEventType">赛事类型</label>
+            <select id="newEventType">
+                <option value="taekwondo_kyougi">跆拳道竞技赛事</option>
+                <option value="taekwondo_poomsae">跆拳道品势赛事</option>
+                <option value="chinese_wrestle">摔跤赛事</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="newEventVenue">场馆</label>
+            <input type="text" id="newEventVenue" placeholder="如：温州永兴中学">
+        </div>
+        <div class="form-group">
+            <label for="newCompStart">比赛开始时间</label>
+            <input type="datetime-local" id="newCompStart">
+        </div>
+        <div class="form-group">
+            <label for="newCompEnd">比赛结束时间</label>
+            <input type="datetime-local" id="newCompEnd">
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="closeEventModal()">取消</button>
+            <button class="btn btn-primary" onclick="saveEvent()">保存</button>
+        </div>
+    </div>
+</div>
+
+<div id="drawModal" class="modal-overlay">
+    <div class="modal-content">
+        <h2>🎲 抽签设置</h2>
+        <div class="form-group">
+            <label for="drawScope">抽签范围</label>
+            <select id="drawScope">
+                <option value="all">所有级别</option>
+                <option value="class">指定级别</option>
+            </select>
+        </div>
+        <div class="form-group" id="drawClassGroup" style="display: none;">
+            <label for="drawClassInput">级别</label>
+            <input type="text" id="drawClassInput" placeholder="如：58kg">
+        </div>
+        <div class="form-group">
+            <label for="drawAvoidSameTeam" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                <input type="checkbox" id="drawAvoidSameTeam" checked style="width: 18px; height: 18px;">
+                <span>同队回避</span>
+            </label>
+            <p style="color: #909399; font-size: 12px; margin-top: 5px; padding-left: 28px;">
+                开启后，同单位运动员将尽量分配到不同半区/分区，避免第一轮相遇
+            </p>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="closeDrawModal()">取消</button>
+            <button class="btn btn-warning" onclick="executeDraw()">🎲 开始抽签</button>
+        </div>
+        <div id="drawResult" style="margin-top: 15px; display: none;"></div>
+    </div>
+</div>
+
+<div id="batchAthleteModal" class="modal-overlay">
+    <div class="modal-content wide">
+        <h2>批量添加竞技运动员</h2>
+
+        <div style="background: #f5f7fa; border: 2px dashed #dcdfe6; border-radius: 8px; padding: 20px; text-align: center; margin-bottom: 20px;">
+            <p style="color: #606266; margin-bottom: 10px;">📁 上传竞技运动员Excel文件 (.xls / .xlsx)</p>
+            <input type="file" id="excelFileInput" accept=".xls,.xlsx" style="display: none;" onchange="handleExcelUpload(event)">
+            <button class="btn btn-success" onclick="document.getElementById('excelFileInput').click()">选择Excel文件</button>
+            <p id="excelFileName" style="color: #909399; margin-top: 10px; font-size: 13px;"></p>
+        </div>
+        <div style="text-align: center; color: #909399; margin-bottom: 15px;">— 或手动粘贴 —</div>
+        <p style="color: #606266; margin-bottom: 10px;">支持两种格式：</p>
+        <p style="color: #909399; margin-bottom: 5px; font-size: 13px;">格式1（简洁）: 编号,姓名,性别,单位,级别,种子号(可选)</p>
+        <p style="color: #909399; margin-bottom: 15px; font-size: 13px;">格式2（NTS样表）: 签号,运动员号,姓名,性别,单位简称,组别,级别</p>
+        <div class="form-group">
+            <textarea id="batchAthleteData" rows="8" style="width: 100%; padding: 12px; border: 1px solid #dcdfe6; border-radius: 4px; background: #fff; color: #333; font-family: monospace; font-size: 14px; resize: vertical;" placeholder="格式1: 001,张三,男,北京队,58kg,1&#10;格式2: 1,1001,张三,男,北京队,小学,小学男子38kg"></textarea>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-info" onclick="downloadTemplate()">📥 下载模板</button>
+            <button class="btn btn-default" onclick="closeBatchModal()">取消</button>
+            <button class="btn btn-primary" onclick="saveBatchAthletes('taekwondo_kyougi')">批量保存竞技运动员</button>
+        </div>
+
+        <div id="batchResult" style="margin-top: 15px; display: none;"></div>
+    </div>
+</div>
+
+<div id="mergeClassModal" class="modal-overlay">
+    <div class="modal-content wide">
+        <h2>⚠️ 合并级别</h2>
+        <p style="color: #e6a23c; margin-bottom: 15px;">以下级别仅有1人，无法单独对阵，建议合并到其他级别后再抽签：</p>
+        <div style="display: flex; font-weight: 600; padding: 8px 12px; background: #f5f7fa; border-radius: 4px; margin-bottom: 8px;">
+            <span style="flex: 1;">当前级别</span>
+            <span style="flex: 1;">姓名</span>
+            <span style="flex: 1;">建议更改为</span>
+        </div>
+        <div id="mergeClassList" style="max-height: 400px; overflow-y: auto;"></div>
+        <div class="modal-footer" style="margin-top: 15px;">
+            <button class="btn btn-default" onclick="closeMergeClassModal()">取消</button>
+            <button class="btn btn-primary" onclick="applyMergeAndDraw()">确认合并并抽签</button>
+        </div>
+    </div>
+</div>

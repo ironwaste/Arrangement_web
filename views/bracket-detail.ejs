@@ -1,0 +1,108 @@
+<div class="card">
+    <div class="card-header">
+        <h2>对阵图</h2>
+        <div class="toolbar" style="margin: 0;">
+            <button class="btn btn-success" onclick="generateSelectedBracket()">⚡ 生成当前级别对阵图</button>
+            <button class="btn btn-primary" onclick="generateAllBrackets()">⚡ 生成全部级别对阵图</button>
+            <button class="btn btn-warning" onclick="clearSelectedBracket()">🗑️ 清除当前级别对阵图</button>
+            <button class="btn btn-danger" onclick="clearAllBrackets()">🗑️ 清除全部级别对阵图</button>
+            <button class="btn btn-warning" onclick="resetAllBrackets()">🔄 重置</button>
+            <span style="width:1px;height:24px;background:#dcdfe6;display:inline-block;vertical-align:middle;margin:0 4px;"></span>
+            <button class="btn btn-info" onclick="openDrawNoModal()">✏️ 修改签号</button>
+            <span style="width:1px;height:24px;background:#dcdfe6;display:inline-block;vertical-align:middle;margin:0 4px;"></span>
+            <button class="btn btn-primary" onclick="printBracket()">🖨️ 打印对阵图</button>
+            <button class="btn btn-success" onclick="printAllBrackets()">🖨️ 打印全部对阵图</button>
+            <button class="btn btn-info" onclick="viewAllBrackets()">📋 查看所有级别对阵图</button>
+        </div>
+    </div>
+    <div class="athlete-layout">
+        <aside class="class-list-panel">
+            <div class="class-list-title">📋 全部级别</div>
+            <ul class="class-list" id="bracketClassList"></ul>
+        </aside>
+        <div class="athlete-main">
+            <div id="bracketDisplay" style="min-height: 300px; overflow-x: auto;">
+                <p style="text-align: center; color: #909399; padding: 40px 0;">双击级别查看对阵图</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="bracketScoreModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 420px;">
+        <h2>录入比赛成绩</h2>
+        <input type="hidden" id="bracketScoreMatchId">
+        <input type="hidden" id="bracketScoreWeightClass">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+            <div style="flex:1;text-align:center;">
+                <div style="color:#409EFF;font-weight:bold;font-size:15px;" id="bracketScoreBlueName">青方</div>
+                <div style="color:#909399;font-size:12px;" id="bracketScoreBlueUnit"></div>
+            </div>
+            <div style="font-size:18px;font-weight:bold;color:#909399;">VS</div>
+            <div style="flex:1;text-align:center;">
+                <div style="color:#F56C6C;font-weight:bold;font-size:15px;" id="bracketScoreRedName">红方</div>
+                <div style="color:#909399;font-size:12px;" id="bracketScoreRedUnit"></div>
+            </div>
+        </div>
+        <div style="display:flex;gap:16px;margin-bottom:16px;">
+            <div style="flex:1;">
+                <label style="display:block;margin-bottom:4px;font-weight:bold;font-size:13px;color:#409EFF;">青方得分</label>
+                <input type="number" id="bracketScoreBlueScore" min="0" style="width:100%;padding:8px;border:1px solid #dcdfe6;border-radius:4px;font-size:16px;text-align:center;">
+            </div>
+            <div style="flex:1;">
+                <label style="display:block;margin-bottom:4px;font-weight:bold;font-size:13px;color:#F56C6C;">红方得分</label>
+                <input type="number" id="bracketScoreRedScore" min="0" style="width:100%;padding:8px;border:1px solid #dcdfe6;border-radius:4px;font-size:16px;text-align:center;">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>获胜方</label>
+            <input type="hidden" id="bracketScoreWinner" value="">
+            <div style="display:flex;gap:12px;">
+                <div id="bracketWinnerBlue" onclick="selectBracketWinner('青方')" style="flex:1;text-align:center;padding:12px 0;border:2px solid #dcdfe6;border-radius:8px;cursor:pointer;font-size:16px;font-weight:bold;color:#409EFF;transition:all 0.2s;">青方</div>
+                <div id="bracketWinnerRed" onclick="selectBracketWinner('红方')" style="flex:1;text-align:center;padding:12px 0;border:2px solid #dcdfe6;border-radius:8px;cursor:pointer;font-size:16px;font-weight:bold;color:#F56C6C;transition:all 0.2s;">红方</div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>获胜方式</label>
+            <select id="bracketScoreWinMethod" style="width:100%;padding:8px;border:1px solid #dcdfe6;border-radius:4px;font-size:14px;">
+                <option value="">请选择</option>
+                <option value="比分胜">比分胜</option>
+                <option value="分差优势胜">分差优势胜</option>
+                <option value="终止比赛胜">终止比赛胜</option>
+                <option value="弃权胜">弃权胜</option>
+                <option value="失格胜">失格胜</option>
+            </select>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-danger" onclick="resetBracketScore()" style="background:#E6A23C;border-color:#E6A23C;">🔄 重新比赛</button>
+            <button class="btn btn-default" onclick="closeBracketScoreModal()">取消</button>
+            <button class="btn btn-primary" onclick="saveBracketScore()">确认保存</button>
+        </div>
+    </div>
+</div>
+
+<div id="drawNoModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 500px;">
+        <h2>✏️ 修改签号</h2>
+        <div style="margin-bottom:12px;font-size:13px;color:#606266;">
+            当前级别：<strong id="drawNoClassName">-</strong>
+        </div>
+        <div style="max-height:400px;overflow-y:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                <thead>
+                    <tr style="background:linear-gradient(to right,#8B0000,#00008B);">
+                        <th style="padding:8px;border:1px solid #ebeef5;background:transparent;color:#fff;text-align:center;width:50px;">序号</th>
+                        <th style="padding:8px;border:1px solid #ebeef5;background:transparent;color:#fff;text-align:center;">姓名</th>
+                        <th style="padding:8px;border:1px solid #ebeef5;background:transparent;color:#fff;text-align:center;">单位</th>
+                        <th style="padding:8px;border:1px solid #ebeef5;background:transparent;color:#fff;text-align:center;width:80px;">签号</th>
+                    </tr>
+                </thead>
+                <tbody id="drawNoTableBody"></tbody>
+            </table>
+        </div>
+        <div class="modal-footer" style="margin-top:16px;">
+            <button class="btn btn-default" onclick="closeDrawNoModal()">取消</button>
+            <button class="btn btn-primary" onclick="saveDrawNoChanges()">💾 保存并刷新对阵图</button>
+        </div>
+    </div>
+</div>
