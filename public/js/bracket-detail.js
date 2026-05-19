@@ -1119,6 +1119,8 @@ async function generateSelectedBracket() {
             clearBracketCache();
             await loadBracketClassList();
             await viewBracketTree();
+            
+            await autoAssignVenueNumbersForSingleClass(selectedBracketClass);
         } else {
             alert('生成失败: ' + (resp.error || '未知错误'));
         }
@@ -1138,11 +1140,84 @@ async function generateAllBrackets() {
             clearBracketCache();
             alert(`全部对阵表生成完成！成功: ${data.generated || 0}个级别${data.errors && data.errors.length > 0 ? '，失败: ' + data.errors.length + '个' : ''}`);
             await loadBracketClassList();
+            
+            await autoAssignVenueNumbersForAllClasses();
         } else {
             alert('生成失败: ' + (resp.error || '未知错误'));
         }
     } catch (err) {
         alert('生成失败: ' + err.message);
+    }
+}
+
+async function autoAssignVenueNumbersForSingleClass(weightClass) {
+    if (!currentEventId || !weightClass) return;
+
+    try {
+        const schemeRes = await fetch(`${API_BASE}/auto-arrange/scheme?event_id=${currentEventId}`);
+        const schemeData = await schemeRes.json();
+        if (!schemeData.success || !schemeData.data) return;
+
+        const scheme = schemeData.data[weightClass];
+        if (!scheme || !scheme.category_venue || !scheme.category_date_num || !scheme.category_order) return;
+
+        const classData = [{
+            weight_class: weightClass,
+            venue: scheme.category_venue,
+            unit: scheme.category_date_num,
+            order: parseInt(scheme.category_order) || 1
+        }];
+
+        const res = await fetch(`${API_BASE}/matches/assign-venue-numbers`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event_id: currentEventId, data: classData })
+        });
+        const result = await res.json();
+
+        if (result.success) {
+            console.log(`✅ 自动设置 ${weightClass} 场次号完成！`);
+            await viewBracketTree();
+        }
+    } catch (e) {
+        console.warn('自动设置场次号失败:', e.message);
+    }
+}
+
+async function autoAssignVenueNumbersForAllClasses() {
+    if (!currentEventId) return;
+
+    try {
+        const schemeRes = await fetch(`${API_BASE}/auto-arrange/scheme?event_id=${currentEventId}`);
+        const schemeData = await schemeRes.json();
+        if (!schemeData.success || !schemeData.data) return;
+
+        const classData = [];
+        for (const [weightClass, scheme] of Object.entries(schemeData.data)) {
+            if (scheme.category_venue && scheme.category_date_num && scheme.category_order) {
+                classData.push({
+                    weight_class: weightClass,
+                    venue: scheme.category_venue,
+                    unit: scheme.category_date_num,
+                    order: parseInt(scheme.category_order) || 1
+                });
+            }
+        }
+
+        if (classData.length === 0) return;
+
+        const res = await fetch(`${API_BASE}/matches/assign-venue-numbers`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event_id: currentEventId, data: classData })
+        });
+        const result = await res.json();
+
+        if (result.success) {
+            console.log(`✅ 自动设置全部场次号完成！已更新 ${result.updated || classData.length} 场比赛`);
+        }
+    } catch (e) {
+        console.warn('自动设置全部场次号失败:', e.message);
     }
 }
 
@@ -1187,7 +1262,14 @@ async function clearAllBrackets() {
 
 async function resetAllBrackets() {
     if (!currentEventId) { alert('请先选择赛事'); return; }
-    if (!confirm('确定要重置吗？所有已生成级别将回到待生成状态！')) return;
+
+    const hasGenerated = await checkBracketsGeneratedForEvent();
+    let confirmMessage = '确定要重置吗？所有已生成级别将回到待生成状态！';
+    if (hasGenerated) {
+        confirmMessage = '现在已经生成对阵表，如果要进行此项操作，则该赛事所有对阵表将会被清除。确定要重置吗？';
+    }
+
+    if (!confirm(confirmMessage)) return;
 
     try {
         const resp = await apiPost('/brackets/clear-all', { event_id: currentEventId });
@@ -1196,11 +1278,25 @@ async function resetAllBrackets() {
             clearBracketCache();
             selectedBracketClass = '';
             await loadBracketClassList();
+            alert('重置成功！所有对阵表已清除');
         } else {
             alert('重置失败: ' + (resp.error || '未知错误'));
         }
     } catch (err) {
         alert('重置失败: ' + err.message);
+    }
+}
+
+async function checkBracketsGeneratedForEvent() {
+    if (!currentEventId) return false;
+
+    try {
+        const stageMapResp = await apiGet('/brackets/stage-map?' + getEventParam());
+        const stageMaps = (stageMapResp.success && stageMapResp.data) ? stageMapResp.data : [];
+        return stageMaps.some(sm => sm.stage_id);
+    } catch (err) {
+        console.error('检查对阵表生成状态失败:', err);
+        return false;
     }
 }
 

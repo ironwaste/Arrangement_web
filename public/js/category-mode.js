@@ -162,8 +162,8 @@ const CategoryModeComponent = {
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    const { 
-      editableFields = ['category_venue', 'category_date_num', 'categroy_mode_num', 'categroy_mode_name'],
+    const {
+      editableFields = ['category_venue', 'category_date_num', 'category_order', 'categroy_mode_num', 'categroy_mode_name'],
       onFieldChange = null,
       onRowSelect = null
     } = options;
@@ -176,6 +176,7 @@ const CategoryModeComponent = {
             <th style="padding:8px;border:1px solid #ebeef5;">人数</th>
             <th style="padding:8px;border:1px solid #ebeef5;">场地</th>
             <th style="padding:8px;border:1px solid #ebeef5;">单元</th>
+            <th style="padding:8px;border:1px solid #ebeef5;">顺序</th>
             <th style="padding:8px;border:1px solid #ebeef5;">竞赛方式</th>
             <th style="padding:8px;border:1px solid #ebeef5;">备注</th>
           </tr>
@@ -186,6 +187,7 @@ const CategoryModeComponent = {
     for (const cat of this.categoryData) {
       const venueEditable = editableFields.includes('category_venue');
       const unitEditable = editableFields.includes('category_date_num');
+      const orderEditable = editableFields.includes('category_order');
       const modeEditable = editableFields.includes('categroy_mode_name') || editableFields.includes('categroy_mode_num');
 
       html += `
@@ -193,11 +195,11 @@ const CategoryModeComponent = {
           <td style="padding:6px;border:1px solid #ebeef5;font-weight:500;">${cat.weight_class}</td>
           <td style="padding:6px;border:1px solid #ebeef5;text-align:center;color:#409eff;font-weight:bold;">${cat.categroy_count || 0}</td>
           <td style="padding:6px;border:1px solid #ebeef5;text-align:center;">
-            ${venueEditable ? 
-              `<input type="text" value="${cat.category_venue || ''}" 
+            ${venueEditable ?
+              `<input type="text" value="${cat.category_venue || ''}"
                 data-field="category_venue" data-id="${cat.id}"
                 style="width:50px;text-align:center;border:1px solid #dcdfe6;border-radius:3px;padding:2px;"
-                onchange="CategoryModeComponent.handleFieldChange(this)">` : 
+                onchange="CategoryModeComponent.handleFieldChange(this)">` :
               (cat.category_venue || '-')
             }
           </td>
@@ -207,11 +209,19 @@ const CategoryModeComponent = {
                 style="width:70px;border:1px solid #dcdfe6;border-radius:3px;padding:2px;"
                 onchange="CategoryModeComponent.handleFieldChange(this)">
                 <option value="">未分配</option>
-                ${[1,2,3,4,5,6,7,8,9,10].map(n => 
+                ${[1,2,3,4,5,6,7,8,9,10].map(n =>
                   `<option value="${n}" ${cat.category_date_num == n ? 'selected' : ''}>第${n}单元</option>`
                 ).join('')}
               </select>` :
               (cat.category_date_num ? `第${cat.category_date_num}单元` : '-')
+            }
+          </td>
+          <td style="padding:6px;border:1px solid #ebeef5;text-align:center;">
+            ${orderEditable ?
+              `<input type="number" min="1" value="${cat.category_order || ''}" data-field="category_order" data-id="${cat.id}"
+                style="width:50px;text-align:center;border:1px solid #dcdfe6;border-radius:3px;padding:2px;"
+                onchange="CategoryModeComponent.handleFieldChange(this)">` :
+              (cat.category_order || '-')
             }
           </td>
           <td style="padding:6px;border:1px solid #ebeef5;text-align:center;">
@@ -278,6 +288,57 @@ const CategoryModeComponent = {
     } catch (err) {
       console.error('更新失败:', err);
       alert('更新失败: ' + err.message);
+    }
+  },
+
+  async checkBracketsGenerated() {
+    if (!this.currentEventId) return false;
+
+    try {
+      const resp = await fetch(`${API_BASE}/brackets/stage-map?event_id=${this.currentEventId}`);
+      const data = await resp.json();
+
+      if (data.success && data.data && data.data.length > 0) {
+        return data.data.some(item => item.stage_id);
+      }
+      return false;
+    } catch (err) {
+      console.error('检查对阵表生成状态失败:', err);
+      return false;
+    }
+  },
+
+  async clearAllMatchesForEvent() {
+    if (!this.currentEventId) return;
+
+    try {
+      const resp = await fetch(`${API_BASE}/brackets/clear-all`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event_id: this.currentEventId })
+      });
+      const data = await resp.json();
+
+      if (!data.success) {
+        throw new Error(data.error || '清除对阵表失败');
+      }
+
+      console.log('✅ 已清除该赛事的所有对阵表');
+
+      if (typeof clearBracket === 'function') {
+        clearBracket();
+      }
+      if (typeof clearBracketCache === 'function') {
+        clearBracketCache();
+      }
+      if (typeof generatedClasses !== 'undefined') {
+        generatedClasses.clear();
+      }
+      if (typeof selectedBracketClass !== 'undefined') {
+        selectedBracketClass = '';
+      }
+    } catch (err) {
+      throw err;
     }
   },
 

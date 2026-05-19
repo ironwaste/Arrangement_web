@@ -298,38 +298,35 @@ module.exports = (db) => {
 
         classes.sort((a, b) => a.order - b.order);
 
-        classes.forEach((cls, index) => {
+        for (let index = 0; index < classes.length; index++) {
+          const cls = classes[index];
           const seqNo = String(index + 1).padStart(3, '0');
           const venueNo = `${venue}${unit}${seqNo}`;
 
-          (async () => {
-            try {
-              const matches = await queryKyougiMatchs(db, {
-                weight_class: cls.weight_class,
-                event_id
-              });
+          try {
+            const matches = await queryKyougiMatchs(db, {
+              weight_class: cls.weight_class,
+              event_id
+            });
 
-              for (const match of matches) {
-                await db.execute(
-                  'UPDATE kyougi_match SET kyougi_match_venue = ?, venue_no = ? WHERE id = ?',
-                  [venue, venueNo, match.id]
-                );
-                updatedCount++;
-              }
-            } catch (e) {
-              console.error(`更新 ${cls.weight_class} 场次失败:`, e.message);
+            for (const match of matches) {
+              await db.run(
+                'UPDATE taekwondo_kyougi_matchs SET kyougi_match_venue = ?, kyougi_match_id = ? WHERE id = ?',
+                [venue, venueNo, match.id]
+              );
+              updatedCount++;
             }
-          })();
-        });
+          } catch (e) {
+            console.error(`更新 ${cls.weight_class} 场次失败:`, e.message);
+          }
+        }
       }
 
-      setTimeout(() => {
-        res.json({
-          success: true,
-          updated: updatedCount,
-          message: `成功设置 ${updatedCount} 场比赛的场次号`
-        });
-      }, 200);
+      res.json({
+        success: true,
+        updated: updatedCount,
+        message: `成功设置 ${updatedCount} 场比赛的场次号`
+      });
 
     } catch (err) {
       console.error('POST /matches/assign-venue-numbers 错误:', err.message);

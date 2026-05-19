@@ -1368,11 +1368,22 @@ function filterVenueAllocation() {
 }
 
 function resetVenueFilter() {
-    const select = document.getElementById('venueFilter');
-    if (!select) return;
-    const venue = select.value;
-    if (!venue) { alert('请先选择一个场地'); return; }
-    if (!confirm(`确定要将场地 ${venue} 的所有级别重置为待编排吗？`)) return;
+    const venueSelect = document.getElementById('venueFilter');
+    const unitSelect = document.getElementById('unitFilter');
+    if (!venueSelect) return;
+
+    const venue = venueSelect.value;
+    const unit = unitSelect ? unitSelect.value : '';
+
+    if (!venue && !unit) {
+        if (!confirm('确定要将所有场地的所有级别重置为待编排吗？这将清除所有已分配的场地、单元和顺序信息！')) return;
+    } else if (!venue) {
+        if (!confirm(`确定要将所有场地的第${unit}单元的所有级别重置为待编排吗？`)) return;
+    } else if (!unit) {
+        if (!confirm(`确定要将场地 ${venue} 的所有单元级别重置为待编排吗？`)) return;
+    } else {
+        if (!confirm(`确定要将场地 ${venue} 第${unit}单元的所有级别重置为待编排吗？`)) return;
+    }
 
     const tbody = document.getElementById('autoArrangeTableBody');
     const rows = tbody.querySelectorAll('tr');
@@ -1384,7 +1395,23 @@ function resetVenueFilter() {
         const orderInput = cells[3].querySelector('input');
         const venueInput = cells[4].querySelector('select, input');
         const unitInput = cells[5].querySelector('select, input');
-        if (venueInput && venueInput.value.trim() === venue) {
+
+        const rowVenue = venueInput ? venueInput.value.trim() : '';
+        const rowUnit = unitInput ? unitInput.value.trim() : '';
+
+        let shouldReset = false;
+
+        if (!venue && !unit) {
+            shouldReset = !!rowVenue || !!rowUnit;
+        } else if (!venue) {
+            shouldReset = rowUnit === unit;
+        } else if (!unit) {
+            shouldReset = rowVenue === venue;
+        } else {
+            shouldReset = rowVenue === venue && rowUnit === unit;
+        }
+
+        if (shouldReset) {
             venueInput.value = '';
             if (unitInput) unitInput.value = '';
             if (orderInput) orderInput.value = '';
@@ -1393,7 +1420,9 @@ function resetVenueFilter() {
         }
     });
 
-    if (resetClasses.length === 0) { alert('该场地没有已分配的级别'); return; }
+    if (resetClasses.length === 0) { alert('没有找到符合条件的已分配级别'); return; }
+
+    console.log(`🔄 重置了 ${resetClasses.length} 个级别:`, resetClasses);
 
     saveAutoArrangeSilent().then(() => {
         loadAutoArrangeData();
@@ -1828,12 +1857,63 @@ async function generateBrackets() {
                 alert('⚠️ 生成警告\n\n成功: ' + result.generated + ' 个级别\n跳过: ' + result.skipped + ' 个级别\n\n跳过原因:\n' + result.errors.join('\n'));
             }
             alert('✅ 对阵表生成完成！\n\n成功: ' + result.generated + ' 个级别' + (result.skipped > 0 ? '\n跳过: ' + result.skipped + ' 个级别' : '') + '\n\n详情:\n' + result.results.join('\n'));
-            loadAutoArrangeData();
+            
+            await loadAutoArrangeData();
+            
+            await autoAssignVenueNumbersAfterGenerate();
         } else {
             alert('❌ 生成失败: ' + (data.error || '未知错误'));
         }
     } catch (e) {
         alert('❌ 生成请求失败: ' + e.message);
+    }
+}
+
+async function autoAssignVenueNumbersAfterGenerate() {
+    if (!currentEventId) return;
+
+    const tbody = document.getElementById('autoArrangeTableBody');
+    const rows = tbody ? tbody.querySelectorAll('tr') : [];
+    if (rows.length === 0) return;
+
+    const classData = [];
+    rows.forEach(tr => {
+        const cells = tr.querySelectorAll('td');
+        if (cells.length < 7) return;
+        const weightClass = cells[6].textContent.trim();
+        const orderInput = cells[3].querySelector('input');
+        const venueInput = cells[4].querySelector('select, input');
+        const unitInput = cells[5].querySelector('select, input');
+
+        const venue = venueInput ? venueInput.value.trim() : '';
+        const unit = unitInput ? unitInput.value.trim() : '';
+        const order = parseInt(orderInput ? orderInput.value : 0) || 0;
+
+        if (weightClass && unit && order > 0) {
+            classData.push({
+                weight_class: weightClass,
+                venue: venue || 'A',
+                unit: unit,
+                order: order
+            });
+        }
+    });
+
+    if (classData.length === 0) return;
+
+    try {
+        const res = await fetch(`${API_BASE}/matches/assign-venue-numbers`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event_id: currentEventId, data: classData })
+        });
+        const result = await res.json();
+
+        if (result.success) {
+            console.log(`✅ 自动设置场次号完成！已更新 ${result.updated || classData.length} 场比赛的场次号`);
+        }
+    } catch (e) {
+        console.warn('自动设置场次号失败:', e.message);
     }
 }
 

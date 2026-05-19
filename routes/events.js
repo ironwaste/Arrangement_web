@@ -475,6 +475,12 @@ module.exports = (db, bracketsManager) => {
     });
 
     const venueUnitMatchCounters = new Map();
+
+    await db.run(
+      `UPDATE taekwondo_kyougi_matchs SET kyougi_match_venue = NULL, kyougi_match_id = NULL WHERE event_id = ?`,
+      [event_id]
+    );
+
     for (const m of matches) {
       const sc = schemeMap.get(m.weight_class) || { category_venue: '', category_date_num: '1' };
       const venue = sc.category_venue;
@@ -1336,7 +1342,7 @@ module.exports = (db, bracketsManager) => {
       const presAvg = trimAvg(allPres, jc);
       const finalScore = trimAvg(allTotals, jc);
 
-      await db.prepare('UPDATE poomsae_match_schedule SET final_score = ?, accuracy_avg = ?, presentation_avg = ?, status = \'done\', updated_at = datetime(\'now\') WHERE id = ?').run(finalScore, accAvg, presAvg, matchId);
+      await db.prepare('UPDATE poomsae_match_schedule SET final_score = ?, accuracy_avg = ?, presentation_avg = ?, status = \'done\', updated_at = NOW() WHERE id = ?').run(finalScore, accAvg, presAvg, matchId);
 
       const finishedMatch = await db.prepare('SELECT * FROM poomsae_match_schedule WHERE id = ?').get(matchId);
       if (finishedMatch && finishedMatch.round) {
@@ -1582,8 +1588,6 @@ module.exports = (db, bracketsManager) => {
         }
       }
 
-      await reorderMatches(Number(event_id));
-
       res.json({ success: true, message: `成功保存 ${data.length} 条编排数据` });
     } catch (err) {
       console.error('保存编排方案失败:', err);
@@ -1617,8 +1621,6 @@ module.exports = (db, bracketsManager) => {
             `INSERT INTO category_mode (event_id, weight_class, category_venue, category_date_num, category_order) VALUES (?, ?, ?, ?, ?)`
           ).run(Number(event_id), weight_class, venueVal, unitVal, orderVal);
         }
-
-        await reorderMatches(Number(event_id));
 
         return res.json({ success: true });
       }
@@ -1707,8 +1709,6 @@ module.exports = (db, bracketsManager) => {
         results.push(`${wc}: ${classAthletes.length}人，分配场地${target.venue}单元${target.unit}`);
         unitIdx++;
       }
-
-      await reorderMatches(Number(event_id));
 
       res.json({
         success: true,
