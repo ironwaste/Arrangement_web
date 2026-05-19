@@ -7,20 +7,20 @@
         </div>
     </div>
     <div class="table-container">
-        <table>
+        <table id="eventsTable">
             <thead>
                 <tr>
                     <th>选择</th>
-                    <th>赛事名称</th>
-                    <th>赛事类型</th>
-                    <th>场馆</th>
-                    <th>比赛时间</th>
-                    <th>状态</th>
+                    <th data-col="name">赛事名称</th>
+                    <th data-col="eventType">赛事类型</th>
+                    <th data-col="venue">场馆</th>
+                    <th data-col="compTime">比赛时间</th>
+                    <th data-col="status">状态</th>
                     <th>修改</th>
                     <th>操作</th>
                 </tr>
             </thead>
-            <tbody id="eventsTable"></tbody>
+            <tbody id="eventsTableBody"></tbody>
         </table>
     </div>
 </div>

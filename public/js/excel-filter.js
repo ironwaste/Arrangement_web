@@ -41,17 +41,40 @@ const ExcelFilter = (function() {
         }).filter(v => v !== '');
     }
 
+    function getUniqueValues(table, colIndex) {
+        const rows = table.querySelectorAll('tbody tr');
+        const valueSet = new Set();
+        Array.from(rows).forEach(row => {
+            const cells = row.querySelectorAll('td');
+            if (cells[colIndex]) {
+                const val = cells[colIndex].textContent.trim();
+                if (val !== '') valueSet.add(val);
+            }
+        });
+        return Array.from(valueSet).sort((a, b) => {
+            const numA = parseFloat(a);
+            const numB = parseFloat(b);
+            if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+            return a.localeCompare(b, 'zh-CN');
+        });
+    }
+
     function createFilterMenu(th, tableId, colIndex, columnName) {
         const menu = document.createElement('div');
         menu.className = 'excel-filter-menu';
         menu.id = `filter-menu-${tableId}-${colIndex}`;
 
         const state = filterStates[tableId] && filterStates[tableId][colIndex] ?
-            filterStates[tableId][colIndex] : { sort: null, conditions: [{ operator: 'equals', value: '' }], logic: 'and' };
+            filterStates[tableId][colIndex] : { sort: null, conditions: [{ operator: 'equals', value: '' }], logic: 'and', checkedValues: null };
 
         const cellValues = getCellValues(document.getElementById(tableId), colIndex);
         const columnType = detectColumnType(cellValues);
         const operators = columnType === 'number' ? NUMBER_OPERATORS : TEXT_OPERATORS;
+
+        const uniqueValues = getUniqueValues(document.getElementById(tableId), colIndex);
+        const checkedValues = state.checkedValues || uniqueValues;
+
+        const checkboxHtml = renderCheckboxList(uniqueValues, checkedValues, tableId, colIndex);
 
         menu.innerHTML = `
             <div class="efm-header">
@@ -88,6 +111,20 @@ const ExcelFilter = (function() {
                 </button>
             </div>
             <div class="efm-divider"></div>
+            <div class="efm-section">
+                <div class="efm-checkbox-header">
+                    <label class="efm-select-all-label">
+                        <input type="checkbox" class="efm-select-all" ${checkedValues.length === uniqueValues.length ? 'checked' : ''}
+                            onchange="ExcelFilter.toggleSelectAll('${tableId}', ${colIndex}, this.checked)">
+                        <span>全选/取消全选</span>
+                    </label>
+                    <span class="efm-checkbox-count">${checkedValues.length}/${uniqueValues.length}</span>
+                </div>
+                <div class="efm-checkbox-list" id="efm-checkbox-list-${tableId}-${colIndex}">
+                    ${checkboxHtml}
+                </div>
+            </div>
+            <div class="efm-divider"></div>
             <div class="efm-footer">
                 <button class="efm-btn efm-btn-primary" onclick="ExcelFilter.applyFilter('${tableId}', ${colIndex})">确定</button>
                 <button class="efm-btn efm-btn-default" onclick="ExcelFilter.clearFilter('${tableId}', ${colIndex})">清除</button>
@@ -121,6 +158,57 @@ const ExcelFilter = (function() {
         `).join('');
     }
 
+    function renderCheckboxList(uniqueValues, checkedValues, tableId, colIndex) {
+        if (uniqueValues.length === 0) {
+            return '<div style="color:#909399;font-size:12px;padding:8px;text-align:center;">无数据</div>';
+        }
+        return uniqueValues.map(val => {
+            const escaped = val.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            const isChecked = checkedValues.includes(val);
+            return `<label class="efm-checkbox-item">
+                <input type="checkbox" value="${escaped}" ${isChecked ? 'checked' : ''}
+                    onchange="ExcelFilter.toggleCheckboxValue('${tableId}', ${colIndex}, this.value, this.checked)">
+                <span class="efm-checkbox-text">${val}</span>
+            </label>`;
+        }).join('');
+    }
+
+    function toggleSelectAll(tableId, colIndex, isChecked) {
+        const container = document.getElementById(`efm-checkbox-list-${tableId}-${colIndex}`);
+        if (!container) return;
+        container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            cb.checked = isChecked;
+        });
+        updateCheckboxCount(tableId, colIndex);
+    }
+
+    function toggleCheckboxValue(tableId, colIndex, value, isChecked) {
+        updateCheckboxCount(tableId, colIndex);
+        const container = document.getElementById(`efm-checkbox-list-${tableId}-${colIndex}`);
+        if (!container) return;
+        const allCheckboxes = container.querySelectorAll('input[type="checkbox"]');
+        const allChecked = Array.from(allCheckboxes).every(cb => cb.checked);
+        const selectAll = container.closest('.efm-section').querySelector('.efm-select-all');
+        if (selectAll) selectAll.checked = allChecked;
+    }
+
+    function updateCheckboxCount(tableId, colIndex) {
+        const container = document.getElementById(`efm-checkbox-list-${tableId}-${colIndex}`);
+        if (!container) return;
+        const allCheckboxes = container.querySelectorAll('input[type="checkbox"]');
+        const checkedCount = Array.from(allCheckboxes).filter(cb => cb.checked).length;
+        const countEl = container.closest('.efm-section').querySelector('.efm-checkbox-count');
+        if (countEl) countEl.textContent = `${checkedCount}/${allCheckboxes.length}`;
+    }
+
+    function gatherCheckedValues(tableId, colIndex) {
+        const container = document.getElementById(`efm-checkbox-list-${tableId}-${colIndex}`);
+        if (!container) return null;
+        const checkboxes = container.querySelectorAll('input[type="checkbox"]');
+        if (checkboxes.length === 0) return null;
+        return Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.value);
+    }
+
     function showMenu(th, tableId, colIndex, columnName) {
         const existingMenu = document.getElementById(`filter-menu-${tableId}-${colIndex}`);
         if (existingMenu) {
@@ -141,11 +229,17 @@ const ExcelFilter = (function() {
             const viewportHeight = window.innerHeight;
 
             let top = rect.bottom + 2;
-            if (top + menuHeight > viewportHeight) {
+            if (top + menuHeight > viewportHeight && rect.top - menuHeight - 2 > 0) {
                 top = rect.top - menuHeight - 2;
             }
 
-            menu.style.left = rect.left + 'px';
+            let left = rect.left;
+            if (left + menu.offsetWidth > window.innerWidth) {
+                left = window.innerWidth - menu.offsetWidth - 8;
+            }
+            if (left < 0) left = 4;
+
+            menu.style.left = left + 'px';
             menu.style.top = top + 'px';
         });
 
@@ -363,6 +457,12 @@ const ExcelFilter = (function() {
 
     function applyFilter(tableId, colIndex) {
         gatherCurrentInputValues(tableId, colIndex);
+        const checkedValues = gatherCheckedValues(tableId, colIndex);
+        if (checkedValues !== null) {
+            if (!filterStates[tableId]) filterStates[tableId] = {};
+            if (!filterStates[tableId][colIndex]) filterStates[tableId][colIndex] = {};
+            filterStates[tableId][colIndex].checkedValues = checkedValues;
+        }
         applyFilterOperation(tableId);
         closeMenu();
     }
@@ -394,7 +494,8 @@ const ExcelFilter = (function() {
             filterStates[tableId][colIndex] = {
                 sort: null,
                 conditions: [{ operator: 'equals', value: '' }],
-                logic: 'and'
+                logic: 'and',
+                checkedValues: null
             };
         }
         updateSortButtons(tableId, colIndex);
@@ -441,6 +542,15 @@ const ExcelFilter = (function() {
 
                 if (state.sort) {
                     hasAnyFilter = true;
+                }
+
+                if (state.checkedValues) {
+                    const uniqueValues = getUniqueValues(table, colIndex);
+                    const allChecked = state.checkedValues.length === uniqueValues.length;
+                    if (!allChecked && uniqueValues.length > 0) {
+                        hasAnyFilter = true;
+                        rowVisible = rowVisible && state.checkedValues.includes(cellValue);
+                    }
                 }
 
                 if (state.conditions && state.conditions.length > 0) {
@@ -540,6 +650,7 @@ const ExcelFilter = (function() {
         const hasFilter = state.conditions && state.conditions.some(c =>
             c.value !== '' && c.value !== null && c.value !== undefined
         );
+        const hasCheckboxFilter = state.checkedValues && state.checkedValues.length < getUniqueValues(document.getElementById(tableId), colIndex).length;
 
         if (hasSort && state.sort === 'asc') {
             icon.innerHTML = '▲';
@@ -547,7 +658,7 @@ const ExcelFilter = (function() {
         } else if (hasSort && state.sort === 'desc') {
             icon.innerHTML = '▼';
             icon.classList.add('has-filter');
-        } else if (hasFilter) {
+        } else if (hasFilter || hasCheckboxFilter) {
             icon.innerHTML = '▼';
             icon.classList.add('has-filter');
         } else {
@@ -591,7 +702,9 @@ const ExcelFilter = (function() {
         clearFilter,
         clearAllFilters,
         getFilterState,
-        resetAllFilters
+        resetAllFilters,
+        toggleSelectAll,
+        toggleCheckboxValue
     };
 })();
 

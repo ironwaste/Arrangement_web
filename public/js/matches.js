@@ -154,21 +154,11 @@ async function loadMatches() {
         const rightTable = document.getElementById('matchesTableRight');
         
         [leftTable, rightTable].forEach(table => {
-            if (table && !table.id) {
-                table.id = table === leftTable ? 'matchesTableLeft' : 'matchesTableRight';
-                
+            if (table) {
                 const thead = table.querySelector('thead');
                 if (thead) {
-                    const headers = thead.querySelectorAll('th');
-                    const colKeys = ['venueLetter', 'matchNo', 'roundName', 'blueName', 'blueUnit', 'vs', 'redName', 'redUnit', 'weightClass', 'status', 'score', 'winMethod', 'winner'];
-                    headers.forEach((th, idx) => {
-                        if (colKeys[idx]) {
-                            th.setAttribute('data-col', colKeys[idx]);
-                            th.style.cursor = 'pointer';
-                        }
-                    });
-                    
                     thead.style.cssText = 'position:sticky;top:0;z-index:10;background:linear-gradient(to right,#8B0000,#00008B);';
+                    const headers = thead.querySelectorAll('th');
                     headers.forEach(th => {
                         th.style.cssText = th.getAttribute('style') + ';position:sticky;top:0;z-index:10;background:transparent;';
                     });

@@ -1,6 +1,6 @@
 async function loadEvents() {
     const resp = await apiGet('/events');
-    const tbody = document.getElementById('eventsTable');
+    const tbody = document.getElementById('eventsTableBody');
     if (!tbody) return;
     tbody.innerHTML = '';
 
@@ -44,30 +44,20 @@ async function loadEvents() {
 
     if (typeof ExcelFilter !== 'undefined') {
         const table = document.getElementById('eventsTable');
-        if (table && !table.id) {
-            table.id = 'eventsTable';
-            
+        if (table) {
             const thead = table.querySelector('thead');
             if (thead) {
-                const headers = thead.querySelectorAll('th');
-                const colKeys = ['checkbox', 'name', 'eventType', 'venue', 'compTime', 'status', 'editAction', 'deleteAction'];
-                headers.forEach((th, idx) => {
-                    if (colKeys[idx]) {
-                        th.setAttribute('data-col', colKeys[idx]);
-                        th.style.cursor = 'pointer';
-                    }
-                });
-                
                 thead.style.cssText = 'position:sticky;top:0;z-index:10;background:linear-gradient(to right,#8B0000,#00008B);';
+                const headers = thead.querySelectorAll('th');
                 headers.forEach(th => {
                     th.style.cssText = th.getAttribute('style') + ';position:sticky;top:0;z-index:10;background:transparent;';
                 });
             }
-            
+
             ExcelFilter.init('eventsTable', {
                 excludeColumns: [0, 6, 7]
             });
-            
+
             initEventsColumnVisibility();
             initEventsColumnSelection();
             initEventsContextMenu();

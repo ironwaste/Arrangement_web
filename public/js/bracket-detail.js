@@ -244,8 +244,26 @@ async function printAllBrackets() {
                 }
                 viewerDiv.querySelectorAll('.match').forEach(matchEl => {
                     const bmid = matchEl.getAttribute('data-match-id');
-                    const vn = venueNoMap.get(bmid);
-                    if (vn) { const labelEl = matchEl.querySelector('.opponents > span:first-child'); if (labelEl) { labelEl.textContent = vn; if (/^[A-Z]\d{3,}$/.test(vn)) labelEl.classList.add('venue-highlight'); } }
+                    const matchDataPrint = matchResp.data.find(m => String(m.bracket_match_id) === String(bmid) || String(m.id) === String(bmid));
+                    
+                    if (matchDataPrint) {
+                        const hasVenue = matchDataPrint.venue && matchDataPrint.venue.trim() !== '';
+                        const hasVenueNo = matchDataPrint.venue_no && matchDataPrint.venue_no.toString().trim() !== '';
+                        
+                        if (!hasVenue || !hasVenueNo) {
+                            matchEl.style.display = 'none';
+                            return;
+                        }
+                        
+                        const vn = venueNoMap.get(bmid);
+                        if (vn) {
+                            const labelEl = matchEl.querySelector('.opponents > span:first-child');
+                            if (labelEl) {
+                                labelEl.textContent = vn;
+                                if (/^[A-Z]\d{3,}$/.test(vn)) labelEl.classList.add('venue-highlight');
+                            }
+                        }
+                    }
                 });
             }
 
@@ -462,8 +480,26 @@ async function viewAllBrackets() {
                 }
                 viewerDiv.querySelectorAll('.match').forEach(matchEl => {
                     const bmid = matchEl.getAttribute('data-match-id');
-                    const vn = venueNoMap.get(bmid);
-                    if (vn) { const labelEl = matchEl.querySelector('.opponents > span:first-child'); if (labelEl) { labelEl.textContent = vn; if (/^[A-Z]\d{3,}$/.test(vn)) labelEl.classList.add('venue-highlight'); } }
+                    const matchDataAll = matchResp.data.find(m => String(m.bracket_match_id) === String(bmid) || String(m.id) === String(bmid));
+                    
+                    if (matchDataAll) {
+                        const hasVenue = matchDataAll.venue && matchDataAll.venue.trim() !== '';
+                        const hasVenueNo = matchDataAll.venue_no && matchDataAll.venue_no.toString().trim() !== '';
+                        
+                        if (!hasVenue || !hasVenueNo) {
+                            matchEl.style.display = 'none';
+                            return;
+                        }
+                        
+                        const vn = venueNoMap.get(bmid);
+                        if (vn) {
+                            const labelEl = matchEl.querySelector('.opponents > span:first-child');
+                            if (labelEl) {
+                                labelEl.textContent = vn;
+                                if (/^[A-Z]\d{3,}$/.test(vn)) labelEl.classList.add('venue-highlight');
+                            }
+                        }
+                    }
                 });
             }
 
@@ -576,7 +612,24 @@ async function viewBracketTree() {
     if (matchResp.success && matchResp.data && matchResp.data.length > 0) {
         await renderBracketFromMatches(weightClass);
     } else {
-        document.getElementById('bracketDisplay').innerHTML = '<p style="text-align: center; color: #909399; padding: 40px 0;">该级别暂无编排数据，请先生成对阵表</p>';
+        console.log(`[自动生成] 级别「${weightClass}」尚未生成对阵图，开始自动生成...`);
+        try {
+            const resp = await apiPost('/auto-arrange/generate-bracket', { event_id: currentEventId, weight_class: weightClass });
+            if (resp.success) {
+                console.log(`[自动生成] 级别「${weightClass}」对阵表生成成功`);
+                clearBracketCache();
+                await loadBracketClassList();
+                await viewBracketTree();
+                
+                await autoAssignVenueNumbersForSingleClass(weightClass);
+            } else {
+                alert('自动生成失败: ' + (resp.error || '未知错误'));
+                document.getElementById('bracketDisplay').innerHTML = '<p style="text-align: center; color: #909399; padding: 40px 0;">该级别暂无编排数据，请先生成对阵表</p>';
+            }
+        } catch (err) {
+            alert('自动生成失败: ' + err.message);
+            document.getElementById('bracketDisplay').innerHTML = '<p style="text-align: center; color: #909399; padding: 40px 0;">该级别暂无编排数据，请先生成对阵表</p>';
+        }
     }
 }
 
@@ -633,8 +686,26 @@ async function renderBracketViewer(data, weightClass) {
 
                 document.querySelectorAll('#bracket-viewer-container .match').forEach(matchEl => {
                     const bmid = matchEl.getAttribute('data-match-id');
-                    const vn = venueNoByBracketMatchId.get(bmid);
-                    if (vn) { const labelEl = matchEl.querySelector('.opponents > span:first-child'); if (labelEl) { labelEl.textContent = vn; if (/^[A-Z]\d{3,}$/.test(vn)) labelEl.classList.add('venue-highlight'); } }
+                    const matchData = bracketMatchIdMap.get(String(bmid)) || bracketMatchDataCache.find(m => String(m.id) === String(bmid));
+                    
+                    if (matchData) {
+                        const hasVenue = matchData.venue && matchData.venue.trim() !== '';
+                        const hasVenueNo = matchData.venue_no && matchData.venue_no.toString().trim() !== '';
+                        
+                        if (!hasVenue || !hasVenueNo) {
+                            matchEl.style.display = 'none';
+                            return;
+                        }
+                        
+                        const vn = venueNoByBracketMatchId.get(bmid);
+                        if (vn) {
+                            const labelEl = matchEl.querySelector('.opponents > span:first-child');
+                            if (labelEl) {
+                                labelEl.textContent = vn;
+                                if (/^[A-Z]\d{3,}$/.test(vn)) labelEl.classList.add('venue-highlight');
+                            }
+                        }
+                    }
                 });
             }
 
@@ -690,9 +761,7 @@ async function renderBracketViewer(data, weightClass) {
                         } else {
                             let drawNum = null;
                             if (p.custom_data) {
-                                try { const cd = JSON.parse(p.custom_data);
-                                    if (cd.draw_num != null) drawNum = cd.draw_num; } 
-                                    catch (e) {}
+                                try { const cd = JSON.parse(p.custom_data); if (cd.draw_num != null) drawNum = cd.draw_num; } catch (e) {}
                             }
                             if (drawNum == null && p.origin != null) drawNum = p.origin;
                             drawNoByName.set(p.name, drawNum);

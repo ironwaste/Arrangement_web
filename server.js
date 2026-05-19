@@ -17,7 +17,7 @@ app.set('views', path.join(__dirname, 'views'));
 
 const pageConfig = {
     dashboard: { title: '仪表盘', scripts: '', init: 'loadDashboard();' },
-    events: { title: '赛事列表', scripts: '<script src="/js/events.js"></script>', init: 'loadEvents();' },
+    events: { title: '赛事列表', scripts: '<script src="/js/excel-filter.js"></script><script src="/js/events.js"></script>', init: 'loadEvents();' },
     athletes: { title: '运动员管理', scripts: '<script src="/js/athletes.js"></script><script src="/js/excel-filter.js"></script>', init: 'loadAthletes();' },
     weighin: { title: '称重管理', scripts: '<script src="/js/weighin.js"></script><script src="/js/excel-filter.js"></script>', init: 'loadWeighinData(); loadWeighinTolerance();' },
     brackets: { title: '跆拳道编排', scripts: '<script src="/js/excel-filter.js"></script><script src="/js/category-mode.js"></script><script src="/js/brackets.js"></script>', init: 'loadAutoArrangeData();' },
