@@ -143,9 +143,15 @@ module.exports = (db, bracketsManager) => {
       }
       await deleteKyougiMatchsByEvent(db, eventId);
 
-      await db.run('DELETE FROM athletes WHERE event_id = ?', [eventId]);
+      await db.run('DELETE FROM poomsae_matchs WHERE event_id = ?', [eventId]);
+      await db.run('DELETE FROM poomsae_groups WHERE event_id = ?', [eventId]);
+      await db.run('DELETE FROM athletes_poomsae WHERE event_id = ?', [eventId]);
+
+      await db.run('DELETE FROM category_mode WHERE event_id = ?', [eventId]);
 
       await db.run('DELETE FROM athletes_weighing WHERE event_id = ?', [eventId]);
+
+      await db.run('DELETE FROM athletes WHERE event_id = ?', [eventId]);
 
       await db.run('DELETE FROM events WHERE event_id = ?', [eventId]);
 
