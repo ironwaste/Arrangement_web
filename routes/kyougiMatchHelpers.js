@@ -250,7 +250,7 @@ function toLegacyFormat(row) {
     match_status: row.kyougi_match_status,
     win_method: row.kyougi_win_method,
     winner: row.kyougi_winner,
-    venue_no: venueStr,
+    venue_no: row.kyougi_match_id || '',
     venue: venueStr.charAt(0) || ''
   };
 }

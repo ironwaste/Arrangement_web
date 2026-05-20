@@ -92,7 +92,7 @@ function sortMatchesByVenueOrder(container, matchDataList) {
     const matchOrderMap = new Map();
     matchDataList.forEach((m, idx) => {
         const key = String(m.bracket_match_id);
-        const venueLabel = m.venue ? `${m.venue}${m.venue_no || (idx + 1)}` : `A${2000 + (idx + 1)}`;
+        const venueLabel = m.venue_no || (m.venue ? `${m.venue}${m.venue_no || (idx + 1)}` : `A${2000 + (idx + 1)}`);
         const parsed = parseVenueLabel(venueLabel);
         matchOrderMap.set(key, { order: parsed.no, venue: parsed.venue, label: venueLabel });
     });
@@ -686,7 +686,7 @@ async function renderBracketViewer(data, weightClass) {
 
                 document.querySelectorAll('#bracket-viewer-container .match').forEach(matchEl => {
                     const bmid = matchEl.getAttribute('data-match-id');
-                    const matchData = bracketMatchIdMap.get(String(bmid)) || bracketMatchDataCache.find(m => String(m.id) === String(bmid));
+                    const matchData = matchResp.data.find(m => String(m.bracket_match_id) === String(bmid) || String(m.id) === String(bmid));
                     
                     if (matchData) {
                         const hasVenue = matchData.venue && matchData.venue.trim() !== '';
@@ -912,7 +912,7 @@ async function renderBracketFromMatches(weightClass) {
                 if (m.winner === '红方' && opponent2) opponent2.result = 'win';
             }
 
-            const venueLabel = m.venue ? `${m.venue}${m.venue_no || (idx + 1)}` : `A${2000 + (idx + 1)}`;
+            const venueLabel = m.venue_no || (m.venue ? `${m.venue}${idx + 1}` : `A${2000 + (idx + 1)}`);
 
             matchData.push({
                 id: m.id || (idx + 1), stage_id: 1, group_id: 1,
