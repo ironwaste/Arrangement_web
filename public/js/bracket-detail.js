@@ -177,7 +177,21 @@ async function printAllBrackets() {
 
     const stageMapResp = await apiGet('/brackets/stage-map?' + getEventParam());
     const stageMaps = (stageMapResp.success && stageMapResp.data) ? stageMapResp.data : [];
-    if (stageMaps.length === 0) { alert('没有已生成对阵图的级别'); return; }
+    if (stageMaps.length === 0) {
+        if (drawn) {
+            try {
+                const resp = await apiPost('/auto-arrange/generate-bracket', { event_id: currentEventId });
+                if (resp.success) {
+                    clearBracketCache();
+                    await loadBracketClassList();
+                    await viewAllBrackets();
+                    return;
+                }
+            } catch (e) {}
+        }
+        alert('没有已生成对阵图的级别');
+        return;
+    }
 
     const display = document.getElementById('bracketDisplay');
     const prevHtml = display.innerHTML;
@@ -250,17 +264,14 @@ async function printAllBrackets() {
                         const hasVenue = matchDataPrint.venue && matchDataPrint.venue.trim() !== '';
                         const hasVenueNo = matchDataPrint.venue_no && matchDataPrint.venue_no.toString().trim() !== '';
                         
-                        if (!hasVenue || !hasVenueNo) {
-                            matchEl.style.display = 'none';
-                            return;
-                        }
-                        
-                        const vn = venueNoMap.get(bmid);
-                        if (vn) {
-                            const labelEl = matchEl.querySelector('.opponents > span:first-child');
-                            if (labelEl) {
-                                labelEl.textContent = vn;
-                                if (/^[A-Z]\d{3,}$/.test(vn)) labelEl.classList.add('venue-highlight');
+                        if (hasVenue && hasVenueNo) {
+                            const vn = venueNoMap.get(bmid);
+                            if (vn) {
+                                const labelEl = matchEl.querySelector('.opponents > span:first-child');
+                                if (labelEl) {
+                                    labelEl.textContent = vn;
+                                    if (/^[A-Z]\d{3,}$/.test(vn)) labelEl.classList.add('venue-highlight');
+                                }
                             }
                         }
                     }
@@ -411,9 +422,29 @@ async function printAllBrackets() {
 async function viewAllBrackets() {
     if (!currentEventId) { alert('请先选择赛事'); return; }
 
+    const { drawn, hasAthletes } = await checkAthletesDrawn();
+    if (hasAthletes && !drawn) {
+        document.getElementById('bracketDisplay').innerHTML = '<p style="text-align: center; color: #909399; padding: 40px 0;">还没有对运动员进行抽签，暂无对阵图</p>';
+        return;
+    }
+
     const stageMapResp = await apiGet('/brackets/stage-map?' + getEventParam());
     const stageMaps = (stageMapResp.success && stageMapResp.data) ? stageMapResp.data : [];
-    if (stageMaps.length === 0) { alert('没有已生成对阵图的级别'); return; }
+    if (stageMaps.length === 0) {
+        if (drawn) {
+            try {
+                const resp = await apiPost('/auto-arrange/generate-bracket', { event_id: currentEventId });
+                if (resp.success) {
+                    clearBracketCache();
+                    await loadBracketClassList();
+                    await viewAllBrackets();
+                    return;
+                }
+            } catch (e) {}
+        }
+        alert('没有已生成对阵图的级别');
+        return;
+    }
 
     const display = document.getElementById('bracketDisplay');
     display.innerHTML = '';
@@ -486,17 +517,14 @@ async function viewAllBrackets() {
                         const hasVenue = matchDataAll.venue && matchDataAll.venue.trim() !== '';
                         const hasVenueNo = matchDataAll.venue_no && matchDataAll.venue_no.toString().trim() !== '';
                         
-                        if (!hasVenue || !hasVenueNo) {
-                            matchEl.style.display = 'none';
-                            return;
-                        }
-                        
-                        const vn = venueNoMap.get(bmid);
-                        if (vn) {
-                            const labelEl = matchEl.querySelector('.opponents > span:first-child');
-                            if (labelEl) {
-                                labelEl.textContent = vn;
-                                if (/^[A-Z]\d{3,}$/.test(vn)) labelEl.classList.add('venue-highlight');
+                        if (hasVenue && hasVenueNo) {
+                            const vn = venueNoMap.get(bmid);
+                            if (vn) {
+                                const labelEl = matchEl.querySelector('.opponents > span:first-child');
+                                if (labelEl) {
+                                    labelEl.textContent = vn;
+                                    if (/^[A-Z]\d{3,}$/.test(vn)) labelEl.classList.add('venue-highlight');
+                                }
                             }
                         }
                     }
@@ -612,6 +640,11 @@ async function viewBracketTree() {
     if (matchResp.success && matchResp.data && matchResp.data.length > 0) {
         await renderBracketFromMatches(weightClass);
     } else {
+        const { drawn, hasAthletes } = await checkAthletesDrawn(weightClass);
+        if (hasAthletes && !drawn) {
+            document.getElementById('bracketDisplay').innerHTML = '<p style="text-align: center; color: #909399; padding: 40px 0;">还没有对运动员进行抽签，暂无对阵图</p>';
+            return;
+        }
         console.log(`[自动生成] 级别「${weightClass}」尚未生成对阵图，开始自动生成...`);
         try {
             const resp = await apiPost('/auto-arrange/generate-bracket', { event_id: currentEventId, weight_class: weightClass });
@@ -620,8 +653,6 @@ async function viewBracketTree() {
                 clearBracketCache();
                 await loadBracketClassList();
                 await viewBracketTree();
-                
-                await autoAssignVenueNumbersForSingleClass(weightClass);
             } else {
                 alert('自动生成失败: ' + (resp.error || '未知错误'));
                 document.getElementById('bracketDisplay').innerHTML = '<p style="text-align: center; color: #909399; padding: 40px 0;">该级别暂无编排数据，请先生成对阵表</p>';
@@ -692,17 +723,14 @@ async function renderBracketViewer(data, weightClass) {
                         const hasVenue = matchData.venue && matchData.venue.trim() !== '';
                         const hasVenueNo = matchData.venue_no && matchData.venue_no.toString().trim() !== '';
                         
-                        if (!hasVenue || !hasVenueNo) {
-                            matchEl.style.display = 'none';
-                            return;
-                        }
-                        
-                        const vn = venueNoByBracketMatchId.get(bmid);
-                        if (vn) {
-                            const labelEl = matchEl.querySelector('.opponents > span:first-child');
-                            if (labelEl) {
-                                labelEl.textContent = vn;
-                                if (/^[A-Z]\d{3,}$/.test(vn)) labelEl.classList.add('venue-highlight');
+                        if (hasVenue && hasVenueNo) {
+                            const vn = venueNoByBracketMatchId.get(bmid);
+                            if (vn) {
+                                const labelEl = matchEl.querySelector('.opponents > span:first-child');
+                                if (labelEl) {
+                                    labelEl.textContent = vn;
+                                    if (/^[A-Z]\d{3,}$/.test(vn)) labelEl.classList.add('venue-highlight');
+                                }
                             }
                         }
                     }
@@ -1176,20 +1204,43 @@ function selectBracketClass(cls) {
     document.querySelectorAll('#bracketClassList li').forEach(li => { li.classList.toggle('active', li.dataset.class === cls); });
 }
 
+async function checkAthletesDrawn(weightClass) {
+    let url = '/athletes?' + getEventParam() + '&athlete_type=taekwondo_kyougi';
+    if (weightClass) {
+        url += '&weight_class=' + encodeURIComponent(weightClass);
+    }
+    try {
+        const resp = await apiGet(url);
+        if (!resp.success || !resp.data || resp.data.length === 0) {
+            return { drawn: false, hasAthletes: false };
+        }
+        const hasDrawn = resp.data.some(a => {
+            const drawNo = a.draw_no || a.drawNo || a.athlete_draw_num;
+            return drawNo && drawNo > 0;
+        });
+        return { drawn: hasDrawn, hasAthletes: true };
+    } catch (e) {
+        return { drawn: false, hasAthletes: false };
+    }
+}
+
 async function generateSelectedBracket() {
     if (!selectedBracketClass) { alert('请先选择一个级别'); return; }
     if (!currentEventId) { alert('请先选择赛事'); return; }
-    if (!confirm(`确定要生成「${selectedBracketClass}」的对阵表吗？`)) return;
+    const { drawn, hasAthletes } = await checkAthletesDrawn(selectedBracketClass);
+    if (hasAthletes && !drawn) {
+        alert('还没有对运动员进行抽签，暂无对阵图');
+        return;
+    }
+    if (!confirm(`确定要生成「${selectedBracketClass}」的对阵图吗？`)) return;
 
     try {
         const resp = await apiPost('/auto-arrange/generate-bracket', { event_id: currentEventId, weight_class: selectedBracketClass });
         if (resp.success) {
-            alert(`「${selectedBracketClass}」对阵表生成成功`);
+            alert(`「${selectedBracketClass}」对阵图生成成功`);
             clearBracketCache();
             await loadBracketClassList();
             await viewBracketTree();
-            
-            await autoAssignVenueNumbersForSingleClass(selectedBracketClass);
         } else {
             alert('生成失败: ' + (resp.error || '未知错误'));
         }
@@ -1200,17 +1251,20 @@ async function generateSelectedBracket() {
 
 async function generateAllBrackets() {
     if (!currentEventId) { alert('请先选择赛事'); return; }
-    if (!confirm('确定要生成全部级别的对阵表吗？')) return;
+    const { drawn, hasAthletes } = await checkAthletesDrawn();
+    if (hasAthletes && !drawn) {
+        alert('还没有对运动员进行抽签，暂无对阵图');
+        return;
+    }
+    if (!confirm('确定要生成全部级别的对阵图吗？')) return;
 
     try {
         const resp = await apiPost('/auto-arrange/generate-bracket', { event_id: currentEventId });
         if (resp.success) {
             const data = resp.data || {};
             clearBracketCache();
-            alert(`全部对阵表生成完成！成功: ${data.generated || 0}个级别${data.errors && data.errors.length > 0 ? '，失败: ' + data.errors.length + '个' : ''}`);
+            alert(`全部对阵图生成完成！成功: ${data.generated || 0}个级别${data.errors && data.errors.length > 0 ? '，失败: ' + data.errors.length + '个' : ''}`);
             await loadBracketClassList();
-            
-            await autoAssignVenueNumbersForAllClasses();
         } else {
             alert('生成失败: ' + (resp.error || '未知错误'));
         }
@@ -1464,7 +1518,7 @@ async function resetBracketScore() {
     const matchId = document.getElementById('bracketScoreMatchId').value;
     const weightClass = document.getElementById('bracketScoreWeightClass').value;
 
-    if (!confirm('确定要重置该比赛数据吗？比分、胜方、获胜方式将全部清空。')) return;
+    if (!confirm('确定要重置该比赛数据吗？比分、胜方、获胜方式、场地号和场次号将全部清空。')) return;
 
     try {
         const resp = await fetch(API_BASE + '/matches/' + matchId + '/reset', {

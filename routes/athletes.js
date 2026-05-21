@@ -1,5 +1,8 @@
 const express = require('express');
 const router = express.Router();
+const {
+  deleteKyougiMatchsByClass
+} = require('./kyougiMatchHelpers');
 
 module.exports = (db) => {
   async function findOrCreatePoomsaeGroup(eventId, groupName, type, gender, groupClass, beltLevel) {
@@ -98,6 +101,19 @@ module.exports = (db) => {
       const fields = [];
       const values = [];
       const allowed = ['athlete_id', 'athlete_name', 'athlete_gender', 'athlete_team', 'athlete_age_group', 'athlete_category', 'athlete_draw_num', 'athlete_pre_draw_num', 'event_id', 'athlete_type'];
+
+      let drawNumChanged = false;
+      if (req.body.athlete_draw_num !== undefined) {
+        const current = await db.get('SELECT athlete_draw_num, athlete_category, event_id FROM athletes WHERE id = ?', [id]);
+        if (current) {
+          const oldDrawNum = current.athlete_draw_num;
+          const newDrawNum = req.body.athlete_draw_num;
+          if (String(oldDrawNum) !== String(newDrawNum)) {
+            drawNumChanged = { athlete_category: current.athlete_category, event_id: current.event_id };
+          }
+        }
+      }
+
       for (const key of allowed) {
         if (req.body[key] !== undefined) {
           fields.push(`${key} = ?`);
@@ -107,6 +123,38 @@ module.exports = (db) => {
       if (fields.length === 0) return res.json({ success: true });
       values.push(id);
       await db.run(`UPDATE athletes SET ${fields.join(', ')} WHERE id = ?`, values);
+
+      if (drawNumChanged && drawNumChanged.athlete_category && drawNumChanged.event_id) {
+        try {
+          await deleteKyougiMatchsByClass(db, drawNumChanged.athlete_category, drawNumChanged.event_id);
+          const stageRow = await db.get(
+            'SELECT id FROM bracket_stage WHERE event_id = ? AND category_id = ?',
+            [Number(drawNumChanged.event_id), drawNumChanged.athlete_category]
+          );
+          if (stageRow && stageRow.id) {
+            const oldSid = Number(stageRow.id);
+            try {
+              const matchRows = await db.prepare('SELECT opponent1, opponent2 FROM bracket_match WHERE stage_id = ?').all(oldSid);
+              const pIds = new Set();
+              for (const m of matchRows) {
+                if (m.opponent1) { try { const o = JSON.parse(m.opponent1); if (o?.id) pIds.add(o.id); } catch(e) {} }
+                if (m.opponent2) { try { const o = JSON.parse(m.opponent2); if (o?.id) pIds.add(o.id); } catch(e) {} }
+              }
+              await db.prepare('DELETE FROM bracket_match_game WHERE stage_id = ?').run(oldSid);
+              await db.prepare('DELETE FROM bracket_match WHERE stage_id = ?').run(oldSid);
+              await db.prepare('DELETE FROM bracket_round WHERE stage_id = ?').run(oldSid);
+              await db.prepare('DELETE FROM bracket_group WHERE stage_id = ?').run(oldSid);
+              await db.prepare('DELETE FROM bracket_stage WHERE id = ?').run(oldSid);
+              for (const pid of pIds) { await db.prepare('DELETE FROM bracket_participant WHERE id = ?').run(pid); }
+            } catch (e) {
+              console.log('签号变更清除stage:', oldSid, e.message);
+            }
+          }
+        } catch (e) {
+          console.error('签号变更删除对阵数据失败:', e.message);
+        }
+      }
+
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ success: false, error: err.message });

@@ -509,8 +509,8 @@ module.exports = (db, bracketsManager) => {
     }
 
     const updatedMatchesRaw = await db.all(
-      'SELECT * FROM taekwondo_kyougi_matchs WHERE event_id = ? AND kyougi_match_venue <> ?',
-      [event_id, '']
+      'SELECT * FROM taekwondo_kyougi_matchs WHERE event_id = ? AND kyougi_match_id IS NOT NULL',
+      [event_id]
     );
     const updatedMatches = updatedMatchesRaw.map(toLegacyFormat);
 
@@ -549,7 +549,7 @@ module.exports = (db, bracketsManager) => {
 
     function findPrevBracketMatchId(currentBmId, side) {
       const info = bmIdToRoundAndNum.get(currentBmId);
-      if (!info || info.round <= 1) return null;
+      if (!info || !info.round || info.round <= 1) return null;
       const prevRound = info.round - 1;
       const prevRoundMatches = stageRoundNumToMatches.get(`${info.stageId}|${prevRound}`);
       if (!prevRoundMatches) return null;
@@ -564,11 +564,11 @@ module.exports = (db, bracketsManager) => {
     }
 
     for (const m of updatedMatches) {
-      const firstRound = classFirstRound.get(m.weight_class);
+      const firstRound = classFirstRound.get(m.weight_class) || 1;
       if (m.round <= firstRound) continue;
 
-      let bluePrevWinner = '';
-      let redPrevWinner = '';
+      let bluePrevWinner = m.blue_prev_winner || '';
+      let redPrevWinner = m.red_prev_winner || '';
 
       if (!m.blue_name || !m.blue_name.trim()) {
         const prevBmId = findPrevBracketMatchId(m.bracket_match_id, 'blue');
@@ -578,6 +578,8 @@ module.exports = (db, bracketsManager) => {
             bluePrevWinner = prevLabel + '胜者';
           }
         }
+      } else {
+        bluePrevWinner = '';
       }
 
       if (!m.red_name || !m.red_name.trim()) {
@@ -588,6 +590,8 @@ module.exports = (db, bracketsManager) => {
             redPrevWinner = prevLabel + '胜者';
           }
         }
+      } else {
+        redPrevWinner = '';
       }
 
       await updateKyougiMatchPrevWinners(db, m.id, bluePrevWinner, redPrevWinner);
@@ -1764,7 +1768,7 @@ module.exports = (db, bracketsManager) => {
       for (const [wc, classAthletes] of classesToGenerate) {
         try {
           if (classAthletes.length < 2) {
-            errors.push(`${wc}: 运动员不足2人，跳过`);
+            errors.push(`${wc}: 运动员不足2人,跳过`);
             skipped++;
             continue;
           }
@@ -1776,20 +1780,13 @@ module.exports = (db, bracketsManager) => {
           });
 
           await generateBracketForClass(db, manager, wc, sortedAthletes, event_id);
-          await syncMatchesFromBracket(wc, event_id);
 
           generated++;
-          results.push(`${wc}: ${classAthletes.length}人，对阵表已生成`);
+          results.push(`${wc}: ${classAthletes.length}人，对阵图已生成`);
         } catch (err) {
           errors.push(`${wc}: ${err.message}`);
           skipped++;
         }
-      }
-
-      try {
-        await reorderMatches(event_id);
-      } catch (e) {
-        console.warn('重排比赛失败:', e.message);
       }
 
       res.json({
@@ -1853,6 +1850,93 @@ module.exports = (db, bracketsManager) => {
     }
   });
 
+  router.post('/brackets/generate-matches', async (req, res) => {
+    try {
+      const { event_id } = req.body;
+      if (!event_id) {
+        return res.status(400).json({ success: false, error: '缺少event_id参数' });
+      }
+      const eventIdNum = Number(event_id);
+
+      const athletes = await db.all(
+        'SELECT DISTINCT athlete_category FROM athletes WHERE event_id = ? AND athlete_type = ?',
+        [eventIdNum, 'taekwondo_kyougi']
+      );
+      const allClasses = athletes.map(a => a.athlete_category).filter(Boolean);
+
+      if (allClasses.length === 0) {
+        return res.json({ success: false, error: '没有找到运动员数据' });
+      }
+
+      const schemeRows = await db.prepare(
+        'SELECT weight_class, category_venue, category_date_num, category_order FROM category_mode WHERE event_id = ?'
+      ).all(eventIdNum);
+      const schemeMap = new Map();
+      schemeRows.forEach(r => {
+        if (r.weight_class) schemeMap.set(r.weight_class, r);
+      });
+
+      const unassigned = [];
+      for (const wc of allClasses) {
+        const scheme = schemeMap.get(wc);
+        const missing = [];
+        if (!scheme || !scheme.category_venue) missing.push('场地');
+        if (!scheme || scheme.category_date_num == null || String(scheme.category_date_num).trim() === '') missing.push('单元');
+        if (!scheme || scheme.category_order == null || String(scheme.category_order).trim() === '') missing.push('顺序');
+        if (missing.length > 0) {
+          unassigned.push(`${wc}（未分配${missing.join('、')}）`);
+        }
+      }
+      if (unassigned.length > 0) {
+        return res.json({ success: false, error: '以下级别未完成场地分配：\n' + unassigned.join('\n') });
+      }
+
+      const stageRows = await db.all(
+        'SELECT category_id AS class_name FROM bracket_stage WHERE event_id = ?',
+        [eventIdNum]
+      );
+      const bracketClasses = new Set(stageRows.map(s => s.class_name).filter(Boolean));
+
+      if (bracketClasses.size === 0) {
+        return res.json({ success: false, error: '尚未生成对阵图，请先生成对阵图' });
+      }
+
+      try {
+        await deleteKyougiMatchsByEvent(db, eventIdNum);
+      } catch (e) {
+        console.warn('清除旧对阵表数据失败:', e.message);
+      }
+
+      const results = [];
+      const errors = [];
+      let generated = 0;
+
+      for (const wc of bracketClasses) {
+        try {
+          await syncMatchesFromBracket(wc, eventIdNum);
+          generated++;
+          results.push(`${wc}: 对阵表已生成`);
+        } catch (err) {
+          errors.push(`${wc}: ${err.message}`);
+        }
+      }
+
+      try {
+        await reorderMatches(eventIdNum);
+      } catch (e) {
+        console.warn('重排比赛失败:', e.message);
+      }
+
+      res.json({
+        success: true,
+        data: { generated, errors, results }
+      });
+    } catch (err) {
+      console.error('生成对阵表失败:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   router.post('/brackets/rebuild-match-ids', async (req, res) => {
     try {
       const { weight_class, event_id } = req.body;
@@ -1884,7 +1968,6 @@ module.exports = (db, bracketsManager) => {
       }
 
       await generateBracketForClass(db, manager, weight_class, updatedAthletes, event_id);
-      await syncMatchesFromBracket(weight_class, event_id);
 
       res.json({ success: true, message: `${weight_class} 对阵图生成成功` });
     } catch (err) {

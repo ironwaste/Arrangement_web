@@ -72,7 +72,8 @@ async function resetKyougiMatch(db, id) {
   return db.run(
     `UPDATE ${TABLE} SET
       kyougi_match_scores = NULL, kyougi_winner = NULL, kyougi_win_method = NULL,
-      kyougi_match_status = '未开始'
+      kyougi_match_status = '未开始',
+      kyougi_match_venue = NULL, kyougi_match_id = NULL
      WHERE id = ?`,
     [id]
   );
@@ -124,7 +125,7 @@ async function updateKyougiMatchVenue(db, id, venue, venueNo) {
 
 async function clearKyougiMatchVenue(db, id) {
   return db.run(
-    `UPDATE ${TABLE} SET kyougi_match_venue = '' WHERE id = ?`,
+    `UPDATE ${TABLE} SET kyougi_match_venue = NULL, kyougi_match_id = NULL WHERE id = ?`,
     [id]
   );
 }
@@ -139,7 +140,7 @@ async function batchUpdateKyougiMatch(db, matchData) {
       kyougi_match_status = ?
      WHERE id = ?`,
     [
-      matchData.venue_no || matchData.venue || null,
+      matchData.kyougi_match_venue || matchData.venue_no || matchData.venue || null,
       matchData.match_id || null,
       matchData.round || 1,
       matchData.round_name || null,
@@ -250,7 +251,9 @@ function toLegacyFormat(row) {
     match_status: row.kyougi_match_status,
     win_method: row.kyougi_win_method,
     winner: row.kyougi_winner,
-    venue_no: row.kyougi_match_id || '',
+    venue_no:((row.kyougi_match_venue !== null && row.kyougi_match_id !== null) 
+        ? (String(row.kyougi_match_venue) + String(row.kyougi_match_id)) 
+        : ''),
     venue: venueStr.charAt(0) || ''
   };
 }

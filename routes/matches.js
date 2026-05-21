@@ -19,7 +19,7 @@ const {
 module.exports = (db) => {
   router.get('/matches', async (req, res) => {
     try {
-      const { weight_class, round, status, event_id } = req.query;
+      const { weight_class, round, status, event_id, arranged_only } = req.query;
       const matches = await queryKyougiMatchs(db, { weight_class, round, status, event_id });
 
       const firstRoundMap = new Map();
@@ -30,6 +30,7 @@ module.exports = (db) => {
       }
 
       const filtered = matches.filter(m => {
+        if (arranged_only === 'true' && (m.kyougi_match_venue === null || m.kyougi_match_id === null)) return false;
         const firstRound = firstRoundMap.get(m.kyougi_match_categroy);
         if (m.kyougi_match_round_num === firstRound) {
           const blue = (m.kyougi_blue_athlete_name || '').trim();
@@ -57,6 +58,186 @@ module.exports = (db) => {
       }
       res.json({ success: true });
     } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  router.get('/matches/export-excel-template', async (req, res) => {
+    try {
+      const ExcelJS = require('exceljs');
+      const { event_id } = req.query;
+      if (!event_id) {
+        return res.status(400).json({ success: false, error: '缺少赛事ID' });
+      }
+
+      const eventRow = await db.get('SELECT event_name, event_date FROM events WHERE event_id = ?', [event_id]);
+      if (!eventRow) {
+        return res.status(404).json({ success: false, error: '赛事不存在' });
+      }
+      const eventName = eventRow.event_name || '比赛';
+      const eventDate = eventRow.event_date || '';
+      const fileName = `${eventName}${eventDate}`;
+
+      const matchesRaw = await queryKyougiMatchs(db, { event_id });
+      const matches = matchesRaw.filter(m => m.kyougi_match_venue !== null && m.kyougi_match_id !== null).map(toLegacyFormat);
+
+      if (matches.length === 0) {
+        return res.status(400).json({ success: false, error: '暂无对阵数据可导出' });
+      }
+
+      matches.sort((a, b) => {
+        const vnA = a.venue_no || '';
+        const vnB = b.venue_no || '';
+        const numA = parseInt(vnA.replace(/^[A-Za-z]+/, '')) || 0;
+        const numB = parseInt(vnB.replace(/^[A-Za-z]+/, '')) || 0;
+        const letterA = vnA.replace(/[0-9]+$/, '');
+        const letterB = vnB.replace(/[0-9]+$/, '');
+        if (letterA !== letterB) return letterA.localeCompare(letterB);
+        if (numA !== numB) return numA - numB;
+        return (a.round || 0) - (b.round || 0);
+      });
+
+      const venueGroups = {};
+      for (const m of matches) {
+        const letter = m.venue || 'A';
+        if (!venueGroups[letter]) venueGroups[letter] = { min: null, max: null };
+        const num = parseInt(String(m.venue_no).replace(/^[A-Za-z]+/, '')) || 0;
+        if (!venueGroups[letter].min || num < venueGroups[letter].min) venueGroups[letter].min = num;
+        if (!venueGroups[letter].max || num > venueGroups[letter].max) venueGroups[letter].max = num;
+      }
+      const venueRangeStr = Object.keys(venueGroups).sort().map(letter => {
+        const g = venueGroups[letter];
+        return `${letter}${g.min}-${letter}${g.max}`;
+      }).join(' ');
+
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = '跆拳道编排系统';
+
+      const ws = workbook.addWorksheet('对阵表', {
+        properties: { defaultRowHeight: 15 },
+        pageSetup: {
+          paperSize: 9,
+          orientation: 'portrait',
+          fitToPage: true,
+          fitToWidth: 1,
+          fitToHeight: 0,
+          showGridLines: false,
+          horizontalCentered: true,
+          printTitlesRow: '1:9'
+        }
+      });
+      ws.pageSetup.margins = { left: 0.7, right: 0.7, top: 0.65, bottom: 0.83, header: 0.21, footer: 0.35 };
+
+      const colWidths = [6.78, 6.78, 6.55, 9.78, 10, 4.78, 9.78, 10, 10.33, 7.55];
+      colWidths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+      const titleFont = { name: 'Microsoft YaHei UI', size: 11, bold: true };
+      const dateFont = { name: 'Microsoft YaHei UI', size: 9, bold: true };
+      const infoFont = { name: 'Microsoft YaHei UI', size: 7 };
+      const headerFont = { name: 'Microsoft YaHei UI', size: 7 };
+      const dataFont = { name: 'Microsoft YaHei UI', size: 7 };
+      const centerAlign = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      const leftAlign = { horizontal: 'left', vertical: 'middle' };
+      const thinBottom = { bottom: { style: 'thin', color: { indexed: 64 } } };
+
+      ws.getRow(1).height = 28.5;
+      ws.getCell(1, 1).value = eventName;
+      ws.getCell(1, 1).font = titleFont;
+      ws.getCell(1, 1).alignment = centerAlign;
+      ws.mergeCells(1, 1, 1, 10);
+
+      ws.getRow(2).height = 12;
+      ws.getCell(2, 1).value = `${eventDate} 对阵表`;
+      ws.getCell(2, 1).font = dateFont;
+      ws.getCell(2, 1).alignment = centerAlign;
+      ws.mergeCells(2, 1, 2, 10);
+
+      ws.getRow(3).height = 5;
+
+      ws.getRow(4).height = 15;
+      ws.getCell(4, 1).value = '场地：';
+      ws.getCell(4, 1).font = infoFont;
+      ws.getCell(4, 1).alignment = { vertical: 'middle' };
+      ws.getCell(4, 9).value = '时间：';
+      ws.getCell(4, 9).font = infoFont;
+      ws.getCell(4, 9).alignment = leftAlign;
+
+      ws.getRow(5).height = 15;
+      ws.getCell(5, 1).value = `场次：${venueRangeStr}`;
+      ws.getCell(5, 1).font = infoFont;
+      ws.getCell(5, 1).alignment = { vertical: 'middle' };
+      ws.getCell(5, 9).value = `日期：${eventDate}`;
+      ws.getCell(5, 9).font = infoFont;
+      ws.getCell(5, 9).alignment = leftAlign;
+
+      ws.getRow(6).height = 5;
+      ws.getRow(7).height = 10;
+
+      const headers = [
+        { col: 1, val: '场次', align: centerAlign },
+        { col: 3, val: '轮次', align: centerAlign },
+        { col: 4, val: '青方姓名', align: centerAlign },
+        { col: 5, val: '代表队', align: centerAlign },
+        { col: 7, val: '红方姓名', align: centerAlign },
+        { col: 8, val: '代表队', align: centerAlign },
+        { col: 9, val: '级别', align: centerAlign },
+        { col: 10, val: '备注', align: { vertical: 'middle', wrapText: true } }
+      ];
+      ws.getRow(8).height = 15;
+      for (const h of headers) {
+        const cell = ws.getCell(8, h.col);
+        cell.value = h.val;
+        cell.font = headerFont;
+        cell.alignment = h.align;
+        cell.border = thinBottom;
+      }
+
+      ws.getRow(9).height = 5;
+
+      let rowNum = 10;
+      for (const m of matches) {
+        const row = ws.getRow(rowNum);
+        row.height = 12.3;
+
+        const venueNo = m.venue_no || '';
+        const roundName = formatRoundNameForTemplate(m.round_name || '', m.round, m.total_rounds);
+        const blueName = m.blue_name || m.blue_prev_winner || '-';
+        const blueUnit = m.blue_unit || '';
+        const redName = m.red_name || m.red_prev_winner || '-';
+        const redUnit = m.red_unit || '';
+        const wc = m.weight_class || '';
+        const isFinal = roundName === 'Final' || roundName === '决赛';
+
+        const dataCells = [
+          { col: 1, val: venueNo, align: centerAlign },
+          { col: 3, val: roundName, align: centerAlign },
+          { col: 4, val: blueName, align: { vertical: 'middle' } },
+          { col: 5, val: blueUnit, align: { vertical: 'middle' } },
+          { col: 6, val: '-VS-', align: centerAlign },
+          { col: 7, val: redName, align: { vertical: 'middle' } },
+          { col: 8, val: redUnit, align: { vertical: 'middle' } },
+          { col: 9, val: wc, align: { vertical: 'middle' } }
+        ];
+        if (isFinal) {
+          dataCells.push({ col: 10, val: '决赛', align: { vertical: 'middle' } });
+        }
+
+        for (const dc of dataCells) {
+          const cell = row.getCell(dc.col);
+          cell.value = dc.val;
+          cell.font = dataFont;
+          cell.alignment = dc.align;
+        }
+
+        rowNum++;
+      }
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(fileName + '.xlsx')}`);
+      await workbook.xlsx.write(res);
+      res.end();
+    } catch (err) {
+      console.error('GET /matches/export-excel-template 错误:', err.message);
       res.status(500).json({ success: false, error: err.message });
     }
   });
@@ -293,15 +474,20 @@ module.exports = (db) => {
         unitGroups.get(unitKey).classes.push({ weight_class, order: parseInt(order) });
       });
 
+      const unitMatchCounters = new Map();
+
       for (const [key, group] of unitGroups) {
         const { venue, unit, classes } = group;
+        const unitNum = parseInt(unit) || 1;
+
+        if (!unitMatchCounters.has(key)) {
+          unitMatchCounters.set(key, 0);
+        }
 
         classes.sort((a, b) => a.order - b.order);
 
         for (let index = 0; index < classes.length; index++) {
           const cls = classes[index];
-          const seqNo = String(index + 1).padStart(3, '0');
-          const venueNo = `${venue}${unit}${seqNo}`;
 
           try {
             const matches = await queryKyougiMatchs(db, {
@@ -310,9 +496,12 @@ module.exports = (db) => {
             });
 
             for (const match of matches) {
+              const cnt = unitMatchCounters.get(key) + 1;
+              unitMatchCounters.set(key, cnt);
+              const matchId = String(unitNum * 1000 + cnt);
               await db.run(
                 'UPDATE taekwondo_kyougi_matchs SET kyougi_match_venue = ?, kyougi_match_id = ? WHERE id = ?',
-                [venue, venueNo, match.id]
+                [venue, matchId, match.id]
               );
               updatedCount++;
             }
@@ -336,3 +525,24 @@ module.exports = (db) => {
 
   return router;
 };
+
+function formatRoundNameForTemplate(roundName, round, totalRounds) {
+  if (roundName && roundName.trim()) {
+    const rn = roundName.trim();
+    if (rn === '决赛' || rn === 'Final') return 'Final';
+    if (rn === '半决赛' || rn === '1/2') return '1/2';
+    const m = rn.match(/1\/(\d+)/);
+    if (m) return `1/${m[1]}`;
+    if (rn.match(/^1\/\d+决赛$/)) {
+      return rn.replace('决赛', '');
+    }
+    return rn;
+  }
+  if (round && totalRounds) {
+    if (round === totalRounds) return 'Final';
+    const d = Math.pow(2, totalRounds - round);
+    if (d === 2) return '1/2';
+    return `1/${d}`;
+  }
+  return '';
+}

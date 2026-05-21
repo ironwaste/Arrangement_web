@@ -24,7 +24,7 @@ async function loadMatches() {
     let scheduleData = [];
 
     try {
-        const resp = await apiGet('/matches?' + urlParams);
+        const resp = await apiGet('/matches?' + urlParams + '&arranged_only=true');
         if (resp.success && resp.data) matchesData = resp.data;
     } catch (e) { console.error('加载matches失败:', e); }
 
@@ -383,7 +383,7 @@ async function printMatchSchedule() {
     if (!currentEventId) { alert('请先选择赛事'); return; }
 
     const urlParams = getEventParam();
-    const resp = await apiGet('/matches?' + urlParams);
+    const resp = await apiGet('/matches?' + urlParams + '&arranged_only=true');
     if (!resp.success || !resp.data || resp.data.length === 0) {
         alert('没有可打印的比赛数据');
         return;
@@ -467,6 +467,11 @@ async function printMatchSchedule() {
     d.close();
     printWindow.focus();
     setTimeout(() => { printWindow.print(); }, 300);
+}
+
+function exportMatchesExcelTemplate() {
+    if (!currentEventId) { alert('请先选择赛事'); return; }
+    downloadFile(`${API_BASE}/matches/export-excel-template?event_id=${currentEventId}`);
 }
 
 // ==================== 列管理（与称重管理界面统一） ====================
@@ -966,7 +971,7 @@ async function showPrintDialog() {
     if (!currentEventId) { alert('请先选择赛事'); return; }
 
     const urlParams = getEventParam();
-    const resp = await apiGet('/matches?' + urlParams);
+    const resp = await apiGet('/matches?' + urlParams + '&arranged_only=true');
     if (!resp.success || !resp.data || resp.data.length === 0) {
         alert('没有可打印的比赛数据');
         return;

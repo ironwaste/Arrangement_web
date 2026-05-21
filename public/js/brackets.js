@@ -1843,9 +1843,65 @@ function calculateRounds(count) {
 }
 
 async function generateBrackets() {
-    if (!confirm('确定要生成对阵表吗？这将根据当前编排方案为所有级别生成对阵表')) return;
+    if (!currentEventId) { alert('请先选择赛事'); return; }
+
+    const tbody = document.getElementById('autoArrangeTableBody');
+    const rows = tbody ? tbody.querySelectorAll('tr') : [];
+    if (rows.length === 0) { alert('暂无编排数据，请先添加运动员'); return; }
+
+    const unassigned = [];
+    rows.forEach(tr => {
+        const cells = tr.querySelectorAll('td');
+        if (cells.length < 7) return;
+        const weightClass = cells[6].textContent.trim();
+        const orderInput = cells[3].querySelector('input');
+        const venueSelect = cells[4].querySelector('select');
+        const unitSelect = cells[5].querySelector('select');
+
+        const order = orderInput ? (parseInt(orderInput.value) || 0) : 0;
+        const venue = venueSelect ? venueSelect.value.trim() : '';
+        const unit = unitSelect ? unitSelect.value.trim() : '';
+
+        const missing = [];
+        if (!venue) missing.push('场地');
+        if (!unit) missing.push('单元');
+        if (!order) missing.push('顺序');
+        if (missing.length > 0) {
+            unassigned.push(`${weightClass}（未分配${missing.join('、')}）`);
+        }
+    });
+
+    if (unassigned.length > 0) {
+        const modal = document.createElement('div');
+        modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;';
+        const box = document.createElement('div');
+        box.style.cssText = 'background:#fff;border-radius:8px;padding:24px;max-width:500px;width:90%;max-height:70vh;display:flex;flex-direction:column;box-shadow:0 4px 20px rgba(0,0,0,0.3);';
+        box.innerHTML = `
+            <div style="font-size:18px;font-weight:bold;color:#E6A23C;margin-bottom:16px;">⚠️ 以下级别未完成场地分配</div>
+            <div style="flex:1;overflow-y:auto;margin-bottom:16px;border:1px solid #EBEEF5;border-radius:4px;padding:12px;">
+                ${unassigned.map(s => `<div style="padding:4px 0;font-size:13px;color:#606266;border-bottom:1px solid #F2F6FC;">${s}</div>`).join('')}
+            </div>
+            <div style="text-align:right;">
+                <button id="closeUnassignedModal" style="padding:8px 24px;border:1px solid #dcdfe6;border-radius:4px;background:#fff;cursor:pointer;font-size:14px;">确定</button>
+            </div>
+        `;
+        modal.appendChild(box);
+        document.body.appendChild(modal);
+        modal.querySelector('#closeUnassignedModal').onclick = () => document.body.removeChild(modal);
+        modal.onclick = (e) => { if (e.target === modal) document.body.removeChild(modal); };
+        return;
+    }
+
     try {
-        const res = await fetch(`${API_BASE}/auto-arrange/generate-bracket`, {
+        const checkRes = await fetch(`${API_BASE}/matches?${getEventParam()}`);
+        const checkData = await checkRes.json();
+        if (checkData.success && checkData.data && checkData.data.length > 0) {
+            if (!confirm('当前赛事已有对阵表数据，生成新对阵表将清除原有数据，是否继续？')) return;
+        }
+    } catch (e) {}
+
+    try {
+        const res = await fetch(`${API_BASE}/brackets/generate-matches`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(getEventParamObj())
@@ -1853,14 +1909,14 @@ async function generateBrackets() {
         const data = await res.json();
         if (data.success) {
             const result = data.data;
-            if (result.errors.length > 0) {
-                alert('⚠️ 生成警告\n\n成功: ' + result.generated + ' 个级别\n跳过: ' + result.skipped + ' 个级别\n\n跳过原因:\n' + result.errors.join('\n'));
+            let msg = '✅ 对阵表生成完成！\n\n成功: ' + result.generated + ' 个级别';
+            if (result.errors && result.errors.length > 0) {
+                msg += '\n\n警告:\n' + result.errors.join('\n');
             }
-            alert('✅ 对阵表生成完成！\n\n成功: ' + result.generated + ' 个级别' + (result.skipped > 0 ? '\n跳过: ' + result.skipped + ' 个级别' : '') + '\n\n详情:\n' + result.results.join('\n'));
-            
+            msg += '\n\n详情:\n' + result.results.join('\n');
+            alert(msg);
+
             await loadAutoArrangeData();
-            
-            await autoAssignVenueNumbersAfterGenerate();
         } else {
             alert('❌ 生成失败: ' + (data.error || '未知错误'));
         }
