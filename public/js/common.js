@@ -216,14 +216,21 @@ function updateEventBadge() {
 function updateArrangeMenu() {
     const menuBrackets = document.getElementById('menuBrackets');
     const menuBracketTest = document.getElementById('menuBracketTest');
+    const menuJJBrackets = document.getElementById('menuJJBrackets');
     if (!menuBrackets || !menuBracketTest) return;
 
     if (currentEventType === 'wrestling') {
         menuBrackets.style.display = 'none';
         menuBracketTest.style.display = '';
+        if (menuJJBrackets) menuJJBrackets.style.display = 'none';
+    } else if (currentEventType === 'jiu_jitsu') {
+        menuBrackets.style.display = 'none';
+        menuBracketTest.style.display = 'none';
+        if (menuJJBrackets) menuJJBrackets.style.display = '';
     } else {
         menuBrackets.style.display = '';
         menuBracketTest.style.display = 'none';
+        if (menuJJBrackets) menuJJBrackets.style.display = 'none';
     }
 }
 
@@ -249,6 +256,7 @@ function showPanel(panelId) {
         'brackets': '/brackets',
         'bracketDetail': '/bracket-detail',
         'bracketTest': '/bracket-test',
+        'jjBrackets': '/jj-brackets',
         'matches': '/matches',
         'teamScores': '/team-scores',
         'medalBoard': '/medal-board',

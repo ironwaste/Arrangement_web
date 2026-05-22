@@ -5,6 +5,7 @@ const BRACKETS_COLUMNS = [
     { key: 'order', label: '顺序' },
     { key: 'venue', label: '场地' },
     { key: 'unit', label: '单元' },
+    { key: 'compMode', label: '竞赛方式' },
     { key: 'weightClass', label: '级别' },
     { key: 'count', label: '人数' },
     { key: 'totalMatches', label: '总场次' },
@@ -20,25 +21,62 @@ const BRACKETS_COLUMNS = [
     { key: 'gold', label: 'Gold' },
     { key: 'silver', label: 'Silver' },
     { key: 'bronze', label: 'Bronze' },
-    { key: 'rep', label: 'Rep.' }
+    { key: 'rep', label: 'Rep.' },
+    { key: 'brom', label: 'Bro.m' }
 ];
+
+const JJ_BRACKETS_COLUMNS = [
+    { key: 'index', label: '序号' },
+    { key: 'rounds', label: '轮次' },
+    { key: 'total', label: '场次' },
+    { key: 'order', label: '顺序' },
+    { key: 'venue', label: '场地' },
+    { key: 'unit', label: '单元' },
+    { key: 'compMode', label: '竞赛方式' },
+    { key: 'weightClass', label: '级别' },
+    { key: 'count', label: '人数' },
+    { key: 'totalMatches', label: '总场次' },
+    { key: 'final', label: 'Final' },
+    { key: 'match1', label: '赛1' },
+    { key: 'match2', label: '赛2' },
+    { key: 'match3', label: '赛3' },
+    { key: 'match4', label: '赛4' },
+    { key: 'match5', label: '赛5' },
+    { key: 'match6', label: '赛6' },
+    { key: 'match7', label: '赛7' },
+    { key: 'match8', label: '赛8' },
+    { key: 'gold', label: 'Gold' },
+    { key: 'silver', label: 'Silver' },
+    { key: 'bronze', label: 'Bronze' },
+    { key: 'rep', label: 'Rep.' },
+    { key: 'brom', label: 'Bro.m' }
+];
+
+function getActiveColumns() {
+    const isJJPage = window.location.pathname === '/jj-brackets';
+    return (isJJPage || currentEventType === 'jiu_jitsu') ? JJ_BRACKETS_COLUMNS : BRACKETS_COLUMNS;
+}
 
 let bracketsSelectedColumns = [];
 let bracketsActiveContextMenu = null;
 let bracketsSortState = { colIndex: -1, direction: '' };
 
 function getBracketsColumnVisibility() {
-    const saved = localStorage.getItem('brackets_column_visibility');
+    const isJJPage = window.location.pathname === '/jj-brackets';
+    const isJJ = isJJPage || currentEventType === 'jiu_jitsu';
+    const saved = localStorage.getItem(isJJ ? 'jj_brackets_column_visibility' : 'brackets_column_visibility');
     if (saved) {
         try { return JSON.parse(saved); } catch (e) {}
     }
     const v = {};
-    BRACKETS_COLUMNS.forEach(col => { v[col.key] = true; });
+    getActiveColumns().forEach(col => { v[col.key] = true; });
     return v;
 }
 
 function saveBracketsColumnVisibility(visibility) {
-    localStorage.setItem('brackets_column_visibility', JSON.stringify(visibility));
+    const isJJPage = window.location.pathname === '/jj-brackets';
+    const isJJ = isJJPage || currentEventType === 'jiu_jitsu';
+    localStorage.setItem(isJJ ? 'jj_brackets_column_visibility' : 'brackets_column_visibility', JSON.stringify(visibility));
 }
 
 function initBracketsColumnVisibility() {
@@ -48,7 +86,7 @@ function initBracketsColumnVisibility() {
 function applyBracketsColumnVisibility(visibility) {
     const table = document.querySelector('.auto-arrange-table');
     if (!table) return;
-    BRACKETS_COLUMNS.forEach(col => {
+    getActiveColumns().forEach(col => {
         const isVisible = visibility[col.key] !== false;
         table.querySelectorAll(`th[data-col="${col.key}"]`).forEach(th => {
             th.style.display = isVisible ? 'table-cell' : 'none';
@@ -140,7 +178,7 @@ function showBracketsContextMenu(x, y, columnKey) {
                 <span class="ecm-icon">👁️‍🗨️</span>
                 <span>隐藏此列</span>
              </div>`;
-    const hiddenColumns = BRACKETS_COLUMNS.filter(col => visibility[col.key] === false);
+    const hiddenColumns = getActiveColumns().filter(col => visibility[col.key] === false);
     if (hiddenColumns.length > 0) {
         html += `<div class="ecm-divider"></div>`;
         html += `<div style="padding:8px 12px;font-size:11px;color:#909399;font-weight:bold;">取消隐藏</div>`;
@@ -213,7 +251,7 @@ function showBracketsColumn(columnKey) {
 
 function showAllBracketsColumns() {
     const visibility = {};
-    BRACKETS_COLUMNS.forEach(col => { visibility[col.key] = true; });
+    getActiveColumns().forEach(col => { visibility[col.key] = true; });
     saveBracketsColumnVisibility(visibility);
     applyBracketsColumnVisibility(visibility);
     closeBracketsContextMenu();
@@ -221,7 +259,7 @@ function showAllBracketsColumns() {
 
 function sortBracketsColumn(columnKey, direction) {
     closeBracketsContextMenu();
-    const colIndex = BRACKETS_COLUMNS.findIndex(col => col.key === columnKey);
+    const colIndex = getActiveColumns().findIndex(col => col.key === columnKey);
     if (colIndex === -1) return;
     bracketsSortState = { colIndex, direction };
     const tbody = document.getElementById('autoArrangeTableBody');
@@ -249,8 +287,9 @@ function sortBracketsColumn(columnKey, direction) {
 
 function updateBracketsSortIndicators() {
     const headers = document.querySelectorAll('.auto-arrange-table thead th');
+    const activeCols = getActiveColumns();
     headers.forEach((th, index) => {
-        const col = BRACKETS_COLUMNS[index];
+        const col = activeCols[index];
         if (!col) return;
         const baseLabel = col.label;
         const filterIcon = th.querySelector('.excel-filter-icon');
@@ -285,19 +324,22 @@ async function loadAutoArrangeData() {
     tbody.innerHTML = '';
 
     if (!currentEventId) {
-        tbody.innerHTML = '<tr><td colspan="22" style="text-align:center;color:#909399;padding:40px;">请先在「赛事列表」中选择一个赛事</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="24" style="text-align:center;color:#909399;padding:40px;">请先在「赛事列表」中选择一个赛事</td></tr>';
         document.getElementById('autoArrangeTotalAthletes').textContent = '0';
         document.getElementById('autoArrangeTotalClasses').textContent = '0';
         document.getElementById('autoArrangeTotalMatches').textContent = '0';
         const pl = document.getElementById('pendingClassList');
-        const al = document.getElementById('arrangedClassList');
         if (pl) pl.innerHTML = '<div style="color:#909399;font-size:12px;text-align:center;padding:10px;">请先选择赛事</div>';
-        if (al) al.innerHTML = '<div style="color:#909399;font-size:12px;text-align:center;padding:10px;">请先选择赛事</div>';
         const pc = document.getElementById('pendingCount');
-        const ac = document.getElementById('arrangedCount');
         if (pc) pc.textContent = '0';
-        if (ac) ac.textContent = '0';
         return;
+    }
+
+    const isJJPage = window.location.pathname === '/jj-brackets';
+    const isJJ = isJJPage || currentEventType === 'jiu_jitsu';
+
+    if (isJJ && typeof JiuJitsuBrackets !== 'undefined') {
+        await JiuJitsuBrackets.loadCompModeConfig();
     }
 
     try {
@@ -329,7 +371,7 @@ async function loadAutoArrangeData() {
             await CategoryModeComponent.init(currentEventId);
         }
 
-        const athletesRes = await fetch(`${API_BASE}/athletes?${getEventParam()}&athlete_type=taekwondo_kyougi`);
+        const athletesRes = await fetch(`${API_BASE}/athletes?${getEventParam()}`);
         const athletesData = await athletesRes.json();
         if (!athletesData.success) {
             tbody.innerHTML = '<tr><td colspan="22" style="text-align:center;color:#f56c6c;padding:40px;">加载运动员数据失败</td></tr>';
@@ -391,10 +433,18 @@ async function loadAutoArrangeData() {
         const classRounds = classes.map(cls => {
             const count = cls.count;
             totalAthletes += count;
-            const rounds = calculateRounds(count);
-            const total = rounds.total || 0;
-            totalMatches += total;
-            return { ...cls, rounds, total };
+            if (isJJ && typeof JiuJitsuBrackets !== 'undefined') {
+                const compMode = JiuJitsuBrackets.compModeConfig[cls.name] || 'single_elimination';
+                const jjRounds = JiuJitsuBrackets.calculateJJRounds(count, compMode);
+                const total = jjRounds.total || 0;
+                totalMatches += total;
+                return { ...cls, rounds: jjRounds, total, jjRounds };
+            } else {
+                const rounds = calculateRounds(count);
+                const total = rounds.total || 0;
+                totalMatches += total;
+                return { ...cls, rounds, total };
+            }
         });
 
         if (importedVenueData) {
@@ -428,10 +478,7 @@ async function loadAutoArrangeData() {
             const orderA = vA ? parseFloat(vA.category_order) || 0 : 0;
             const orderB = vB ? parseFloat(vB.category_order) || 0 : 0;
             if (orderA !== orderB) return orderA - orderB;
-            const roundsA = Math.ceil(Math.log2(a.count)) || 0;
-            const roundsB = Math.ceil(Math.log2(b.count)) || 0;
-            if (roundsA !== roundsB) return roundsB - roundsA;
-            return sortWeightClass(a.name, b.name);
+            return a.count - b.count;
         });
 
         classRounds.forEach((cls, index) => {
@@ -452,30 +499,67 @@ async function loadAutoArrangeData() {
                 unitOptions += `<option value="${i}"${selected}>${i}</option>`;
             }
 
-            tr.innerHTML = `
-                <td data-col="index">${index + 1}</td>
-                <td data-col="rounds">${totalRounds}</td>
-                <td data-col="total">${cls.total}</td>
-                <td data-col="order"><input type="number" min="1" max="99" value="${venueInfo ? venueInfo.category_order : ''}" onchange="saveAutoArrangeSilent()" style="width:42px;text-align:center;border:1px solid #E6A23C;border-radius:3px;padding:2px;font-weight:bold;color:#E6A23C;" placeholder="-"></td>
-                <td data-col="venue"><select onchange="saveAutoArrangeSilent()" style="width:60px;text-align:center;border:1px solid #409EFF;border-radius:3px;padding:2px;font-size:12px;font-weight:bold;color:#303133;cursor:pointer;">${venueOptions}</select></td>
-                <td data-col="unit"><select onchange="saveAutoArrangeSilent()" style="width:55px;text-align:center;border:1px solid #409EFF;border-radius:3px;padding:2px;font-size:12px;font-weight:bold;color:#303133;cursor:pointer;">${unitOptions}</select></td>
-                <td data-col="weightClass" style="text-align:left;min-width:120px;">${cls.name}</td>
-                <td data-col="count">${cls.count}</td>
-                <td data-col="totalMatches">${cls.total}</td>
-                <td data-col="final">${cls.rounds.final}</td>
-                <td data-col="half">${cls.rounds.half}</td>
-                <td data-col="quarter">${cls.rounds.quarter}</td>
-                <td data-col="eighth">${cls.rounds.eighth}</td>
-                <td data-col="sixteenth">${cls.rounds.sixteenth}</td>
-                <td data-col="thirtysecond">${cls.rounds.thirtysecond}</td>
-                <td data-col="sixtyfourth">${cls.rounds.sixtyfourth}</td>
-                <td data-col="onetwentyeight">${cls.rounds.onetwentyeighth}</td>
-                <td data-col="twofiftysix">${cls.rounds.twofiftysixth}</td>
-                <td data-col="gold">${cls.rounds.gold}</td>
-                <td data-col="silver">${cls.rounds.silver}</td>
-                <td data-col="bronze">${cls.rounds.bronze}</td>
-                <td data-col="rep">${cls.rounds.repechage}</td>
-            `;
+            const compMode = (isJJ && typeof JiuJitsuBrackets !== 'undefined') ? (JiuJitsuBrackets.compModeConfig[cls.name] || 'single_elimination') : '';
+            const compModeLabel = isJJ ? (JiuJitsuBrackets.COMP_MODES.find(m => m.value === compMode) || JiuJitsuBrackets.COMP_MODES[0]).label : '';
+
+            if (isJJ && typeof JiuJitsuBrackets !== 'undefined') {
+                const jjR = cls.jjRounds || JiuJitsuBrackets.calculateJJRounds(cls.count, compMode);
+                tr.innerHTML = `
+                    <td data-col="index">${index + 1}</td>
+                    <td data-col="rounds">${totalRounds}</td>
+                    <td data-col="total">${jjR.total}</td>
+                    <td data-col="order"><input type="number" min="1" max="99" value="${venueInfo ? venueInfo.category_order : ''}" onchange="saveAutoArrangeSilent()" style="width:42px;text-align:center;border:1px solid #E6A23C;border-radius:3px;padding:2px;font-weight:bold;color:#E6A23C;" placeholder="-"></td>
+                    <td data-col="venue"><select onchange="saveAutoArrangeSilent()" style="width:60px;text-align:center;border:1px solid #409EFF;border-radius:3px;padding:2px;font-size:12px;font-weight:bold;color:#303133;cursor:pointer;">${venueOptions}</select></td>
+                    <td data-col="unit"><select onchange="saveAutoArrangeSilent()" style="width:55px;text-align:center;border:1px solid #409EFF;border-radius:3px;padding:2px;font-size:12px;font-weight:bold;color:#303133;cursor:pointer;">${unitOptions}</select></td>
+                    <td data-col="compMode"><select onchange="JiuJitsuBrackets.saveCompModeConfig('${cls.name.replace(/'/g, "\\'")}', this.value); loadAutoArrangeData();" style="width:90px;text-align:center;border:1px solid #409EFF;border-radius:3px;padding:2px;font-size:12px;font-weight:bold;color:#303133;cursor:pointer;">
+                        ${JiuJitsuBrackets.COMP_MODES.map(m => `<option value="${m.value}" ${compMode === m.value ? 'selected' : ''}>${m.label}</option>`).join('')}
+                    </select></td>
+                    <td data-col="weightClass" style="text-align:left;min-width:120px;">${cls.name}</td>
+                    <td data-col="count">${cls.count}</td>
+                    <td data-col="totalMatches">${jjR.total}</td>
+                    <td data-col="final">${jjR.final}</td>
+                    <td data-col="match1">${jjR.match1}</td>
+                    <td data-col="match2">${jjR.match2}</td>
+                    <td data-col="match3">${jjR.match3}</td>
+                    <td data-col="match4">${jjR.match4}</td>
+                    <td data-col="match5">${jjR.match5}</td>
+                    <td data-col="match6">${jjR.match6}</td>
+                    <td data-col="match7">${jjR.match7}</td>
+                    <td data-col="match8">${jjR.match8}</td>
+                    <td data-col="gold">${jjR.gold}</td>
+                    <td data-col="silver">${jjR.silver}</td>
+                    <td data-col="bronze">${jjR.bronze}</td>
+                    <td data-col="rep">${jjR.repechage}</td>
+                    <td data-col="brom">${jjR.brom}</td>
+                `;
+            } else {
+                tr.innerHTML = `
+                    <td data-col="index">${index + 1}</td>
+                    <td data-col="rounds">${totalRounds}</td>
+                    <td data-col="total">${cls.total}</td>
+                    <td data-col="order"><input type="number" min="1" max="99" value="${venueInfo ? venueInfo.category_order : ''}" onchange="saveAutoArrangeSilent()" style="width:42px;text-align:center;border:1px solid #E6A23C;border-radius:3px;padding:2px;font-weight:bold;color:#E6A23C;" placeholder="-"></td>
+                    <td data-col="venue"><select onchange="saveAutoArrangeSilent()" style="width:60px;text-align:center;border:1px solid #409EFF;border-radius:3px;padding:2px;font-size:12px;font-weight:bold;color:#303133;cursor:pointer;">${venueOptions}</select></td>
+                    <td data-col="unit"><select onchange="saveAutoArrangeSilent()" style="width:55px;text-align:center;border:1px solid #409EFF;border-radius:3px;padding:2px;font-size:12px;font-weight:bold;color:#303133;cursor:pointer;">${unitOptions}</select></td>
+                    <td data-col="compMode">-</td>
+                    <td data-col="weightClass" style="text-align:left;min-width:120px;">${cls.name}</td>
+                    <td data-col="count">${cls.count}</td>
+                    <td data-col="totalMatches">${cls.total}</td>
+                    <td data-col="final">${cls.rounds.final}</td>
+                    <td data-col="half">${cls.rounds.half}</td>
+                    <td data-col="quarter">${cls.rounds.quarter}</td>
+                    <td data-col="eighth">${cls.rounds.eighth}</td>
+                    <td data-col="sixteenth">${cls.rounds.sixteenth}</td>
+                    <td data-col="thirtysecond">${cls.rounds.thirtysecond}</td>
+                    <td data-col="sixtyfourth">${cls.rounds.sixtyfourth}</td>
+                    <td data-col="onetwentyeight">${cls.rounds.onetwentyeighth}</td>
+                    <td data-col="twofiftysix">${cls.rounds.twofiftysixth}</td>
+                    <td data-col="gold">${cls.rounds.gold}</td>
+                    <td data-col="silver">${cls.rounds.silver}</td>
+                    <td data-col="bronze">${cls.rounds.bronze}</td>
+                    <td data-col="rep">${cls.rounds.repechage}</td>
+                    <td data-col="brom">0</td>
+                `;
+            }
             tbody.appendChild(tr);
         });
 

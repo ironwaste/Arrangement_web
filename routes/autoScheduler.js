@@ -139,21 +139,124 @@ async function generateBracketForClass(db, manager, weightClass, athletes, event
   let method = null;
   if (!forceElimination) {
     try {
-      const methodRow = await db.prepare(
-        'SELECT mode_of_competition FROM ModeOfCompetition WHERE class_ = ?'
-      ).get(weightClass);
-      method = methodRow?.mode_of_competition || null;
+      const catModeRow = await db.prepare(
+        'SELECT mode, categroy_mode_name FROM category_mode WHERE event_id = ? AND weight_class = ?'
+      ).get(event_id, weightClass);
+      if (catModeRow) {
+        const modeMap = {
+          'single_elimination': '单败淘汰赛',
+          'double_elimination': '双败淘汰赛',
+          'round_robin': '循环赛',
+          'pool_elimination': '分区循环赛'
+        };
+        method = catModeRow.mode ? (modeMap[catModeRow.mode] || catModeRow.categroy_mode_name) : catModeRow.categroy_mode_name;
+      }
     } catch (e) {}
+    if (!method) {
+      try {
+        const methodRow = await db.prepare(
+          'SELECT mode_of_competition FROM ModeOfCompetition WHERE class_ = ?'
+        ).get(weightClass);
+        method = methodRow?.mode_of_competition || null;
+      } catch (e) {}
+    }
   }
 
   const roundRobinMethods = ['循环赛', '5人循环赛-1', '5人循环赛-2', '6人循环赛', '7人循环赛', 'round_robin'];
   const isRoundRobin = method && roundRobinMethods.includes(method);
   const isDivisional = ['5人循环赛-2', '6人循环赛', '7人循环赛'].includes(method);
+  const isDoubleElimination = method === '双败淘汰赛';
+  const isPoolElimination = method === '分区循环赛';
 
   let stageId = '';
   let stageType = 'single_elimination';
 
-  if (isRoundRobin && !isDivisional) {
+  if (isDoubleElimination) {
+    const targetSize = Math.pow(2, Math.ceil(Math.log2(n)));
+    const seedOrderFull = generateStandardSeedOrder(targetSize);
+
+    for (let i = n; i < targetSize; i++) {
+      cleanSeeding.push(null);
+    }
+
+    const deStage = await manager.create.stage({
+      tournamentId: Number(event_id),
+      name: weightClass,
+      type: 'double_elimination',
+      seeding: cleanSeeding,
+      settings: {
+        manualOrdering: [seedOrderFull],
+        grandFinal: 'simple',
+      },
+    });
+
+    const allStageIds = [];
+    const deStages = await db.all(
+      'SELECT id FROM bracket_stage WHERE tournament_id = ? AND category_id IS NULL',
+      [Number(event_id)]
+    );
+    for (const s of deStages) {
+      await db.prepare(
+        'UPDATE bracket_stage SET event_id = ?, category_id = ? WHERE id = ?'
+      ).run(event_id, weightClass, s.id);
+      allStageIds.push(s.id);
+    }
+
+    for (const stageIdItem of allStageIds) {
+      const matches = await db.prepare('SELECT id FROM bracket_match WHERE stage_id = ?').all(stageIdItem);
+      if (matches && matches.length > 0) {
+        const insertMatchGame = db.prepare(
+          'INSERT INTO bracket_match_game (stage_id, parent_id, number) VALUES (?, ?, ?)'
+        );
+        const updateChildCount = db.prepare(
+          'UPDATE bracket_match SET child_count = 1 WHERE id = ?'
+        );
+        for (const match of matches) {
+          const existing = await db.prepare('SELECT id FROM bracket_match_game WHERE parent_id = ?').get(match.id);
+          if (!existing) {
+            await insertMatchGame.run(stageIdItem, match.id, 1);
+            await updateChildCount.run(match.id);
+          }
+        }
+      }
+    }
+
+    for (const stageIdItem of allStageIds) {
+      const stageData = await manager.get.stageData(stageIdItem);
+      if (stageData?.stage?.[0]) {
+        const s = stageData.stage[0];
+        const size = s.settings?.size || stageData.participant?.length || 4;
+        const totalRounds = Math.log2(Math.pow(2, Math.ceil(Math.log2(size))));
+        const rounds = stageData.round || [];
+        const stageInfo = await db.get('SELECT id, name FROM bracket_stage WHERE id = ?', [stageIdItem]);
+        const isWinners = stageInfo && stageInfo.name && !stageInfo.name.includes('败者');
+        for (const round of rounds) {
+          const roundName = getRoundName(round.number, totalRounds);
+          if (roundName && round.name !== roundName) {
+            const suffix = isWinners ? roundName + '（胜者组）' : roundName + '（败者组）';
+            await db.run('UPDATE bracket_round SET name = ? WHERE id = ?', [suffix, round.id]);
+          }
+        }
+      }
+    }
+
+    for (let i = 0; i < athletes.length; i++) {
+      const athlete = athletes[i] || {};
+      const bracketName = cleanSeeding[i];
+      if (!bracketName) continue;
+      const customData = JSON.stringify({
+        id: athlete.id != null ? athlete.id : null,
+        athlete_draw_num: athlete.athlete_draw_num != null ? athlete.athlete_draw_num : (i + 1)
+      });
+      await db.prepare(
+        `UPDATE bracket_participant SET custom_data = ? WHERE name = ?`
+      ).run(customData, bracketName);
+    }
+
+    stageId = allStageIds.join(',');
+    stageType = 'double_elimination';
+
+  } else if (isRoundRobin && !isDivisional) {
     const rrMatches = generateRoundRobinMatches(n, method);
 
     const rrStage = await manager.create.stage({
@@ -287,6 +390,54 @@ async function generateBracketForClass(db, manager, weightClass, athletes, event
       stageId = `${upperRRStage.id},${lowerRRStage.id}`;
       stageType = 'divisional_round_robin';
     }
+  } else if (isPoolElimination) {
+    const poolCount = Math.max(2, Math.ceil(n / 4));
+    const poolSize = Math.ceil(n / poolCount);
+
+    const poolStages = [];
+    for (let pi = 0; pi < poolCount; pi++) {
+      const poolAthletes = cleanSeeding.slice(pi * poolSize, (pi + 1) * poolSize);
+      const poolSeeding = [...poolAthletes];
+      while (poolSeeding.length < poolSize) poolSeeding.push(null);
+
+      const poolStage = await manager.create.stage({
+        tournamentId: Number(event_id),
+        name: `${weightClass}_小组${pi + 1}`,
+        type: 'round_robin',
+        seeding: poolSeeding,
+        settings: { size: poolSize, groupCount: 1 },
+      });
+
+      await db.prepare(
+        'UPDATE bracket_stage SET event_id = ?, category_id = ? WHERE id = ?'
+      ).run(event_id, weightClass, poolStage.id);
+
+      const participants = await db.prepare(
+        'SELECT id, name FROM bracket_participant WHERE tournament_id = ?'
+      ).all(Number(event_id));
+      const updateParticipant = db.prepare(
+        'UPDATE bracket_participant SET custom_data = ? WHERE id = ?'
+      );
+      for (let i = 0; i < poolAthletes.length; i++) {
+        if (poolAthletes[i] === null) continue;
+        const p = participants.find(pp => pp.name === poolAthletes[i]);
+        if (p) {
+          const origIdx = pi * poolSize + i;
+          const athlete = athletes[origIdx] || {};
+          await updateParticipant.run(JSON.stringify({
+            id: athlete.id != null ? athlete.id : null,
+            athlete_draw_num: athlete.athlete_draw_num != null ? athlete.athlete_draw_num : (origIdx + 1),
+            pool: pi + 1
+          }), p.id);
+        }
+      }
+
+      poolStages.push(poolStage.id);
+    }
+
+    stageId = poolStages.join(',');
+    stageType = 'pool_elimination';
+
   } else {
     const targetSize = Math.pow(2, Math.ceil(Math.log2(n)));
     const seedOrderFull = generateStandardSeedOrder(targetSize);

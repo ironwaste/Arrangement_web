@@ -7,6 +7,7 @@
             <button class="btn btn-warning" onclick="exportArrangeData()">📤 导出数据</button>
             <button class="btn btn-primary" onclick="saveAutoArrange()">💾 保存</button>
             <button class="btn btn-success" onclick="generateBrackets()">🏆 生成对阵表</button>
+            <button class="btn" style="background:#8e44ad;color:white;" onclick="if(typeof JiuJitsuBrackets!=='undefined')JiuJitsuBrackets.showCompModeConfigModal()">⚙️ 竞赛方式配置</button>
         </div>
     </div>
     <div class="brackets-layout">
@@ -46,6 +47,7 @@
                             <th data-col="order" style="position:relative;cursor:pointer;">顺序</th>
                             <th data-col="venue" style="position:relative;cursor:pointer;">场地</th>
                             <th data-col="unit" style="position:relative;cursor:pointer;">单元</th>
+                            <th data-col="compMode" style="position:relative;cursor:pointer;">竞赛方式</th>
                             <th data-col="weightClass" style="position:relative;cursor:pointer;">级别</th>
                             <th data-col="count" style="position:relative;cursor:pointer;">人数</th>
                             <th data-col="totalMatches" style="position:relative;cursor:pointer;">总场次</th>
@@ -62,6 +64,7 @@
                             <th data-col="silver" style="position:relative;cursor:pointer;">Silver</th>
                             <th data-col="bronze" style="position:relative;cursor:pointer;">Bronze</th>
                             <th data-col="rep" style="position:relative;cursor:pointer;">Rep.</th>
+                            <th data-col="brom" style="position:relative;cursor:pointer;">Bro.m</th>
                         </tr>
                     </thead>
                     <tbody id="autoArrangeTableBody"></tbody>

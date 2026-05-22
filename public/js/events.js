@@ -9,9 +9,11 @@ async function loadEvents() {
         const statusClass = statusMap[e.status] || 'status-pending';
         const isSelected = currentEventId === e.id;
         const eventTypeLabel = e.event_type === 'chinese_wrestle' ? '摔跤赛事' : 
-                           e.event_type === 'taekwondo_poomsae' ? '跆拳道品势赛事' : '跆拳道竞技赛事';
+                           e.event_type === 'taekwondo_poomsae' ? '跆拳道品势赛事' : 
+                           e.event_type === 'jiu_jitsu' ? '柔术赛事' : '跆拳道竞技赛事';
         const eventTypeClass = e.event_type === 'chinese_wrestle' ? 'status-active' : 
-                              e.event_type === 'taekwondo_poomsae' ? 'status-reg' : 'status-pending';
+                              e.event_type === 'taekwondo_poomsae' ? 'status-reg' : 
+                              e.event_type === 'jiu_jitsu' ? 'status-pass' : 'status-pending';
 
         const fmtTime = (t) => {
             if (!t) return '-';
@@ -30,6 +32,7 @@ async function loadEvents() {
                 <option value="taekwondo_kyougi" ${e.event_type === 'taekwondo_kyougi' ? 'selected' : ''}>跆拳道竞技赛事</option>
                 <option value="taekwondo_poomsae" ${e.event_type === 'taekwondo_poomsae' ? 'selected' : ''}>跆拳道品势赛事</option>
                 <option value="chinese_wrestle" ${e.event_type === 'chinese_wrestle' ? 'selected' : ''}>摔跤赛事</option>
+                <option value="jiu_jitsu" ${e.event_type === 'jiu_jitsu' ? 'selected' : ''}>柔术赛事</option>
             </select></td>
             <td data-col="venue">${e.venue || '-'}</td>
             <td data-col="compTime" style="font-size: 12px;">${compTime}</td>
@@ -91,7 +94,7 @@ async function updateCurrentEventInfo() {
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div>
                 <h3 style="color: #409EFF; margin-bottom: 5px;">🏆 ${event.name}</h3>
-                <p style="color: #606266;">赛事类型：<span class="status-badge ${event.event_type === 'chinese_wrestle' ? 'status-active' : event.event_type === 'taekwondo_poomsae' ? 'status-reg' : 'status-pending'}">${event.event_type === 'chinese_wrestle' ? '摔跤赛事' : event.event_type === 'taekwondo_poomsae' ? '跆拳道品势赛事' : '跆拳道竞技赛事'}</span> | 场馆：${event.venue || '未设置'} | 状态：<span class="status-badge ${currentStatusClass}">${event.status}</span></p>
+                <p style="color: #606266;">赛事类型：<span class="status-badge ${event.event_type === 'chinese_wrestle' ? 'status-active' : event.event_type === 'taekwondo_poomsae' ? 'status-reg' : event.event_type === 'jiu_jitsu' ? 'status-pass' : 'status-pending'}">${event.event_type === 'chinese_wrestle' ? '摔跤赛事' : event.event_type === 'taekwondo_poomsae' ? '跆拳道品势赛事' : event.event_type === 'jiu_jitsu' ? '柔术赛事' : '跆拳道竞技赛事'}</span> | 场馆：${event.venue || '未设置'} | 状态：<span class="status-badge ${currentStatusClass}">${event.status}</span></p>
                 <p style="color: #909399; font-size: 13px; margin-top: 4px;">比赛：${fmtTime2(event.comp_start)} ~ ${fmtTime2(event.comp_end)}</p>
             </div>
             <div style="display: flex; gap: 10px;">

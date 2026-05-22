@@ -275,6 +275,43 @@ class MySQLDatabase {
       await this._createIndex(conn, 'idx_kyougi_match_status', 'taekwondo_kyougi_matchs', 'kyougi_match_status');
       await this._createIndex(conn, 'idx_kyougi_match_event_id', 'taekwondo_kyougi_matchs', 'event_id');
 
+      /* --- 柔术比赛表 --- */
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS jiu_jitsu_matchs (
+          id INT PRIMARY KEY AUTO_INCREMENT UNIQUE,
+          event_id INT DEFAULT NULL,
+          jiu_jitsu_match_venue VARCHAR(50) DEFAULT NULL,
+          jiu_jitsu_match_id VARCHAR(50) DEFAULT NULL,
+          jiu_jitsu_match_categroy VARCHAR(255) DEFAULT NULL,
+          jiu_jitsu_match_round_num INT DEFAULT 1,
+          jiu_jitsu_match_round_name VARCHAR(100) DEFAULT NULL,
+          jiu_jitsu_match_category_total_rounds INT DEFAULT 1,
+          jiu_jitsu_bracket_match_id INT DEFAULT NULL,
+          jiu_jitsu_blue_athlete_id VARCHAR(100) DEFAULT NULL,
+          jiu_jitsu_blue_athlete_name VARCHAR(255) DEFAULT NULL,
+          jiu_jitsu_blue_athlete_team VARCHAR(255) DEFAULT NULL,
+          jiu_jitsu_blue_prev_winner VARCHAR(255) DEFAULT NULL,
+          jiu_jitsu_red_athlete_id VARCHAR(100) DEFAULT NULL,
+          jiu_jitsu_red_athlete_name VARCHAR(255) DEFAULT NULL,
+          jiu_jitsu_red_athlete_team VARCHAR(255) DEFAULT NULL,
+          jiu_jitsu_red_prev_winner_id VARCHAR(255) DEFAULT NULL,
+          jiu_jitsu_match_status VARCHAR(20) DEFAULT '未开始',
+          jiu_jitsu_match_scores VARCHAR(50) DEFAULT NULL,
+          jiu_jitsu_match_scores_detail JSON DEFAULT NULL,
+          jiu_jitsu_win_method VARCHAR(100) DEFAULT NULL,
+          jiu_jitsu_winner VARCHAR(20) DEFAULT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          FOREIGN KEY (event_id) REFERENCES events(event_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      await this._createIndex(conn, 'uk_jj_event_venue_match', 'jiu_jitsu_matchs', ['event_id', 'jiu_jitsu_match_venue', 'jiu_jitsu_match_id'], true);
+      await this._createIndex(conn, 'idx_jj_match_categroy', 'jiu_jitsu_matchs', 'jiu_jitsu_match_categroy');
+      await this._createIndex(conn, 'idx_jj_match_venue', 'jiu_jitsu_matchs', 'jiu_jitsu_match_venue');
+      await this._createIndex(conn, 'idx_jj_match_status', 'jiu_jitsu_matchs', 'jiu_jitsu_match_status');
+      await this._createIndex(conn, 'idx_jj_match_event_id', 'jiu_jitsu_matchs', 'event_id');
+
       /* --- 对阵图相关表（brackets-manager 适配） --- */
       await conn.execute(`
         CREATE TABLE IF NOT EXISTS bracket_participant (
