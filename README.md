@@ -319,8 +319,7 @@ npm run dev
 | `athletes` | 运动员基本信息 |
 | `athletes_weighing` | 称重记录 |
 | `category_mode` | 比赛分组模式 |
-| `matchs` | 传统比赛记录（旧版兼容） |
-| `taekwondo_kyougi_matchs` | 竞技比赛记录（新版） |
+| `taekwondo_kyougi_matchs` | 竞技比赛记录 |
 
 ### 对阵图相关表（brackets-manager 标准 Schema）
 
@@ -391,8 +390,7 @@ npm run dev
 
 1. 系统启动时自动创建数据库（如不存在）
 2. 自动执行表结构迁移（CREATE TABLE IF NOT EXISTS）
-3. 自动将旧版 `matchs` 表数据迁移到新版 `taekwondo_kyougi_matchs` 表
-4. 初始化默认管理员账户
+3. 初始化默认管理员账户
 
 ### 添加新的 API 模块
 

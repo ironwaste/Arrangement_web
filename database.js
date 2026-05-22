@@ -1,4 +1,16 @@
+/**
+ * 数据库模块 - MySQL 连接池与表结构管理
+ *
+ * 职责：
+ * 1. MySQL 连接池创建与生命周期管理
+ * 2. 数据库/表的自动创建与索引管理
+ * 3. 提供 SQLite 风格的兼容查询接口 (run/get/all/exec/prepare)
+ * 4. 事务支持
+ */
+
 const mysql = require('mysql2/promise');
+
+/* ==================== 数据库连接配置 ==================== */
 
 const DB_CONFIG = {
   host: process.env.DB_HOST || 'localhost',
@@ -20,6 +32,9 @@ class MySQLDatabase {
     this.db = null;
   }
 
+  /* ==================== 内部工具方法 ==================== */
+
+  /** 安全创建索引（已存在时跳过） */
   async _createIndex(conn, indexName, tableName, columns, isUnique = false) {
     try {
       const keyword = isUnique ? 'UNIQUE INDEX' : 'INDEX';
@@ -31,6 +46,9 @@ class MySQLDatabase {
     }
   }
 
+  /* ==================== 连接与初始化 ==================== */
+
+  /** 连接数据库，自动建库、建表 */
   async connect() {
     try {
       const createConn = await mysql.createConnection({
@@ -49,6 +67,7 @@ class MySQLDatabase {
       this.pool = mysql.createPool(DB_CONFIG);
       this.db = this.pool;
 
+      // 将 undefined 参数自动转为 null，避免 MySQL 驱动报错
       const originalExecute = this.pool.execute.bind(this.pool);
       this.pool.execute = async function(sql, params) {
         const safeParams = Array.isArray(params) ? params.map(p => p === undefined ? null : p) : params;
@@ -64,6 +83,9 @@ class MySQLDatabase {
     }
   }
 
+  /* ==================== SQLite 兼容查询接口 ==================== */
+
+  /** 执行写操作 (INSERT/UPDATE/DELETE)，返回 { id, changes, insertId } */
   async run(sql, params = []) {
     sql = sql.replace(/\?/g, (m, offset, str) => {
       const before = str.substring(0, offset);
@@ -85,16 +107,19 @@ class MySQLDatabase {
     return { changes: result.affectedRows, insertId: result.insertId };
   }
 
+  /** 查询单行，返回对象或 null */
   async get(sql, params = []) {
     const [rows] = await this.pool.execute(sql, params);
     return rows.length > 0 ? rows[0] : null;
   }
 
+  /** 查询多行，返回数组 */
   async all(sql, params = []) {
     const [rows] = await this.pool.execute(sql, params);
     return rows;
   }
 
+  /** 执行多条 SQL（分号分隔） */
   async exec(sql) {
     const statements = sql.split(';').filter(s => s.trim());
     for (const stmt of statements) {
@@ -102,11 +127,18 @@ class MySQLDatabase {
     }
   }
 
+  /* ==================== 表结构初始化 ==================== */
+
+  /** 创建所有业务表及索引（事务内执行，失败自动回滚） */
   async initTables() {
     const conn = await this.pool.getConnection();
     try {
       await conn.beginTransaction();
 
+      /* --- 清理旧版废弃表 --- */
+      await conn.execute('DROP TABLE IF EXISTS matchs');
+
+      /* --- 赛事相关表 --- */
       await conn.execute(`
         CREATE TABLE IF NOT EXISTS events (
           event_id INT PRIMARY KEY AUTO_INCREMENT,
@@ -139,6 +171,7 @@ class MySQLDatabase {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
 
+      /* --- 运动员相关表 --- */
       await conn.execute(`
         CREATE TABLE IF NOT EXISTS athletes (
           id INT PRIMARY KEY AUTO_INCREMENT,
@@ -164,6 +197,7 @@ class MySQLDatabase {
       await this._createIndex(conn, 'idx_athletes_team', 'athletes', 'athlete_team');
       await this._createIndex(conn, 'idx_athletes_event_id', 'athletes', 'event_id');
 
+      /* --- 称重记录表 --- */
       await conn.execute(`
         CREATE TABLE IF NOT EXISTS athletes_weighing (
           id INT PRIMARY KEY AUTO_INCREMENT,
@@ -180,6 +214,7 @@ class MySQLDatabase {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
 
+      /* --- 级别模式配置表 --- */
       await conn.execute(`
         CREATE TABLE IF NOT EXISTS category_mode (
           category_id INT PRIMARY KEY AUTO_INCREMENT,
@@ -202,56 +237,8 @@ class MySQLDatabase {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
 
-      await conn.execute(`
-        CREATE TABLE IF NOT EXISTS matchs (
-          id INT PRIMARY KEY AUTO_INCREMENT,
-          event_id INT DEFAULT NULL,
-          category_id VARCHAR(100) DEFAULT NULL,
-          match_venue VARCHAR(50) DEFAULT NULL,
-          match_id VARCHAR(50) DEFAULT NULL,
-          match_categroy VARCHAR(255) DEFAULT NULL,
-          match_round_num INT DEFAULT 1,
-          match_round_name VARCHAR(100) DEFAULT NULL,
-          match_category_total_rounds INT DEFAULT 1,
-          blue_athlete_id VARCHAR(100) DEFAULT NULL,
-          blue_athlete_name VARCHAR(255) DEFAULT NULL,
-          blue_athlete_team VARCHAR(255) DEFAULT NULL,
-          blue_prev_winner VARCHAR(255) DEFAULT NULL,
-          red_athlete_id VARCHAR(100) DEFAULT NULL,
-          red_athlete_name VARCHAR(255) DEFAULT NULL,
-          red_athlete_team VARCHAR(255) DEFAULT NULL,
-          red_prev_winner VARCHAR(255) DEFAULT NULL,
-          match_status VARCHAR(20) DEFAULT '未开始',
-          win_method VARCHAR(100) DEFAULT NULL,
-          weight_class VARCHAR(255) DEFAULT NULL,
-          venue VARCHAR(50) DEFAULT NULL,
-          venue_no INT DEFAULT 0,
-          round INT DEFAULT 1,
-          total_rounds INT DEFAULT 1,
-          blue_score INT DEFAULT 0,
-          blue_wins INT DEFAULT 0,
-          blue_draw_no INT DEFAULT 0,
-          blue_name VARCHAR(255) DEFAULT NULL,
-          blue_unit VARCHAR(255) DEFAULT NULL,
-          red_score INT DEFAULT 0,
-          red_wins INT DEFAULT 0,
-          red_draw_no INT DEFAULT 0,
-          red_name VARCHAR(255) DEFAULT NULL,
-          red_unit VARCHAR(255) DEFAULT NULL,
-          winner VARCHAR(20) DEFAULT NULL,
-          bracket_match_id INT DEFAULT NULL,
-          round_name VARCHAR(100) DEFAULT NULL,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          FOREIGN KEY (event_id) REFERENCES events(event_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-      `);
 
-      await this._createIndex(conn, 'idx_matchs_weight_class', 'matchs', 'weight_class');
-      await this._createIndex(conn, 'idx_matchs_venue_no', 'matchs', 'venue_no');
-      await this._createIndex(conn, 'idx_matchs_status', 'matchs', 'match_status');
-      await this._createIndex(conn, 'idx_matchs_event_id', 'matchs', 'event_id');
-
+      /* --- 跆拳道竞技比赛表 --- */
       await conn.execute(`
         CREATE TABLE IF NOT EXISTS taekwondo_kyougi_matchs (
           id INT PRIMARY KEY AUTO_INCREMENT UNIQUE,
@@ -288,6 +275,7 @@ class MySQLDatabase {
       await this._createIndex(conn, 'idx_kyougi_match_status', 'taekwondo_kyougi_matchs', 'kyougi_match_status');
       await this._createIndex(conn, 'idx_kyougi_match_event_id', 'taekwondo_kyougi_matchs', 'event_id');
 
+      /* --- 对阵图相关表（brackets-manager 适配） --- */
       await conn.execute(`
         CREATE TABLE IF NOT EXISTS bracket_participant (
           id INT PRIMARY KEY AUTO_INCREMENT,
@@ -384,6 +372,7 @@ class MySQLDatabase {
 
       await this._createIndex(conn, 'idx_match_game_match', 'bracket_match_game', 'match_id');
 
+      /* --- 品势相关表 --- */
       await conn.execute(`
         CREATE TABLE IF NOT EXISTS poomsae_groups (
           id INT PRIMARY KEY AUTO_INCREMENT,
@@ -505,6 +494,7 @@ class MySQLDatabase {
 
       await this._createIndex(conn, 'idx_poomsae_scores_match', 'poomsae_scores', 'match_id');
 
+      /* --- 用户认证表 --- */
       await conn.execute(`
         CREATE TABLE IF NOT EXISTS test_user (
           id INT PRIMARY KEY AUTO_INCREMENT,
@@ -516,6 +506,7 @@ class MySQLDatabase {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
 
+      // 创建默认管理员账户（不存在时插入）
       await conn.execute(`
         INSERT INTO test_user (username, password, role)
         SELECT 'root', '123456', 'admin'
@@ -532,63 +523,9 @@ class MySQLDatabase {
     }
   }
 
-  async migrateMatchsToKyougiMatchs() {
-    try {
-      const oldRows = await this.all('SELECT COUNT(*) as cnt FROM matchs');
-      if (!oldRows || oldRows[0].cnt === 0) {
-        console.log('📋 旧matchs表无数据，跳过迁移');
-        return;
-      }
+  /* ==================== 预编译语句（兼容 brackets-manager） ==================== */
 
-      const existing = await this.all('SELECT COUNT(*) as cnt FROM taekwondo_kyougi_matchs');
-      if (existing && existing[0].cnt > 0) {
-        console.log('📋 taekwondo_kyougi_matchs表已有数据，跳过迁移');
-        return;
-      }
-
-      const oldMatches = await this.all('SELECT * FROM matchs');
-      for (const m of oldMatches) {
-        const scores = (m.blue_score != null && m.red_score != null)
-          ? `${m.blue_score}:${m.red_score}` : null;
-        await this.run(
-          `INSERT INTO taekwondo_kyougi_matchs (
-            event_id, kyougi_match_venue, kyougi_match_id, kyougi_match_categroy,
-            kyougi_match_round_num, kyougi_match_round_name, kyougi_match_category_total_rounds,
-            kyougi_bracket_match_id,
-            kyougi_blue_athlete_id, kyougi_blue_athlete_name, kyougi_blue_athlete_team, kyougi_blue_prev_winner,
-            kyougi_red_athlete_id, kyougi_red_athlete_name, kyougi_red_athlete_team, kyougi_red_prev_winner_id,
-            kyougi_match_status, kyougi_match_scores, kyougi_win_method, kyougi_winner
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            m.event_id ?? null,
-            m.venue_no != null ? String(m.venue_no) : (m.venue || null),
-            m.match_id ?? null,
-            m.weight_class ?? m.match_categroy ?? null,
-            m.round ?? m.match_round_num ?? 1,
-            m.round_name ?? m.match_round_name ?? null,
-            m.total_rounds ?? m.match_category_total_rounds ?? 1,
-            m.bracket_match_id ?? null,
-            m.blue_athlete_id ?? null,
-            m.blue_name ?? m.blue_athlete_name ?? null,
-            m.blue_unit ?? m.blue_athlete_team ?? null,
-            m.blue_prev_winner ?? null,
-            m.red_athlete_id ?? null,
-            m.red_name ?? m.red_athlete_name ?? null,
-            m.red_unit ?? m.red_athlete_team ?? null,
-            m.red_prev_winner ?? null,
-            m.match_status ?? '未开始',
-            scores,
-            m.win_method ?? null,
-            m.winner ?? null
-          ]
-        );
-      }
-      console.log(`✅ 已迁移 ${oldMatches.length} 条数据从matchs到taekwondo_kyougi_matchs`);
-    } catch (err) {
-      console.error('❌ 迁移matchs数据失败:', err.message);
-    }
-  }
-
+  /** 返回一个预编译 SQL 的执行器对象，支持 run/get/all 方法 */
   prepare(sql) {
     const pool = this.pool;
     return {
@@ -610,6 +547,9 @@ class MySQLDatabase {
     };
   }
 
+  /* ==================== 事务支持 ==================== */
+
+  /** 在事务中执行回调函数，自动提交/回滚 */
   async transaction(fn) {
     const conn = await this.pool.getConnection();
     try {
@@ -624,6 +564,8 @@ class MySQLDatabase {
       conn.release();
     }
   }
+
+  /* ==================== 连接关闭 ==================== */
 
   async close() {
     if (this.pool) {

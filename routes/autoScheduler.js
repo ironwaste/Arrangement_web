@@ -1,5 +1,7 @@
+/** 自动编排调度模块，提供种子排序、循环赛/分区赛生成、对阵图创建等功能 */
 const { deleteKyougiMatchsByClass } = require('./kyougiMatchHelpers');
 
+/** 生成标准种子排序（用于淘汰赛对阵位置分配） */
 function generateStandardSeedOrder(size) {
   if (size <= 1) return [1];
   let pairs = [[1, 2]];
@@ -17,6 +19,7 @@ function generateStandardSeedOrder(size) {
   return pairs.flat();
 }
 
+/** 生成单循环赛对阵 */
 function generateRoundRobinMatches(n, method) {
   if (n < 2) return [];
   const isOdd = n % 2 !== 0;
@@ -48,6 +51,7 @@ function generateRoundRobinMatches(n, method) {
   return allRounds;
 }
 
+/** 生成分区循环赛对阵 */
 function generateDivisionalRoundRobin(n, method) {
   let upperSize, lowerSize;
   if (method === '5人循环赛-2') { upperSize = 3; lowerSize = 2; }
@@ -61,6 +65,7 @@ function generateDivisionalRoundRobin(n, method) {
   return { upperSize, lowerSize, upperMatches, lowerMatches, hasFinal: true };
 }
 
+/** 根据轮次号和总轮次计算轮次名称 */
 function getRoundName(roundNumber, totalRounds) {
   if (!roundNumber || !totalRounds) return null;
   if (roundNumber === totalRounds) return 'Final';
@@ -68,6 +73,7 @@ function getRoundName(roundNumber, totalRounds) {
   return `1/${denominator}`;
 }
 
+/** 为单个级别生成对阵图（支持淘汰赛/循环赛/分区赛） */
 async function generateBracketForClass(db, manager, weightClass, athletes, event_id, forceElimination = false) {
   await deleteKyougiMatchsByClass(db, weightClass, event_id);
 

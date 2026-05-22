@@ -1,3 +1,6 @@
+/**
+ * 品势比赛管理路由，包含品势组别CRUD、运动员管理、比赛编排、评分等
+ */
 const express = require('express');
 const router = express.Router();
 const ExcelJS = require('exceljs');

@@ -1,3 +1,6 @@
+/**
+ * 统计与导出路由，包含团体总分、奖牌榜、名次公告、成绩汇总等统计与Excel导出
+ */
 const express = require('express');
 const router = express.Router();
 const ExcelJS = require('exceljs');
@@ -5,6 +8,7 @@ const { getFinishedKyougiMatchs, toLegacyFormat } = require('./kyougiMatchHelper
 
 module.exports = (db) => {
 
+  /* ==================== 团体总分统计 ==================== */
   router.get('/stats/team-scores', async (req, res) => {
     try {
       const { event_id } = req.query;
@@ -109,6 +113,7 @@ module.exports = (db) => {
     }
   });
 
+  /* ==================== 奖牌榜统计 ==================== */
   router.get('/stats/medals', async (req, res) => {
     try {
       const { event_id } = req.query;
@@ -165,6 +170,7 @@ module.exports = (db) => {
     }
   });
 
+  /* ==================== 冠军列表 ==================== */
   router.get('/stats/champions', async (req, res) => {
     try {
       const { event_id } = req.query;
@@ -217,6 +223,7 @@ module.exports = (db) => {
     }
   });
 
+  /* ==================== 团体总分导出 ==================== */
   router.get('/stats/team-scores/export', async (req, res) => {
     try {
       const { event_id } = req.query;
@@ -344,6 +351,7 @@ module.exports = (db) => {
     }
   });
 
+  /* ==================== 奖牌榜导出 ==================== */
   router.get('/stats/medals/export', async (req, res) => {
     try {
       const { event_id } = req.query;
@@ -704,6 +712,7 @@ module.exports = (db) => {
     }
   });
 
+  /* ==================== 名次公告 ==================== */
   router.get('/stats/rank-announcement', async (req, res) => {
     try {
       const { event_id } = req.query;
@@ -1091,6 +1100,7 @@ module.exports = (db) => {
     }
   });
 
+  /* ==================== 成绩汇总导出 ==================== */
   router.get('/stats/all-results/export', async (req, res) => {
     try {
       const athletes = await db.all('SELECT a.*, e.event_name as event_name FROM athletes a LEFT JOIN events e ON a.event_id = e.event_id ORDER BY a.athlete_gender DESC, a.athlete_age_group, a.athlete_category, a.athlete_draw_num');
@@ -1242,6 +1252,7 @@ module.exports = (db) => {
     }
   });
 
+  /* ==================== Excel 模板下载 ==================== */
   router.get('/templates/team-score', async (req, res) => {
     try {
       const workbook = new ExcelJS.Workbook();

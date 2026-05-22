@@ -1,3 +1,6 @@
+/**
+ * 运动员管理路由，包含运动员CRUD、批量导入、抽签、级别查询等
+ */
 const express = require('express');
 const router = express.Router();
 const {
@@ -5,6 +8,7 @@ const {
 } = require('./kyougiMatchHelpers');
 
 module.exports = (db) => {
+  /** 查找或创建品势组别 */
   async function findOrCreatePoomsaeGroup(eventId, groupName, type, gender, groupClass, beltLevel) {
     const existingGroup = await db.get(
       'SELECT id FROM poomsae_groups WHERE event_id = ? AND name = ? AND type = ? AND gender = ? AND age_group = ? AND form_name = ?',
@@ -20,6 +24,7 @@ module.exports = (db) => {
     return groupResult.id;
   }
 
+  /* ==================== 运动员 CRUD ==================== */
   router.get('/athletes', async (req, res) => {
     try {
       const { weight_class, unit, gender, event_id, athlete_type } = req.query;
@@ -161,6 +166,7 @@ module.exports = (db) => {
     }
   });
 
+  /* ==================== 运动员批量操作 ==================== */
   router.delete('/athletes/all', async (req, res) => {
     try {
       const { event_id, athlete_type } = req.query;
@@ -257,6 +263,7 @@ module.exports = (db) => {
     }
   });
 
+  /* ==================== 级别查询 ==================== */
   router.get('/weight-classes', async (req, res) => {
     try {
       const { event_id } = req.query;
@@ -274,6 +281,7 @@ module.exports = (db) => {
     }
   });
 
+  /* ==================== 抽签功能 ==================== */
   async function performDraw(athletes) {
     for (const a of athletes) {
       await db.run('UPDATE athletes SET athlete_draw_num = 0 WHERE id = ?', [a.id]);

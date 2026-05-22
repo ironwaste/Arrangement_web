@@ -1,3 +1,4 @@
+/** JWT 认证模块，提供令牌生成、验证和请求中间件 */
 const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'taekwondo_manager_secret_key_2026';

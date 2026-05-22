@@ -1,3 +1,6 @@
+/**
+ * 竞技比赛对阵表路由，包含对阵查询、比分录入、Excel导出等
+ */
 const express = require('express');
 const router = express.Router();
 const {
@@ -17,6 +20,7 @@ const {
 } = require('./kyougiMatchHelpers');
 
 module.exports = (db) => {
+  /* ==================== 对阵表查询 ==================== */
   router.get('/matches', async (req, res) => {
     try {
       const { weight_class, round, status, event_id, arranged_only } = req.query;
@@ -48,6 +52,7 @@ module.exports = (db) => {
     }
   });
 
+  /* ==================== 对阵表重置 ==================== */
   router.post('/matches/reset', async (req, res) => {
     try {
       const { event_id } = req.body;
@@ -62,6 +67,7 @@ module.exports = (db) => {
     }
   });
 
+  /* ==================== Excel 导出 ==================== */
   router.get('/matches/export-excel-template', async (req, res) => {
     try {
       const ExcelJS = require('exceljs');

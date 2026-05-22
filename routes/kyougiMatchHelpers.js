@@ -1,5 +1,7 @@
+/** 竞技比赛数据操作辅助模块，封装 taekwondo_kyougi_matchs 表的 CRUD 操作 */
 const TABLE = 'taekwondo_kyougi_matchs';
 
+/** 解析比分字符串 "3:2" → { blue_score, red_score } */
 function parseScores(scoresStr) {
   if (!scoresStr) return { blue_score: 0, red_score: 0 };
   const parts = String(scoresStr).split(':');
@@ -9,11 +11,13 @@ function parseScores(scoresStr) {
   };
 }
 
+/** 格式化比分为字符串 */
 function formatScores(blueScore, redScore) {
   if (blueScore == null && redScore == null) return null;
   return `${blueScore || 0}:${redScore || 0}`;
 }
 
+/** 插入一条竞技比赛记录 */
 async function insertKyougiMatch(db, data) {
   const scores = formatScores(data.blue_score, data.red_score);
   return db.run(
@@ -51,6 +55,7 @@ async function insertKyougiMatch(db, data) {
   );
 }
 
+/** 更新比赛比分和结果 */
 async function updateKyougiMatchScore(db, id, data) {
   const scores = formatScores(data.blue_score, data.red_score);
   return db.run(
@@ -68,6 +73,7 @@ async function updateKyougiMatchScore(db, id, data) {
   );
 }
 
+/** 重置比赛（清除比分和场地信息） */
 async function resetKyougiMatch(db, id) {
   return db.run(
     `UPDATE ${TABLE} SET
@@ -79,6 +85,7 @@ async function resetKyougiMatch(db, id) {
   );
 }
 
+/** 更新青方选手信息 */
 async function updateKyougiMatchBlue(db, id, data) {
   return db.run(
     `UPDATE ${TABLE} SET
@@ -94,6 +101,7 @@ async function updateKyougiMatchBlue(db, id, data) {
   );
 }
 
+/** 更新红方选手信息 */
 async function updateKyougiMatchRed(db, id, data) {
   return db.run(
     `UPDATE ${TABLE} SET
@@ -109,6 +117,7 @@ async function updateKyougiMatchRed(db, id, data) {
   );
 }
 
+/** 更新上一轮胜者标签 */
 async function updateKyougiMatchPrevWinners(db, id, bluePrevWinner, redPrevWinner) {
   return db.run(
     `UPDATE ${TABLE} SET kyougi_blue_prev_winner = ?, kyougi_red_prev_winner_id = ? WHERE id = ?`,
@@ -116,6 +125,7 @@ async function updateKyougiMatchPrevWinners(db, id, bluePrevWinner, redPrevWinne
   );
 }
 
+/** 更新比赛场地 */
 async function updateKyougiMatchVenue(db, id, venue, venueNo) {
   return db.run(
     `UPDATE ${TABLE} SET kyougi_match_venue = ? WHERE id = ?`,
@@ -123,6 +133,7 @@ async function updateKyougiMatchVenue(db, id, venue, venueNo) {
   );
 }
 
+/** 清除比赛场地信息 */
 async function clearKyougiMatchVenue(db, id) {
   return db.run(
     `UPDATE ${TABLE} SET kyougi_match_venue = NULL, kyougi_match_id = NULL WHERE id = ?`,
@@ -130,6 +141,7 @@ async function clearKyougiMatchVenue(db, id) {
   );
 }
 
+/** 批量更新比赛信息 */
 async function batchUpdateKyougiMatch(db, matchData) {
   return db.run(
     `UPDATE ${TABLE} SET
@@ -156,6 +168,7 @@ async function batchUpdateKyougiMatch(db, matchData) {
   );
 }
 
+/** 按赛事ID删除所有比赛 */
 async function deleteKyougiMatchsByEvent(db, eventId) {
   return db.run(`DELETE FROM ${TABLE} WHERE event_id = ?`, [eventId]);
 }
@@ -167,6 +180,7 @@ async function deleteKyougiMatchsByClass(db, weightClass, eventId) {
   return db.run(`DELETE FROM ${TABLE} WHERE kyougi_match_categroy = ?`, [weightClass]);
 }
 
+/** 按运动员ID删除相关比赛 */
 async function deleteKyougiMatchsByAthletes(db, athleteIds) {
   if (!athleteIds || athleteIds.length === 0) return;
   const placeholders = athleteIds.map(() => '?').join(',');
@@ -176,14 +190,17 @@ async function deleteKyougiMatchsByAthletes(db, athleteIds) {
   );
 }
 
+/** 删除所有比赛记录 */
 async function deleteAllKyougiMatchs(db) {
   return db.run(`DELETE FROM ${TABLE}`);
 }
 
+/** 按ID查询单条比赛 */
 async function getKyougiMatchById(db, id) {
   return db.get(`SELECT * FROM ${TABLE} WHERE id = ?`, [id]);
 }
 
+/** 按条件查询比赛列表 */
 async function queryKyougiMatchs(db, filters) {
   let sql = `SELECT * FROM ${TABLE} WHERE 1=1`;
   const params = [];
@@ -209,6 +226,7 @@ async function queryKyougiMatchs(db, filters) {
   return db.all(sql, params);
 }
 
+/** 查询已结束的比赛 */
 async function getFinishedKyougiMatchs(db, eventId) {
   let sql = `SELECT * FROM ${TABLE} WHERE kyougi_match_status = '已结束'`;
   const params = [];
@@ -219,6 +237,7 @@ async function getFinishedKyougiMatchs(db, eventId) {
   return db.all(sql, params);
 }
 
+/** 根据上一轮胜者标签查找后续比赛 */
 async function findNextMatchesByPrevWinner(db, eventId, prevWinnerLabel) {
   return db.all(
     `SELECT * FROM ${TABLE} WHERE event_id = ? AND (kyougi_blue_prev_winner = ? OR kyougi_red_prev_winner_id = ?)`,
@@ -226,6 +245,7 @@ async function findNextMatchesByPrevWinner(db, eventId, prevWinnerLabel) {
   );
 }
 
+/** 将新版数据格式转换为旧版兼容格式 */
 function toLegacyFormat(row) {
   if (!row) return row;
   const scores = parseScores(row.kyougi_match_scores);

@@ -1,3 +1,4 @@
+/** WebSocket 实时通信模块，支持裁判评分、比赛状态同步 */
 const WebSocket = require('ws');
 
 class WebSocketManager {

@@ -1,6 +1,18 @@
+/**
+ * 跆拳道编排系统 - 主入口文件
+ *
+ * 职责：
+ * 1. Express 应用初始化与中间件配置
+ * 2. 页面路由（EJS 渲染）
+ * 3. 数据库连接与 brackets-manager 初始化
+ * 4. API 路由挂载（认证 + 业务路由）
+ * 5. WebSocket 服务启动
+ */
+
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const multer = require('multer');
 const { authMiddleware, generateToken } = require('./auth');
 
@@ -12,210 +24,102 @@ const { BracketsManager } = require('brackets-manager');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+/* ==================== 视图引擎配置 ==================== */
+
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
+/* ==================== 页面配置表 ==================== */
+/* 每个页面的标题、脚本、初始化函数、对应的 EJS 模板文件 */
+
 const pageConfig = {
-    dashboard: { title: '仪表盘', scripts: '', init: 'loadDashboard();' },
-    events: { title: '赛事列表', scripts: '<script src="/js/excel-filter.js"></script><script src="/js/events.js"></script>', init: 'loadEvents();' },
-    athletes: { title: '运动员管理', scripts: '<script src="/js/athletes.js"></script><script src="/js/excel-filter.js"></script>', init: 'loadAthletes();' },
-    weighin: { title: '称重管理', scripts: '<script src="/js/weighin.js"></script><script src="/js/excel-filter.js"></script>', init: 'loadWeighinData(); loadWeighinTolerance();' },
-    brackets: { title: '跆拳道编排', scripts: '<script src="/js/excel-filter.js"></script><script src="/js/category-mode.js"></script><script src="/js/brackets.js"></script>', init: 'loadAutoArrangeData();' },
-    bracketDetail: { title: '对阵图', scripts: '<script src="/js/category-mode.js"></script><script src="/js/bracket-detail.js"></script>', init: 'loadBracketClassList();' },
-    bracketTest: { title: '摔跤编排', scripts: '<script src="/js/bracket-test.js"></script>', init: 'loadBracketTestPage();' },
-    matches: { title: '对阵表', scripts: '<script src="/js/matches.js"></script><script src="/js/medal-board.js"></script><script src="/js/team-scores.js"></script><script src="/js/excel-filter.js"></script>', init: 'loadMatches();' },
-    teamScores: { title: '团体总分', scripts: '<script src="/js/team-scores.js"></script>', init: 'loadTeamScores();' },
-    medalBoard: { title: '奖牌榜', scripts: '<script src="/js/medal-board.js"></script>', init: 'loadMedalBoard();' },
-    poomsae: { title: '品势编排', scripts: '<script src="/js/poomsae.js?v=' + Date.now() + '"></script>', init: 'loadPoomsaeArrangeData();' },
-    poomsaeAthletes: { title: '品势运动员管理', scripts: '<script src="/js/poomsae-athletes.js?v=' + Date.now() + '"></script>', init: 'loadAthletes();' },
-    poomsaeMatches: { title: '品势比赛查询', scripts: '<script src="/js/poomsae-matches.js?v=' + Date.now() + '"></script>', init: 'loadPoomsaeMatches();' }
+  dashboard:      { title: '仪表盘',       scripts: '',                                                                                                                  init: 'loadDashboard();',           view: 'dashboard.ejs' },
+  events:         { title: '赛事列表',     scripts: '<script src="/js/excel-filter.js"></script><script src="/js/events.js"></script>',                                   init: 'loadEvents();',              view: 'events.ejs' },
+  athletes:       { title: '运动员管理',   scripts: '<script src="/js/athletes.js"></script><script src="/js/excel-filter.js"></script>',                                 init: 'loadAthletes();',            view: 'athletes.ejs' },
+  weighin:        { title: '称重管理',     scripts: '<script src="/js/weighin.js"></script><script src="/js/excel-filter.js"></script>',                                 init: 'loadWeighinData(); loadWeighinTolerance();', view: 'weighin.ejs' },
+  brackets:       { title: '跆拳道编排',   scripts: '<script src="/js/excel-filter.js"></script><script src="/js/category-mode.js"></script><script src="/js/brackets.js"></script>', init: 'loadAutoArrangeData();', view: 'taekwondo-kyougi-brackets.ejs' },
+  bracketDetail:  { title: '对阵图',       scripts: '<script src="/js/category-mode.js"></script><script src="/js/bracket-detail.js"></script>',                          init: 'loadBracketClassList();',    view: 'bracket-detail.ejs' },
+  bracketTest:    { title: '摔跤编排',     scripts: '<script src="/js/bracket-test.js"></script>',                                                                       init: 'loadBracketTestPage();',     view: 'chinese-wrestle-arrange.ejs' },
+  matches:        { title: '对阵表',       scripts: '<script src="/js/matches.js"></script><script src="/js/medal-board.js"></script><script src="/js/team-scores.js"></script><script src="/js/excel-filter.js"></script>', init: 'loadMatches();', view: 'takewondo-kyougi-matches.ejs' },
+  teamScores:     { title: '团体总分',     scripts: '<script src="/js/team-scores.js"></script>',                                                                        init: 'loadTeamScores();',          view: 'team-scores.ejs' },
+  medalBoard:     { title: '奖牌榜',       scripts: '<script src="/js/medal-board.js"></script>',                                                                        init: 'loadMedalBoard();',          view: 'medal-board.ejs' },
+  poomsae:        { title: '品势编排',     scripts: `<script src="/js/poomsae.js?v=${Date.now()}"></script>`,                                                            init: 'loadPoomsaeArrangeData();',  view: 'poomsae.ejs' },
+  poomsaeAthletes:{ title: '品势运动员管理', scripts: `<script src="/js/poomsae-athletes.js?v=${Date.now()}"></script>`,                                                  init: 'loadAthletes();',            view: 'poomsae-athletes.ejs' },
+  poomsaeMatches: { title: '品势比赛查询', scripts: `<script src="/js/poomsae-matches.js?v=${Date.now()}"></script>`,                                                    init: 'loadPoomsaeMatches();',      view: 'poomsae-matches.ejs' }
 };
 
-function renderPage(req, res, page) {
-    const config = pageConfig[page];
-    res.setHeader('Content-Security-Policy', "frame-ancestors *");
-    res.removeHeader('X-Powered-By');
-    res.render('layout', {
-        activePage: page,
-        title: config.title,
-        body: config.body || '',
-        pageScripts: config.scripts,
-        initCalls: config.init
-    });
+/* ==================== URL 路径 → 页面键名映射 ==================== */
+
+const urlPageMap = {
+  '/':               'dashboard',
+  '/events':         'events',
+  '/athletes':       'athletes',
+  '/weighin':        'weighin',
+  '/brackets':       'brackets',
+  '/bracket-detail': 'bracketDetail',
+  '/bracket-test':   'bracketTest',
+  '/matches':        'matches',
+  '/team-scores':    'teamScores',
+  '/medal-board':    'medalBoard',
+  '/poomsae':        'poomsae',
+  '/poomsae-athletes':'poomsaeAthletes',
+  '/poomsae-matches':'poomsaeMatches'
+};
+
+/* ==================== 通用页面渲染 ==================== */
+
+function renderPage(req, res, pageKey) {
+  const config = pageConfig[pageKey];
+  const viewPath = path.join(__dirname, 'views', config.view);
+  const bodyContent = fs.readFileSync(viewPath, 'utf8');
+
+  res.setHeader('Content-Security-Policy', 'frame-ancestors *');
+  res.removeHeader('X-Powered-By');
+  res.render('layout', {
+    activePage: pageKey,
+    title: config.title,
+    body: bodyContent,
+    pageScripts: config.scripts,
+    initCalls: config.init
+  });
 }
 
-app.get('/', (req, res) => {
-    const config = pageConfig.dashboard;
-    res.render('layout', {
-        activePage: 'dashboard',
-        title: config.title,
-        body: require('fs').readFileSync(path.join(__dirname, 'views', 'dashboard.ejs'), 'utf8'),
-        pageScripts: config.scripts,
-        initCalls: config.init
-    });
-});
+for (const [urlPath, pageKey] of Object.entries(urlPageMap)) {
+  app.get(urlPath, (req, res) => renderPage(req, res, pageKey));
+}
 
-app.get('/events', (req, res) => {
-    const config = pageConfig.events;
-    res.render('layout', {
-        activePage: 'events',
-        title: config.title,
-        body: require('fs').readFileSync(path.join(__dirname, 'views', 'events.ejs'), 'utf8'),
-        pageScripts: config.scripts,
-        initCalls: config.init
-    });
-});
+/* ==================== 中间件配置 ==================== */
 
-app.get('/athletes', (req, res) => {
-    const config = pageConfig.athletes;
-    res.render('layout', {
-        activePage: 'athletes',
-        title: config.title,
-        body: require('fs').readFileSync(path.join(__dirname, 'views', 'athletes.ejs'), 'utf8'),
-        pageScripts: config.scripts,
-        initCalls: config.init
-    });
-});
-
-app.get('/weighin', (req, res) => {
-    const config = pageConfig.weighin;
-    res.render('layout', {
-        activePage: 'weighin',
-        title: config.title,
-        body: require('fs').readFileSync(path.join(__dirname, 'views', 'weighin.ejs'), 'utf8'),
-        pageScripts: config.scripts,
-        initCalls: config.init
-    });
-});
-
-app.get('/brackets', (req, res) => {
-    const config = pageConfig.brackets;
-    res.render('layout', {
-        activePage: 'brackets',
-        title: config.title,
-        body: require('fs').readFileSync(path.join(__dirname, 'views', 'taekwondo-kyougi-brackets.ejs'), 'utf8'),
-        pageScripts: config.scripts,
-        initCalls: config.init
-    });
-});
-
-app.get('/bracket-detail', (req, res) => {
-    const config = pageConfig.bracketDetail;
-    res.render('layout', {
-        activePage: 'bracketDetail',
-        title: config.title,
-        body: require('fs').readFileSync(path.join(__dirname, 'views', 'bracket-detail.ejs'), 'utf8'),
-        pageScripts: config.scripts,
-        initCalls: config.init
-    });
-});
-
-app.get('/bracket-test', (req, res) => {
-    const config = pageConfig.bracketTest;
-    res.render('layout', {
-        activePage: 'bracketTest',
-        title: config.title,
-        body: require('fs').readFileSync(path.join(__dirname, 'views', 'chinese-wrestle-arrange.ejs'), 'utf8'),
-        pageScripts: config.scripts,
-        initCalls: config.init
-    });
-});
-
-app.get('/matches', (req, res) => {
-    const config = pageConfig.matches;
-    res.render('layout', {
-        activePage: 'matches',
-        title: config.title,
-        body: require('fs').readFileSync(path.join(__dirname, 'views', 'takewondo-kyougi-matches.ejs'), 'utf8'),
-        pageScripts: config.scripts,
-        initCalls: config.init
-    });
-});
-
-app.get('/team-scores', (req, res) => {
-    const config = pageConfig.teamScores;
-    res.render('layout', {
-        activePage: 'teamScores',
-        title: config.title,
-        body: require('fs').readFileSync(path.join(__dirname, 'views', 'team-scores.ejs'), 'utf8'),
-        pageScripts: config.scripts,
-        initCalls: config.init
-    });
-});
-
-app.get('/medal-board', (req, res) => {
-    const config = pageConfig.medalBoard;
-    res.render('layout', {
-        activePage: 'medalBoard',
-        title: config.title,
-        body: require('fs').readFileSync(path.join(__dirname, 'views', 'medal-board.ejs'), 'utf8'),
-        pageScripts: config.scripts,
-        initCalls: config.init
-    });
-});
-
-app.get('/poomsae', (req, res) => {
-    const config = pageConfig.poomsae;
-    res.render('layout', {
-        activePage: 'poomsae',
-        title: config.title,
-        body: require('fs').readFileSync(path.join(__dirname, 'views', 'poomsae.ejs'), 'utf8'),
-        pageScripts: config.scripts,
-        initCalls: config.init
-    });
-});
-
-app.get('/poomsae-athletes', (req, res) => {
-    const config = pageConfig.poomsaeAthletes;
-    res.render('layout', {
-        activePage: 'poomsaeAthletes',
-        title: config.title,
-        body: require('fs').readFileSync(path.join(__dirname, 'views', 'poomsae-athletes.ejs'), 'utf8'),
-        pageScripts: config.scripts,
-        initCalls: config.init
-    });
-});
-
-app.get('/poomsae-matches', (req, res) => {
-    const config = pageConfig.poomsaeMatches;
-    res.render('layout', {
-        activePage: 'poomsaeMatches',
-        title: config.title,
-        body: require('fs').readFileSync(path.join(__dirname, 'views', 'poomsae-matches.ejs'), 'utf8'),
-        pageScripts: config.scripts,
-        initCalls: config.init
-    });
-});
-
-// 文件上传配置
 const upload = multer({ dest: 'uploads/' });
 
-// 中间件
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: 0, etag: false }));
 
-// 数据库实例
+/* ==================== 数据库与 brackets-manager 初始化 ==================== */
+
 const db = new MySQLDatabase();
 
-// brackets-manager 初始化
 let storage = null;
 let bracketsManager = null;
+
+/* ==================== 应用启动 ==================== */
 
 async function initApp() {
   try {
     await db.connect();
-    await db.migrateMatchsToKyougiMatchs();
+
     storage = new MySQLStorage(db.pool);
     bracketsManager = new BracketsManager(storage);
 
+    /* --- 认证相关 API（无需 authMiddleware） --- */
     app.post('/api/login', async (req, res) => {
       const { username, password } = req.body;
 
       try {
         const user = await db.get('SELECT * FROM test_user WHERE username = ?', [username]);
-        
+
         if (user && user.password === password) {
           const token = generateToken({ username: user.username, role: user.role });
           res.json({ success: true, token, username: user.username });
@@ -232,14 +136,16 @@ async function initApp() {
       res.json({ success: true, user: req.user });
     });
 
+    /* --- 业务 API 路由（需认证） --- */
     app.use('/api', authMiddleware);
-
     app.use('/api', routes(db, bracketsManager, upload));
 
+    /* --- 启动 HTTP 服务 --- */
     const server = app.listen(PORT, () => {
       console.log(`🥋 跆拳道编排系统服务器运行在 http://localhost:${PORT}`);
     });
 
+    /* --- 启动 WebSocket 服务 --- */
     const WebSocketManager = require('./websocket');
     new WebSocketManager(server, db);
   } catch (err) {
@@ -249,6 +155,8 @@ async function initApp() {
 }
 
 initApp();
+
+/* ==================== 优雅关闭 ==================== */
 
 process.on('SIGINT', async () => {
   console.log('\n正在关闭服务器...');

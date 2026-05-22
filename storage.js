@@ -1,3 +1,4 @@
+/** brackets-manager 的 MySQL 存储适配器，将对阵图数据持久化到 MySQL */
 const mysql = require('mysql2/promise');
 
 class MySQLStorage {

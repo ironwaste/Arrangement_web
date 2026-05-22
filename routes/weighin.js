@@ -1,3 +1,6 @@
+/**
+ * 称重管理路由，包含称重记录CRUD、称重合格判定、Excel导入导出等
+ */
 const express = require('express');
 const router = express.Router();
 const xlsx = require('xlsx');

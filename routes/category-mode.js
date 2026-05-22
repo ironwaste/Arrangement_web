@@ -1,3 +1,6 @@
+/**
+ * 级别模式配置路由，包含级别CRUD、同步、批量更新、统计等
+ */
 const express = require('express');
 const router = express.Router();
 

@@ -1,3 +1,8 @@
+/**
+ * 赛事管理路由
+ *
+ * 职责：赛事CRUD、对阵图生成、自动编排、配置管理、品势评分等
+ */
 const express = require('express');
 const router = express.Router();
 const {
@@ -23,6 +28,7 @@ const {
 module.exports = (db, bracketsManager) => {
   const manager = bracketsManager;
 
+  /** 根据赛事时间自动计算赛事状态 */
   function calcEventStatus(event, now) {
     const regStart = event.reg_start ? new Date(event.reg_start) : null;
     const regEnd = event.reg_end ? new Date(event.reg_end) : null;
@@ -35,6 +41,7 @@ module.exports = (db, bracketsManager) => {
     return '准备中';
   }
 
+  /* ==================== 赛事 CRUD ==================== */
   router.get('/events', async (req, res) => {
     try {
       const events = await db.all('SELECT * FROM events ORDER BY created_at DESC');
@@ -162,6 +169,7 @@ module.exports = (db, bracketsManager) => {
     }
   });
 
+  /* ==================== 赛事状态与选择 ==================== */
   router.get('/events/current', async (req, res) => {
     try {
       const event = await db.get('SELECT * FROM events WHERE event_status != "已结束" ORDER BY created_at DESC LIMIT 1');
@@ -197,6 +205,7 @@ module.exports = (db, bracketsManager) => {
   });
 
 
+  /* ==================== 对阵图数据同步 ==================== */
   async function syncMatchesFromBracket(weightClass, event_id) {
     const stageMapRow = await db.get(
       'SELECT id AS stage_id, type AS stage_type FROM bracket_stage WHERE event_id = ? AND category_id = ?',
@@ -387,6 +396,7 @@ module.exports = (db, bracketsManager) => {
     }
   }
 
+  /* ==================== 对阵表重排 ==================== */
   async function reorderMatches(event_id) {
     const allMatchesRaw = await queryKyougiMatchs(db, { event_id });
     const allMatches = allMatchesRaw.map(toLegacyFormat);
@@ -598,6 +608,7 @@ module.exports = (db, bracketsManager) => {
     }
   }
 
+  /** 根据参赛人数计算各轮次详情 */
   function calcRoundsDetail(count) {
     const rounds = {
       final: 1, half: 0, quarter: 0, eighth: 0,
@@ -617,6 +628,7 @@ module.exports = (db, bracketsManager) => {
     return { ...rounds, half: 1, quarter: 2, eighth: 4, sixteenth: 8, thirtysecond: 16, sixtyfourth: 32, onetwentyeighth: 64, twofiftysixth: count - 128, total: count - 1 };
   }
 
+  /* ==================== 摔跤编排 ==================== */
   function generateWrestlingEliminationMatches(weightClass, athletes, eventId) {
     const count = athletes.length;
     const targetSize = Math.pow(2, Math.ceil(Math.log2(count)));
@@ -806,6 +818,7 @@ module.exports = (db, bracketsManager) => {
     return matches;
   }
 
+  /* ==================== 总成绩册导出 ==================== */
   router.post('/stats/result-book', async (req, res) => {
     try {
       const ExcelJS = require('exceljs');
@@ -1298,6 +1311,7 @@ module.exports = (db, bracketsManager) => {
     }
   });
 
+  /* ==================== 品势评分 ==================== */
   router.get('/poomsae-scores/:matchId', async (req, res) => {
     try {
       const { matchId } = req.params;
@@ -1432,6 +1446,7 @@ module.exports = (db, bracketsManager) => {
     }
   });
 
+  /* ==================== 赛事配置 ==================== */
   router.get('/config', async (req, res) => {
     try {
       const { event_id } = req.query;
@@ -1510,7 +1525,7 @@ module.exports = (db, bracketsManager) => {
     }
   });
 
-  // ==================== 自动编排方案API（使用category_mode表） ====================
+  /* ==================== 自动编排方案 ==================== */
 
   router.get('/auto-arrange/scheme', async (req, res) => {
     try {
@@ -1799,6 +1814,7 @@ module.exports = (db, bracketsManager) => {
     }
   });
 
+  /* ==================== 对阵图管理 ==================== */
   router.get('/brackets/stage-map', async (req, res) => {
     try {
       const { event_id } = req.query;

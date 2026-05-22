@@ -1,3 +1,4 @@
+/** API 路由汇总入口，挂载所有子模块路由 */
 const express = require('express');
 const router = express.Router();
 const athletesRoutes = require('./athletes');

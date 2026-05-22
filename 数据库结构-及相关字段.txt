@@ -54,7 +54,7 @@ event_id  FK  赛事编号
 category_id   类别编号
 weight_class  级别   （根据赛事编号选择后，该赛事中的所有运动员中的级别去重显示）
 category_venue  该级别 场地号
-category_date_num  该级别  单元选择 （根据赛事天数来分n个单元，并根据该单元设置 matchs表格中的场次号首位 如第一单元 1001，第二单元2001，第三单元3001，依次类推）
+category_date_num  该级别  单元选择 （根据赛事天数来分n个单元，并根据该单元设置 taekwondo_kyougi_matchs表格中的场次号首位 如第一单元 1001，第二单元2001，第三单元3001，依次类推）
 categroy_count 该级别人数 (统计该赛事编号下的，该赛事的该级别内的人数)
 categroy_mode_num    级别竞赛方式 数字表示
 categroy_mode_name 级别竞赛方式 (' 单败淘汰赛 '、' 双败淘汰赛 '、' 单循环赛 '、' 分区循环赛 ' ) 
@@ -63,28 +63,6 @@ category_mode_description   级别模式备注
  6. bracket_*  对阵图表组
 在所有的bracket_* 表组中的表，加入event_id 和 category_id，并且根据这两个进行标识、存储以及前端显示的操作
 
-
-
-7. matchs   对阵表 数据库表
-id  主键 自增 unique
-match_venue  场次场地号
-match_id  场次号 
-match_categroy  场次级别
-match_round_num  轮次
-match_round_name  轮次名称 （跆拳道使用final、1/2、1/4、1/8等样式、摔跤使用 淘汰赛1、淘汰赛2、淘汰赛决赛以及循环赛1、循环赛2、分区循环赛决赛的样式）
-match_category_total_rounds 该级别总轮次数
-blue_athlete_id   青/蓝方运动员号（和athletes表中的athlete_id 号码相同）  跆拳道竞技赛事中使用青方，其他赛事使用蓝方 
-blue_athlete_name 青/蓝方运动员姓名 
-blue_athlete_team 青/蓝方运动员代表队
-blue_prev_winner
-
-red_athlete_id 红方运动员号 和athletes表中的athlete_id 号码相同
-red_athlete_name 红方运动员姓名 
-red_athlete_team 红方运动员代表队
-red_prev_winner
-
-match_status  场次状态
-win_method  场次胜利方式
 
 
 品势表组
