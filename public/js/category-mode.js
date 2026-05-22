@@ -39,7 +39,8 @@ const CategoryModeComponent = {
       console.error('加载category_mode数据失败:', err);
       
       try {
-        const athleteResp = await fetch(`${API_BASE}/athletes?event_id=${this.currentEventId}&athlete_type=taekwondo_kyougi`);
+        const currentAthleteType = currentEventType === 'jiu_jitsu' ? 'jiu_jitsu' : 'taekwondo_kyougi';
+        const athleteResp = await fetch(`${API_BASE}/athletes?event_id=${this.currentEventId}&athlete_type=${currentAthleteType}`);
         const athleteData = await athleteResp.json();
         const athletes = athleteData.data || [];
         

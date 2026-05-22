@@ -614,6 +614,42 @@ const JiuJitsuBrackets = {
     async generateJJBrackets() {
         if (!currentEventId) { alert('请先选择赛事'); return; }
 
+        try {
+            const checkRes = await fetch(`${API_BASE}/matches?${getEventParam()}`);
+            const checkData = await checkRes.json();
+            if (checkData.success && checkData.data && checkData.data.length > 0) {
+                if (!confirm('当前赛事已有对阵图数据，生成新对阵图将清除原有数据，是否继续？')) return;
+            }
+        } catch (e) {}
+
+        try {
+            const res = await fetch(`${API_BASE}/jj-brackets/generate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...getEventParamObj(), comp_modes: this.compModeConfig })
+            });
+            const data = await res.json();
+            if (data.success) {
+                const result = data.data;
+                let msg = '✅ 柔术对阵图生成完成！\n\n成功: ' + result.generated + ' 个级别';
+                if (result.errors && result.errors.length > 0) {
+                    msg += '\n\n警告:\n' + result.errors.join('\n');
+                }
+                alert(msg);
+                if (typeof loadAutoArrangeData === 'function') {
+                    loadAutoArrangeData();
+                }
+            } else {
+                alert('❌ 生成失败: ' + (data.error || '未知错误'));
+            }
+        } catch (e) {
+            alert('❌ 生成请求失败: ' + e.message);
+        }
+    },
+
+    async assignMatchIds() {
+        if (!currentEventId) { alert('请先选择赛事'); return; }
+
         const tbody = document.getElementById('autoArrangeTableBody');
         const rows = tbody ? tbody.querySelectorAll('tr') : [];
         if (rows.length === 0) { alert('暂无编排数据，请先添加运动员'); return; }
@@ -622,7 +658,8 @@ const JiuJitsuBrackets = {
         rows.forEach(tr => {
             const cells = tr.querySelectorAll('td');
             if (cells.length < 7) return;
-            const weightClass = cells[6].textContent.trim();
+            const weightClassTd = tr.querySelector('td[data-col="weightClass"]');
+            const weightClass = weightClassTd ? weightClassTd.textContent.trim() : '';
             const orderInput = cells[3].querySelector('input');
             const venueSelect = cells[4].querySelector('select');
             const unitSelect = cells[5].querySelector('select');
@@ -644,35 +681,30 @@ const JiuJitsuBrackets = {
         }
 
         try {
-            const checkRes = await fetch(`${API_BASE}/matches?${getEventParam()}`);
-            const checkData = await checkRes.json();
-            if (checkData.success && checkData.data && checkData.data.length > 0) {
-                if (!confirm('当前赛事已有对阵表数据，生成新对阵表将清除原有数据，是否继续？')) return;
-            }
-        } catch (e) {}
-
-        try {
-            const res = await fetch(`${API_BASE}/jj-brackets/generate`, {
+            const res = await fetch(`${API_BASE}/jj-brackets/assign-match-ids`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...getEventParamObj(), comp_modes: this.compModeConfig })
+                body: JSON.stringify({ event_id: currentEventId })
             });
             const data = await res.json();
             if (data.success) {
                 const result = data.data;
-                let msg = '✅ 柔术对阵表生成完成！\n\n成功: ' + result.generated + ' 个级别';
-                if (result.errors && result.errors.length > 0) {
-                    msg += '\n\n警告:\n' + result.errors.join('\n');
-                }
-                alert(msg);
+                alert(`✅ 对阵表生成完成！\n\n已分配 ${result.assigned} 场比赛的场次号和场地号`);
                 if (typeof loadAutoArrangeData === 'function') {
                     loadAutoArrangeData();
                 }
             } else {
-                alert('❌ 生成失败: ' + (data.error || '未知错误'));
+                alert('❌ 生成对阵表失败: ' + (data.error || '未知错误'));
             }
         } catch (e) {
-            alert('❌ 生成请求失败: ' + e.message);
+            alert('❌ 生成对阵表请求失败: ' + e.message);
+        }
+    },
+
+    async onCompModeChange(weightClass, mode) {
+        await this.saveCompModeConfig(weightClass, mode);
+        if (typeof loadAutoArrangeData === 'function') {
+            await loadAutoArrangeData();
         }
     }
 };

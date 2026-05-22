@@ -44,9 +44,13 @@ module.exports = (db) => {
         return res.status(400).json({ success: false, error: '缺少event_id参数' });
       }
 
+      const eventRow = await db.get('SELECT event_type FROM events WHERE event_id = ?', [event_id]);
+      const syncEventType = eventRow ? eventRow.event_type : 'taekwondo_kyougi';
+      const syncAthleteType = syncEventType === 'jiu_jitsu' ? 'jiu_jitsu' : syncEventType === 'taekwondo_poomsae' ? 'poomsae' : syncEventType === 'chinese_wrestle' ? 'chinese_wrestle' : 'taekwondo_kyougi';
+
       const athletes = await db.all(
-        'SELECT athlete_category, COUNT(*) as cnt FROM athletes WHERE event_id = ? AND athlete_category IS NOT NULL AND athlete_category != "" GROUP BY athlete_category',
-        [event_id]
+        'SELECT athlete_category, COUNT(*) as cnt FROM athletes WHERE event_id = ? AND athlete_type = ? AND athlete_category IS NOT NULL AND athlete_category != "" GROUP BY athlete_category',
+        [event_id, syncAthleteType]
       );
 
       let synced = 0;

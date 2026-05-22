@@ -22,7 +22,7 @@ function buildAthleteQuery(extraParams) {
         }
         return url;
     }
-    let url = '/athletes?' + getEventParam() + '&athlete_type=taekwondo_kyougi';
+    let url = '/athletes?' + getEventParam() + '&athlete_type=' + (currentEventType === 'jiu_jitsu' ? 'jiu_jitsu' : currentEventType === 'chinese_wrestle' ? 'chinese_wrestle' : 'taekwondo_kyougi');
     if (extraParams) {
         for (const [key, val] of Object.entries(extraParams)) {
             if (val !== undefined && val !== null && val !== '') {
@@ -35,10 +35,11 @@ function buildAthleteQuery(extraParams) {
 
 function applyAthleteTypeFilter(bodyOrUrl, isUrl) {
     if (isPoomsaeEvent()) return bodyOrUrl;
+    const at = currentEventType === 'jiu_jitsu' ? 'jiu_jitsu' : currentEventType === 'chinese_wrestle' ? 'chinese_wrestle' : 'taekwondo_kyougi';
     if (isUrl) {
-        bodyOrUrl += '&athlete_type=taekwondo_kyougi';
+        bodyOrUrl += '&athlete_type=' + at;
     } else {
-        bodyOrUrl.athlete_type = 'taekwondo_kyougi';
+        bodyOrUrl.athlete_type = at;
     }
     return bodyOrUrl;
 }
@@ -627,6 +628,8 @@ async function saveBatchAthletes(type) {
     const athletes = [];
     const errors = [];
 
+    const batchAthleteType = currentEventType === 'jiu_jitsu' ? 'jiu_jitsu' : currentEventType === 'chinese_wrestle' ? 'chinese_wrestle' : 'taekwondo_kyougi';
+
     lines.forEach((line, index) => {
         const parts = line.split(',').map(s => s.trim());
         if (parts.length < 5) { errors.push(`第 ${index + 1} 行格式错误: ${line}`); return; }
@@ -635,20 +638,20 @@ async function saveBatchAthletes(type) {
             athletes.push({
                 athlete_id: parts[1], athlete_name: parts[2], athlete_gender: parts[3],
                 athlete_team: parts[4], athlete_age_group: parts[5], athlete_category: parts[6],
-                athlete_draw_num: 0, athlete_type: 'taekwondo_kyougi'
+                athlete_draw_num: 0, athlete_type: batchAthleteType
             });
         } else {
             athletes.push({
                 athlete_id: parts[0], athlete_name: parts[1], athlete_gender: parts[2],
                 athlete_team: parts[3], athlete_category: parts[4],
-                athlete_draw_num: parseInt(parts[5]) || 0, athlete_type: 'taekwondo_kyougi'
+                athlete_draw_num: parseInt(parts[5]) || 0, athlete_type: batchAthleteType
             });
         }
     });
 
     if (errors.length > 0) { alert('数据格式错误:\n' + errors.join('\n')); return; }
 
-    const resp = await apiPost('/athletes/batch', { athletes, event_id: currentEventId, athlete_type: 'taekwondo_kyougi' });
+    const resp = await apiPost('/athletes/batch', { athletes, event_id: currentEventId, athlete_type: batchAthleteType });
     const resultDiv = document.getElementById('batchResult');
     resultDiv.style.display = 'block';
 
@@ -679,7 +682,8 @@ async function handleExcelUpload(event) {
     const formData = new FormData();
     formData.append('file', file);
     if (currentEventId) formData.append('event_id', currentEventId);
-    formData.append('athlete_type', 'taekwondo_kyougi');
+    const excelAthleteType = currentEventType === 'jiu_jitsu' ? 'jiu_jitsu' : currentEventType === 'chinese_wrestle' ? 'chinese_wrestle' : 'taekwondo_kyougi';
+    formData.append('athlete_type', excelAthleteType);
 
     const resultDiv = document.getElementById('batchResult');
     resultDiv.style.display = 'block';

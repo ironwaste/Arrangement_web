@@ -13,6 +13,9 @@ const {
   generateBracketForClass
 } = require('./autoScheduler');
 const {
+  generateJJBracketForEvent
+} = require('./Jiu-Jitsu/jiu-jitsu-bracket-helpers');
+const {
   insertKyougiMatch,
   deleteKyougiMatchsByEvent,
   deleteKyougiMatchsByClass,
@@ -67,7 +70,7 @@ module.exports = (db, bracketsManager) => {
       const status = calcEventStatus({ reg_start, reg_end, comp_start, comp_end }, now);
       const result = await db.run(
         'INSERT INTO events (event_name, event_venue, event_date, reg_start, reg_end, comp_start, comp_end, event_status, event_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [name, venue, event_date || null, reg_start || null, reg_end || null, comp_start || null, comp_end || null, status, event_type || 'taekwondo']
+        [name, venue, event_date || null, reg_start || null, reg_end || null, comp_start || null, comp_end || null, status, event_type || 'taekwondo_kyougi']
       );
       res.json({ success: true, id: result.id });
     } catch (err) {
@@ -92,7 +95,7 @@ module.exports = (db, bracketsManager) => {
       const status = calcEventStatus({ reg_start, reg_end, comp_start, comp_end }, now);
       await db.run(
         'UPDATE events SET event_name = ?, event_venue = ?, event_date = ?, reg_start = ?, reg_end = ?, comp_start = ?, comp_end = ?, event_status = ?, event_type = ? WHERE event_id = ?',
-        [name, venue, event_date || null, reg_start || null, reg_end || null, comp_start || null, comp_end || null, status, event_type || 'taekwondo', id]
+        [name, venue, event_date || null, reg_start || null, reg_end || null, comp_start || null, comp_end || null, status, event_type || 'taekwondo_kyougi', id]
       );
       res.json({ success: true });
     } catch (err) {
@@ -207,15 +210,15 @@ module.exports = (db, bracketsManager) => {
 
   /* ==================== 对阵图数据同步 ==================== */
   async function syncMatchesFromBracket(weightClass, event_id) {
-    const stageMapRow = await db.get(
+    const stageMapRows = await db.all(
       'SELECT id AS stage_id, type AS stage_type FROM bracket_stage WHERE event_id = ? AND category_id = ?',
       [event_id, weightClass]
     );
 
-    if (!stageMapRow || !stageMapRow.stage_id) return;
+    if (!stageMapRows || stageMapRows.length === 0) return;
 
-    const stageIds = String(stageMapRow.stage_id).split(',').map(s => s.trim()).filter(Boolean);
-    const stageType = stageMapRow.stage_type || 'single_elimination';
+    const stageIds = stageMapRows.map(r => String(r.stage_id)).filter(Boolean);
+    const stageType = stageMapRows[0].stage_type || 'single_elimination';
     const isDivisional = stageType === 'divisional_round_robin';
 
     const nameUnitMap = new Map();
@@ -1650,9 +1653,13 @@ module.exports = (db, bracketsManager) => {
         return res.json({ success: true });
       }
 
+      const eventRowForArrange = await db.get('SELECT event_type FROM events WHERE event_id = ?', [Number(event_id)]);
+      const arrangeEventType = eventRowForArrange ? eventRowForArrange.event_type : 'taekwondo_kyougi';
+      const arrangeAthleteType = arrangeEventType === 'jiu_jitsu' ? 'jiu_jitsu' : arrangeEventType === 'taekwondo_poomsae' ? 'poomsae' : arrangeEventType === 'chinese_wrestle' ? 'chinese_wrestle' : 'taekwondo_kyougi';
+
       const athletes = await db.all(
         'SELECT * FROM athletes WHERE event_id = ? AND athlete_type = ? ORDER BY athlete_category, athlete_gender, athlete_age_group',
-        [event_id, 'taekwondo_kyougi']
+        [event_id, arrangeAthleteType]
       );
 
       if (!athletes || athletes.length === 0) {
@@ -1753,6 +1760,17 @@ module.exports = (db, bracketsManager) => {
         return res.status(400).json({ success: false, error: '缺少event_id参数' });
       }
 
+      const eventRow = await db.get('SELECT event_type FROM events WHERE event_id = ?', [Number(event_id)]);
+      const eventType = eventRow ? eventRow.event_type : 'taekwondo_kyougi';
+
+      if (eventType === 'jiu_jitsu') {
+        const jjResult = await generateJJBracketForEvent(db, Number(event_id), weight_class || null);
+        return res.json({
+          success: true,
+          data: { generated: jjResult.generated, skipped: 0, errors: jjResult.errors, results: jjResult.results }
+        });
+      }
+
       const athletes = await db.all(
         'SELECT * FROM athletes WHERE event_id = ? AND athlete_type = ? ORDER BY athlete_category, athlete_gender, athlete_age_group',
         [event_id, 'taekwondo_kyougi']
@@ -1832,11 +1850,17 @@ module.exports = (db, bracketsManager) => {
     try {
       const { weightClass } = req.params;
       const { event_id } = req.query;
-      const row = await db.get(
-        'SELECT id AS stage_id FROM bracket_stage WHERE event_id = ? AND category_id = ?',
+      const rows = await db.all(
+        'SELECT id AS stage_id, type AS stage_type FROM bracket_stage WHERE event_id = ? AND category_id = ?',
         [Number(event_id), weightClass]
       );
-      res.json({ success: true, data: row || null });
+      if (rows && rows.length > 0) {
+        const stageIds = rows.map(r => r.stage_id).join(',');
+        const stageType = rows[0].stage_type || 'single_elimination';
+        res.json({ success: true, data: { stage_id: stageIds, stage_type: stageType } });
+      } else {
+        res.json({ success: true, data: null });
+      }
     } catch (err) {
       res.status(500).json({ success: false, error: err.message });
     }
@@ -1874,9 +1898,13 @@ module.exports = (db, bracketsManager) => {
       }
       const eventIdNum = Number(event_id);
 
+      const eventRowForGenMatches = await db.get('SELECT event_type FROM events WHERE event_id = ?', [eventIdNum]);
+      const genMatchesEventType = eventRowForGenMatches ? eventRowForGenMatches.event_type : 'taekwondo_kyougi';
+      const genMatchesAthleteType = genMatchesEventType === 'jiu_jitsu' ? 'jiu_jitsu' : genMatchesEventType === 'taekwondo_poomsae' ? 'poomsae' : genMatchesEventType === 'chinese_wrestle' ? 'chinese_wrestle' : 'taekwondo_kyougi';
+
       const athletes = await db.all(
         'SELECT DISTINCT athlete_category FROM athletes WHERE event_id = ? AND athlete_type = ?',
-        [eventIdNum, 'taekwondo_kyougi']
+        [eventIdNum, genMatchesAthleteType]
       );
       const allClasses = athletes.map(a => a.athlete_category).filter(Boolean);
 

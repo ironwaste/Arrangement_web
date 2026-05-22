@@ -319,6 +319,11 @@ function initBracketsContextMenu() {
     });
 }
 
+function getWeightClassFromRow(tr) {
+    const td = tr.querySelector('td[data-col="weightClass"]');
+    return td ? td.textContent.trim() : '';
+}
+
 async function loadAutoArrangeData() {
     const tbody = document.getElementById('autoArrangeTableBody');
     tbody.innerHTML = '';
@@ -371,6 +376,8 @@ async function loadAutoArrangeData() {
             await CategoryModeComponent.init(currentEventId);
         }
 
+        await loadTKDCompModeConfig();
+
         const athletesRes = await fetch(`${API_BASE}/athletes?${getEventParam()}`);
         const athletesData = await athletesRes.json();
         if (!athletesData.success) {
@@ -381,7 +388,7 @@ async function loadAutoArrangeData() {
         const athletes = athletesData.data || [];
 
         if (athletes.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="22" style="text-align:center;color:#909399;padding:40px;"><div style="font-size:48px;margin-bottom:16px;">⚔️</div><div>暂无竞技编排数据</div><div style="font-size:12px;">请先添加运动员?/div></td></tr>';
+            tbody.innerHTML = '<tr><td colspan="22" style="text-align:center;color:#909399;padding:40px;"><div style="font-size:48px;margin-bottom:16px;">⚔️</div><div>暂无竞技编排数据</div><div style="font-size:12px;">请先添加运动员</div></td></tr>';
             document.getElementById('autoArrangeTotalAthletes').textContent = '0';
             document.getElementById('autoArrangeTotalClasses').textContent = '0';
             document.getElementById('autoArrangeTotalMatches').textContent = '0';
@@ -438,12 +445,13 @@ async function loadAutoArrangeData() {
                 const jjRounds = JiuJitsuBrackets.calculateJJRounds(count, compMode);
                 const total = jjRounds.total || 0;
                 totalMatches += total;
-                return { ...cls, rounds: jjRounds, total, jjRounds };
+                return { ...cls, rounds: jjRounds, total: jjRounds.total, jjRounds };
             } else {
-                const rounds = calculateRounds(count);
+                const compMode = tkdCompModeConfig[cls.name] || 'single_elimination';
+                const rounds = calculateRounds(count, compMode);
                 const total = rounds.total || 0;
                 totalMatches += total;
-                return { ...cls, rounds, total };
+                return { ...cls, rounds, total, compMode };
             }
         });
 
@@ -499,8 +507,8 @@ async function loadAutoArrangeData() {
                 unitOptions += `<option value="${i}"${selected}>${i}</option>`;
             }
 
-            const compMode = (isJJ && typeof JiuJitsuBrackets !== 'undefined') ? (JiuJitsuBrackets.compModeConfig[cls.name] || 'single_elimination') : '';
-            const compModeLabel = isJJ ? (JiuJitsuBrackets.COMP_MODES.find(m => m.value === compMode) || JiuJitsuBrackets.COMP_MODES[0]).label : '';
+            const compMode = (isJJ && typeof JiuJitsuBrackets !== 'undefined') ? (JiuJitsuBrackets.compModeConfig[cls.name] || 'single_elimination') : (tkdCompModeConfig[cls.name] || 'single_elimination');
+            const compModeLabel = isJJ ? (JiuJitsuBrackets.COMP_MODES.find(m => m.value === compMode) || JiuJitsuBrackets.COMP_MODES[0]).label : (TKD_COMP_MODES.find(m => m.value === compMode) || TKD_COMP_MODES[0]).label;
 
             if (isJJ && typeof JiuJitsuBrackets !== 'undefined') {
                 const jjR = cls.jjRounds || JiuJitsuBrackets.calculateJJRounds(cls.count, compMode);
@@ -511,7 +519,7 @@ async function loadAutoArrangeData() {
                     <td data-col="order"><input type="number" min="1" max="99" value="${venueInfo ? venueInfo.category_order : ''}" onchange="saveAutoArrangeSilent()" style="width:42px;text-align:center;border:1px solid #E6A23C;border-radius:3px;padding:2px;font-weight:bold;color:#E6A23C;" placeholder="-"></td>
                     <td data-col="venue"><select onchange="saveAutoArrangeSilent()" style="width:60px;text-align:center;border:1px solid #409EFF;border-radius:3px;padding:2px;font-size:12px;font-weight:bold;color:#303133;cursor:pointer;">${venueOptions}</select></td>
                     <td data-col="unit"><select onchange="saveAutoArrangeSilent()" style="width:55px;text-align:center;border:1px solid #409EFF;border-radius:3px;padding:2px;font-size:12px;font-weight:bold;color:#303133;cursor:pointer;">${unitOptions}</select></td>
-                    <td data-col="compMode"><select onchange="JiuJitsuBrackets.saveCompModeConfig('${cls.name.replace(/'/g, "\\'")}', this.value); loadAutoArrangeData();" style="width:90px;text-align:center;border:1px solid #409EFF;border-radius:3px;padding:2px;font-size:12px;font-weight:bold;color:#303133;cursor:pointer;">
+                    <td data-col="compMode"><select onchange="JiuJitsuBrackets.onCompModeChange('${cls.name.replace(/'/g, "\\'")}', this.value);" style="width:90px;text-align:center;border:1px solid #409EFF;border-radius:3px;padding:2px;font-size:12px;font-weight:bold;color:#303133;cursor:pointer;">
                         ${JiuJitsuBrackets.COMP_MODES.map(m => `<option value="${m.value}" ${compMode === m.value ? 'selected' : ''}>${m.label}</option>`).join('')}
                     </select></td>
                     <td data-col="weightClass" style="text-align:left;min-width:120px;">${cls.name}</td>
@@ -533,6 +541,7 @@ async function loadAutoArrangeData() {
                     <td data-col="brom">${jjR.brom}</td>
                 `;
             } else {
+                const tkdCompMode = tkdCompModeConfig[cls.name] || 'single_elimination';
                 tr.innerHTML = `
                     <td data-col="index">${index + 1}</td>
                     <td data-col="rounds">${totalRounds}</td>
@@ -540,7 +549,9 @@ async function loadAutoArrangeData() {
                     <td data-col="order"><input type="number" min="1" max="99" value="${venueInfo ? venueInfo.category_order : ''}" onchange="saveAutoArrangeSilent()" style="width:42px;text-align:center;border:1px solid #E6A23C;border-radius:3px;padding:2px;font-weight:bold;color:#E6A23C;" placeholder="-"></td>
                     <td data-col="venue"><select onchange="saveAutoArrangeSilent()" style="width:60px;text-align:center;border:1px solid #409EFF;border-radius:3px;padding:2px;font-size:12px;font-weight:bold;color:#303133;cursor:pointer;">${venueOptions}</select></td>
                     <td data-col="unit"><select onchange="saveAutoArrangeSilent()" style="width:55px;text-align:center;border:1px solid #409EFF;border-radius:3px;padding:2px;font-size:12px;font-weight:bold;color:#303133;cursor:pointer;">${unitOptions}</select></td>
-                    <td data-col="compMode">-</td>
+                    <td data-col="compMode"><select onchange="onTKDCompModeChange('${cls.name.replace(/'/g, "\\'")}', this.value);" style="width:90px;text-align:center;border:1px solid #409EFF;border-radius:3px;padding:2px;font-size:12px;font-weight:bold;color:#303133;cursor:pointer;">
+                        ${TKD_COMP_MODES.map(m => `<option value="${m.value}" ${tkdCompMode === m.value ? 'selected' : ''}>${m.label}</option>`).join('')}
+                    </select></td>
                     <td data-col="weightClass" style="text-align:left;min-width:120px;">${cls.name}</td>
                     <td data-col="count">${cls.count}</td>
                     <td data-col="totalMatches">${cls.total}</td>
@@ -725,7 +736,7 @@ function scrollToClassRow(className) {
     rows.forEach(row => {
         row.style.background = '';
         const cells = row.querySelectorAll('td');
-        if (cells.length >= 7 && cells[6].textContent.trim() === className) {
+        if (cells.length >= 7 && getWeightClassFromRow(row) === className) {
             row.scrollIntoView({ behavior: 'smooth', block: 'center' });
             row.style.background = '#ecf5ff';
             setTimeout(() => { row.style.background = ''; }, 2000);
@@ -749,10 +760,22 @@ function renderVenueAllocation(classRounds, savedScheme) {
         const unit = info ? (info.category_date_num || '').trim() : '';
         const order = info ? (info.category_order || '').trim() : '';
 
+        const isJJ = window.location.pathname === '/jj-brackets' || currentEventType === 'jiu_jitsu';
+        let totalMatches = 0;
+        if (isJJ && typeof JiuJitsuBrackets !== 'undefined') {
+            const compMode = JiuJitsuBrackets.compModeConfig[cls.name] || 'single_elimination';
+            const jjR = JiuJitsuBrackets.calculateJJRounds(cls.count, compMode);
+            totalMatches = jjR.total || 0;
+        } else {
+            const compMode = tkdCompModeConfig[cls.name] || 'single_elimination';
+            const r = calculateRounds(cls.count, compMode);
+            totalMatches = r.total || 0;
+        }
+
         if (!venue && !unit && !order) {
             const key = '未分配';
             if (!unitMap.has(key)) unitMap.set(key, []);
-            unitMap.get(key).push({ name: cls.name, count: cls.count, category_date_num: '', category_order: '', category_venue: '', isAssigned: false });
+            unitMap.get(key).push({ name: cls.name, count: cls.count, totalMatches, category_date_num: '', category_order: '', category_venue: '', isAssigned: false });
             return;
         }
 
@@ -764,6 +787,7 @@ function renderVenueAllocation(classRounds, savedScheme) {
             unitMap.get(key).push({
                 name: cls.name,
                 count: cls.count,
+                totalMatches,
                 category_date_num: unit,
                 category_order: order,
                 category_venue: venue,
@@ -777,6 +801,7 @@ function renderVenueAllocation(classRounds, savedScheme) {
             unitMap.get(key).push({
                 name: cls.name,
                 count: cls.count,
+                totalMatches,
                 category_date_num: unit,
                 category_order: order,
                 category_venue: venue,
@@ -918,8 +943,7 @@ function renderVenueList(unitMap, unitFilter, venueFilter) {
             html += `<div class="venue-zone" data-unit="${unitKey}" data-venue="${venue}" style="margin-left:12px;margin-bottom:6px;">`;
             let venueTotalMatches = 0;
             venueItems.forEach(item => {
-                const r = calculateRounds(item.count);
-                venueTotalMatches += r.total || 0;
+                venueTotalMatches += item.totalMatches || 0;
             });
             html += `<div style="font-size:11px;color:#909399;font-weight:500;display:flex;align-items:center;justify-content:space-between;">
                 <span>${venue}场地</span>
@@ -994,8 +1018,7 @@ function renderVenueList(unitMap, unitFilter, venueFilter) {
             const items = unitMap.get(unitKey) || [];
             items.forEach(item => {
                 totalClasses++;
-                const r = calculateRounds(item.count);
-                totalMatches += r.total || 0;
+                totalMatches += item.totalMatches || 0;
             });
         });
         html += `<div class="venue-summary">
@@ -1077,7 +1100,7 @@ function assignClassToUnit(className, targetUnit) {
     rows.forEach(tr => {
         const cells = tr.querySelectorAll('td');
         if (cells.length < 7) return;
-        if (cells[6].textContent.trim() === className) {
+        if (getWeightClassFromRow(tr) === className) {
             const unitInput = cells[5].querySelector('select, input');
             if (unitInput) {
                 unitInput.value = targetUnit;
@@ -1106,7 +1129,7 @@ function assignClassToVenueAndUnit(className, targetVenue, targetUnit) {
     rows.forEach(tr => {
         const cells = tr.querySelectorAll('td');
         if (cells.length < 7) return;
-        if (cells[6].textContent.trim() === className) {
+        if (getWeightClassFromRow(tr) === className) {
             const venueInput = cells[4].querySelector('select, input');
             const unitInput = cells[5].querySelector('select, input');
             const orderInput = cells[3].querySelector('input');
@@ -1137,7 +1160,7 @@ function assignClassToVenueAndUnit(className, targetVenue, targetUnit) {
     rows.forEach(tr => {
         const cells = tr.querySelectorAll('td');
         if (cells.length < 7) return;
-        if (cells[6].textContent.trim() === className) {
+        if (getWeightClassFromRow(tr) === className) {
             const venueInput = cells[4].querySelector('select, input');
             const unitInput = cells[5].querySelector('select, input');
             if (venueInput) venueInput.value = targetVenue;
@@ -1157,10 +1180,10 @@ function assignClassToVenueAndUnit(className, targetVenue, targetUnit) {
         if (currentVenue === targetVenue && currentUnit === targetUnit) {
             existingInTarget.push({
                 row: tr,
-                className: cells[6].textContent.trim(),
+                className: getWeightClassFromRow(tr),
                 category_order: parseFloat(orderInput ? orderInput.value : 0) || 0,
                 orderInput: orderInput,
-                isNew: cells[6].textContent.trim() === className
+                isNew: getWeightClassFromRow(tr) === className
             });
         }
     });
@@ -1304,7 +1327,7 @@ function assignClassToVenue(className, venue) {
     rows.forEach(tr => {
         const cells = tr.querySelectorAll('td');
         if (cells.length < 7) return;
-        if (cells[6].textContent.trim() === className) {
+        if (getWeightClassFromRow(tr) === className) {
             const venueInput = cells[4].querySelector('select, input');
             const unitInput = cells[5].querySelector('select, input');
             const orderInput = cells[3].querySelector('input');
@@ -1335,7 +1358,7 @@ function assignClassToVenue(className, venue) {
     rows.forEach(tr => {
         const cells = tr.querySelectorAll('td');
         if (cells.length < 7) return;
-        if (cells[6].textContent.trim() === className) {
+        if (getWeightClassFromRow(tr) === className) {
             const venueInput = cells[4].querySelector('select, input');
             const unitInput = cells[5].querySelector('select, input');
             if (venueInput) venueInput.value = venue;
@@ -1355,10 +1378,10 @@ function assignClassToVenue(className, venue) {
         if (currentVenue === venue && currentUnit === selectedUnit) {
             existingInTarget.push({
                 row: tr,
-                className: cells[6].textContent.trim(),
+                className: getWeightClassFromRow(tr),
                 category_order: parseFloat(orderInput ? orderInput.value : 0) || 0,
                 orderInput: orderInput,
-                isNew: cells[6].textContent.trim() === className
+                isNew: getWeightClassFromRow(tr) === className
             });
         }
     });
@@ -1407,7 +1430,7 @@ function removeClassFromVenue(className) {
     rows.forEach(tr => {
         const cells = tr.querySelectorAll('td');
         if (cells.length < 7) return;
-        if (cells[6].textContent.trim() === className) {
+        if (getWeightClassFromRow(tr) === className) {
             const orderInput = cells[3].querySelector('input');
             const venueInput = cells[4].querySelector('select, input');
             const unitInput = cells[5].querySelector('select, input');
@@ -1499,8 +1522,9 @@ function resetVenueFilter() {
             venueInput.value = '';
             if (unitInput) unitInput.value = '';
             if (orderInput) orderInput.value = '';
-            const weightClass = cells[6].textContent.trim();
-            resetClasses.push(weightClass);
+            const weightClassTd = tr.querySelector('td[data-col="weightClass"]');
+            const weightClass = weightClassTd ? weightClassTd.textContent.trim() : '';
+            if (weightClass) resetClasses.push(weightClass);
         }
     });
 
@@ -1673,7 +1697,7 @@ async function saveVenueUnitConfig() {
     rows.forEach(tr => {
         const cells = tr.querySelectorAll('td');
         if (cells.length < 7) return;
-        const weightClass = cells[6].textContent.trim();
+        const weightClass = getWeightClassFromRow(tr);
         const orderInput = cells[3].querySelector('input');
         const venueInput = cells[4].querySelector('select, input');
         const unitInput = cells[5].querySelector('select, input');
@@ -1866,7 +1890,8 @@ async function saveAutoArrangeSilent() {
     rows.forEach(tr => {
         const cells = tr.querySelectorAll('td');
         if (cells.length < 7) return;
-        const weightClass = cells[6].textContent.trim();
+        const weightClassTd = tr.querySelector('td[data-col="weightClass"]');
+        const weightClass = weightClassTd ? weightClassTd.textContent.trim() : '';
         const orderInput = cells[3].querySelector('input');
         const venueInput = cells[4].querySelector('select, input');
         const unitInput = cells[5].querySelector('select, input');
@@ -1891,7 +1916,97 @@ async function saveAutoArrangeSilent() {
     }
 }
 
-function calculateRounds(count) {
+const TKD_COMP_MODES = [
+    { value: 'single_elimination', label: '单败淘汰赛' },
+    { value: 'double_elimination', label: '双败淘汰赛' },
+    { value: 'round_robin', label: '循环赛' },
+    { value: 'pool_elimination', label: '分区循环赛' }
+];
+
+let tkdCompModeConfig = {};
+
+async function loadTKDCompModeConfig() {
+    if (!currentEventId) return;
+    try {
+        try {
+            await fetch(`${API_BASE}/category-mode/sync`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ event_id: currentEventId })
+            });
+        } catch (syncErr) {
+            console.warn('[loadTKDCompModeConfig] 同步category_mode失败:', syncErr);
+        }
+
+        const resp = await fetch(`${API_BASE}/category-mode?event_id=${currentEventId}`);
+        const data = await resp.json();
+        if (data.success && data.data) {
+            tkdCompModeConfig = {};
+            data.data.forEach(cat => {
+                if (cat.weight_class) {
+                    tkdCompModeConfig[cat.weight_class] = cat.mode || 'single_elimination';
+                }
+            });
+        }
+    } catch (e) {
+        console.warn('加载竞赛方式配置失败:', e);
+    }
+}
+
+async function saveTKDCompMode(weightClass, mode) {
+    if (!currentEventId) return;
+    try {
+        let catData;
+        try {
+            const syncResp = await fetch(`${API_BASE}/category-mode/sync`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ event_id: currentEventId })
+            });
+            const syncData = await syncResp.json();
+            catData = syncData;
+        } catch (e) {
+            const catResp = await fetch(`${API_BASE}/category-mode?event_id=${currentEventId}`);
+            catData = await catResp.json();
+        }
+
+        if (catData.success && catData.data) {
+            const cat = catData.data.find(c => c.weight_class === weightClass);
+            if (cat && cat.category_id) {
+                await fetch(`${API_BASE}/category-mode/${cat.category_id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: mode, categroy_mode_name: TKD_COMP_MODES.find(m => m.value === mode)?.label || mode })
+                });
+            }
+        }
+        tkdCompModeConfig[weightClass] = mode;
+    } catch (e) {
+        console.error('保存竞赛方式失败:', e);
+    }
+}
+
+async function onTKDCompModeChange(weightClass, mode) {
+    await saveTKDCompMode(weightClass, mode);
+    await loadAutoArrangeData();
+}
+
+function calculateRounds(count, compMode) {
+    compMode = compMode || 'single_elimination';
+
+    if (compMode === 'round_robin') {
+        return calculateRoundRobinRounds(count);
+    }
+    if (compMode === 'double_elimination') {
+        return calculateDoubleEliminationRounds(count);
+    }
+    if (compMode === 'pool_elimination') {
+        return calculatePoolEliminationRounds(count);
+    }
+    return calculateSingleEliminationRounds(count);
+}
+
+function calculateSingleEliminationRounds(count) {
     const rounds = {
         final: 0, half: 0, quarter: 0, eighth: 0,
         sixteenth: 0, thirtysecond: 0, sixtyfourth: 0,
@@ -1926,6 +2041,99 @@ function calculateRounds(count) {
     return { ...rounds, total: count - 1 };
 }
 
+function calculateRoundRobinRounds(count) {
+    const rounds = {
+        final: 0, half: 0, quarter: 0, eighth: 0,
+        sixteenth: 0, thirtysecond: 0, sixtyfourth: 0,
+        onetwentyeighth: 0, twofiftysixth: 0,
+        gold: 0, silver: 0, bronze: 0, repechage: 0,
+        roundRobinRounds: 0
+    };
+
+    if (count <= 1) return { ...rounds, total: 0 };
+
+    const totalMatches = count * (count - 1) / 2;
+    const totalRounds = count % 2 === 0 ? count - 1 : count;
+    rounds.roundRobinRounds = totalRounds;
+    rounds.total = totalMatches;
+    rounds.gold = 1;
+    rounds.silver = 1;
+    rounds.bronze = 2;
+
+    return rounds;
+}
+
+function calculateDoubleEliminationRounds(count) {
+    const rounds = {
+        final: 0, half: 0, quarter: 0, eighth: 0,
+        sixteenth: 0, thirtysecond: 0, sixtyfourth: 0,
+        onetwentyeighth: 0, twofiftysixth: 0,
+        gold: 0, silver: 0, bronze: 0, repechage: 0,
+        winnersRounds: 0, losersRounds: 0
+    };
+
+    if (count <= 1) return { ...rounds, total: 0 };
+
+    let bracketSize = 2;
+    while (bracketSize < count) bracketSize *= 2;
+
+    const k = Math.round(Math.log2(bracketSize));
+    rounds.winnersRounds = k;
+    rounds.losersRounds = Math.max(1, 2 * (k - 1));
+
+    const winnersMatches = bracketSize - 1;
+    const losersMatches = bracketSize - 2;
+    const grandFinalMatches = 1;
+    const total = winnersMatches + losersMatches + grandFinalMatches;
+
+    rounds.final = 1;
+    rounds.gold = 1;
+    rounds.silver = 1;
+    rounds.bronze = 0;
+    rounds.repechage = losersMatches;
+    rounds.total = total;
+
+    const roundNames = ['final', 'half', 'quarter', 'eighth', 'sixteenth', 'thirtysecond', 'sixtyfourth', 'onetwentyeighth', 'twofiftysixth'];
+    for (let i = 0; i < k; i++) {
+        if (i < roundNames.length) {
+            rounds[roundNames[i]] = Math.pow(2, k - 1 - i);
+        }
+    }
+
+    return rounds;
+}
+
+function calculatePoolEliminationRounds(count) {
+    const poolCount = Math.max(2, Math.ceil(count / 4));
+    const poolSize = Math.ceil(count / poolCount);
+
+    let poolMatches = 0;
+    for (let i = 0; i < poolCount; i++) {
+        const ps = Math.min(poolSize, count - i * poolSize);
+        poolMatches += ps * (ps - 1) / 2;
+    }
+
+    const knockoutCount = poolCount;
+    let bracketSize = 2;
+    while (bracketSize < knockoutCount) bracketSize *= 2;
+    const knockoutMatches = knockoutCount - 1;
+
+    const rounds = {
+        final: 0, half: 0, quarter: 0, eighth: 0,
+        sixteenth: 0, thirtysecond: 0, sixtyfourth: 0,
+        onetwentyeighth: 0, twofiftysixth: 0,
+        gold: 0, silver: 0, bronze: 0, repechage: 0,
+        poolMatches: poolMatches
+    };
+
+    rounds.total = poolMatches + knockoutMatches;
+    rounds.gold = 1;
+    rounds.silver = 1;
+    rounds.bronze = 2;
+
+    return rounds;
+}
+
 async function generateBrackets() {
     if (!currentEventId) { alert('请先选择赛事'); return; }
 
@@ -1937,7 +2145,7 @@ async function generateBrackets() {
     rows.forEach(tr => {
         const cells = tr.querySelectorAll('td');
         if (cells.length < 7) return;
-        const weightClass = cells[6].textContent.trim();
+        const weightClass = getWeightClassFromRow(tr);
         const orderInput = cells[3].querySelector('input');
         const venueSelect = cells[4].querySelector('select');
         const unitSelect = cells[5].querySelector('select');
@@ -1985,25 +2193,49 @@ async function generateBrackets() {
     } catch (e) {}
 
     try {
-        const res = await fetch(`${API_BASE}/brackets/generate-matches`, {
+        const genRes = await fetch(`${API_BASE}/auto-arrange/generate-bracket`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(getEventParamObj())
         });
-        const data = await res.json();
-        if (data.success) {
-            const result = data.data;
-            let msg = '✅ 对阵表生成完成！\n\n成功: ' + result.generated + ' 个级别';
-            if (result.errors && result.errors.length > 0) {
-                msg += '\n\n警告:\n' + result.errors.join('\n');
-            }
-            msg += '\n\n详情:\n' + result.results.join('\n');
-            alert(msg);
-
-            await loadAutoArrangeData();
-        } else {
-            alert('❌ 生成失败: ' + (data.error || '未知错误'));
+        const genData = await genRes.json();
+        if (!genData.success) {
+            alert('❌ 生成对阵图失败: ' + (genData.error || '未知错误'));
+            return;
         }
+
+        const genResult = genData.data;
+        let msg = '✅ 对阵图生成完成！\n\n成功: ' + genResult.generated + ' 个级别';
+        if (genResult.skipped > 0) {
+            msg += '\n跳过: ' + genResult.skipped + ' 个级别';
+        }
+        if (genResult.errors && genResult.errors.length > 0) {
+            msg += '\n\n警告:\n' + genResult.errors.join('\n');
+        }
+
+        try {
+            const syncRes = await fetch(`${API_BASE}/brackets/generate-matches`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(getEventParamObj())
+            });
+            const syncData = await syncRes.json();
+            if (syncData.success && syncData.data) {
+                msg += '\n\n比赛场次同步: ' + syncData.data.generated + ' 个级别';
+                if (syncData.data.errors && syncData.data.errors.length > 0) {
+                    msg += '\n同步警告:\n' + syncData.data.errors.join('\n');
+                }
+            }
+        } catch (syncErr) {
+            console.warn('同步比赛场次失败:', syncErr);
+        }
+
+        if (genResult.results && genResult.results.length > 0) {
+            msg += '\n\n详情:\n' + genResult.results.join('\n');
+        }
+        alert(msg);
+
+        await loadAutoArrangeData();
     } catch (e) {
         alert('❌ 生成请求失败: ' + e.message);
     }
@@ -2020,7 +2252,7 @@ async function autoAssignVenueNumbersAfterGenerate() {
     rows.forEach(tr => {
         const cells = tr.querySelectorAll('td');
         if (cells.length < 7) return;
-        const weightClass = cells[6].textContent.trim();
+        const weightClass = getWeightClassFromRow(tr);
         const orderInput = cells[3].querySelector('input');
         const venueInput = cells[4].querySelector('select, input');
         const unitInput = cells[5].querySelector('select, input');
@@ -2068,7 +2300,7 @@ async function saveAutoArrange() {
     rows.forEach(tr => {
         const cells = tr.querySelectorAll('td');
         if (cells.length < 7) return;
-        const weightClass = cells[6].textContent.trim();
+        const weightClass = getWeightClassFromRow(tr);
         const orderInput = cells[3].querySelector('input');
         const venueInput = cells[4].querySelector('select, input');
         const unitInput = cells[5].querySelector('select, input');
@@ -2190,7 +2422,8 @@ async function applyAutoAssignVenue() {
         return;
     }
 
-    const athletesRes = await fetch(`${API_BASE}/athletes?event_id=${currentEventId}&athlete_type=taekwondo_kyougi`);
+    const currentAthleteType = currentEventType === 'jiu_jitsu' ? 'jiu_jitsu' : 'taekwondo_kyougi';
+    const athletesRes = await fetch(`${API_BASE}/athletes?event_id=${currentEventId}&athlete_type=${currentAthleteType}`);
     const athletesData = await athletesRes.json();
     if (!athletesData.success || !athletesData.data || athletesData.data.length === 0) {
         alert('没有运动员数据');
@@ -2313,7 +2546,8 @@ async function loadWeightClassesForManual() {
     select.innerHTML = '<option value="">选择级别</option>';
     
     try {
-        const res = await fetch(`${API_BASE}/athletes?${getEventParam()}&athlete_type=taekwondo_kyougi`);
+        const currentAthleteType = currentEventType === 'jiu_jitsu' ? 'jiu_jitsu' : 'taekwondo_kyougi';
+        const res = await fetch(`${API_BASE}/athletes?${getEventParam()}&athlete_type=${currentAthleteType}`);
         const data = await res.json();
         if (!data.success) return;
         
@@ -2357,7 +2591,8 @@ async function loadManualArrangeData() {
     manualArrangeData.currentWeightClass = weightClass;
     
     try {
-        const res = await fetch(`${API_BASE}/athletes?${getEventParam()}&athlete_type=taekwondo_kyougi`);
+        const currentAthleteType = currentEventType === 'jiu_jitsu' ? 'jiu_jitsu' : 'taekwondo_kyougi';
+        const res = await fetch(`${API_BASE}/athletes?${getEventParam()}&athlete_type=${currentAthleteType}`);
         const data = await res.json();
         if (!data.success) return;
         
@@ -2914,7 +3149,7 @@ async function assignVenueNumbersByUnit() {
     rows.forEach(tr => {
         const cells = tr.querySelectorAll('td');
         if (cells.length < 7) return;
-        const weightClass = cells[6].textContent.trim();
+        const weightClass = getWeightClassFromRow(tr);
         const orderInput = cells[3].querySelector('input');
         const venueInput = cells[4].querySelector('select, input');
         const unitInput = cells[5].querySelector('select, input');

@@ -7,6 +7,16 @@ const bracketPrintStyle = [
     '.brackets-viewer .name{white-space:normal;max-width:200px}'
 ].join('');
 
+function isJJEvent() {
+    return currentEventType === 'jiu_jitsu';
+}
+
+function getCurrentAthleteType() {
+    return isJJEvent() ? 'jiu_jitsu' : 'taekwondo_kyougi';
+}
+
+let _autoGenerateAttempted = false;
+
 function extractPureName(rawName) {
     if (!rawName) return '';
     let name = rawName.trim();
@@ -175,13 +185,72 @@ async function printBracket() {
 async function printAllBrackets() {
     if (!currentEventId) { alert('请先选择赛事'); return; }
 
+    if (isJJEvent()) {
+        const jjClassesResp = await apiGet('/jj-brackets/classes?' + getEventParam());
+        const jjClasses = (jjClassesResp.success && jjClassesResp.data) ? jjClassesResp.data : [];
+        if (jjClasses.length === 0) {
+            const { drawn } = await checkAthletesDrawn();
+            if (drawn && !_autoGenerateAttempted) {
+                try {
+                    const resp = await apiPost('/auto-arrange/generate-bracket', { event_id: currentEventId });
+                    if (resp.success && resp.data && resp.data.generated > 0) {
+                        _autoGenerateAttempted = true;
+                        clearBracketCache();
+                        await loadBracketClassList();
+                        await viewAllBrackets();
+                        return;
+                    }
+                } catch (e) {}
+            }
+            _autoGenerateAttempted = false;
+            alert('没有已生成对阵图的级别');
+            return;
+        }
+
+        const display = document.getElementById('bracketDisplay');
+        display.innerHTML = '';
+
+        for (const cls of jjClasses) {
+            const jjMatchResp = await apiGet('/jj-brackets/matches?' + getEventParam() + '&weight_class=' + encodeURIComponent(cls));
+            if (!jjMatchResp.success || !jjMatchResp.data || jjMatchResp.data.length === 0) continue;
+
+            const section = document.createElement('div');
+            section.style.cssText = 'margin-bottom: 32px;';
+            const title = document.createElement('h3');
+            title.style.cssText = 'text-align: center; margin: 16px 0 8px; padding: 6px 0; border-bottom: 2px solid #409eff; font-size: 15px; color: #303133;';
+            title.textContent = cls;
+            section.appendChild(title);
+
+            const viewerDiv = document.createElement('div');
+            viewerDiv.id = 'print-jj-bracket-' + cls.replace(/[^a-zA-Z0-9]/g, '_');
+            viewerDiv.className = 'brackets-viewer';
+            viewerDiv.style.cssText = 'overflow-x:auto;padding:16px;background:#fff;border-radius:8px;';
+            section.appendChild(viewerDiv);
+            display.appendChild(section);
+
+            await renderJJBracketInSection(viewerDiv.id, cls, jjMatchResp.data);
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const printContent = display.innerHTML;
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>柔术对阵图</title><style>body{font-family:sans-serif;padding:20px}h3{text-align:center;margin:16px 0 8px;padding:6px 0;border-bottom:2px solid #409eff;font-size:15px;color:#303133}.brackets-viewer{overflow-x:auto;padding:16px;background:#fff;border-radius:8px;margin-bottom:32px}</style>${window.bracketCssText ? '<style>' + window.bracketCssText + '</style>' : ''}</head><body>${printContent}</body></html>`);
+        printWindow.document.close();
+        display.innerHTML = '<p style="text-align: center; color: #909399; padding: 40px 0;">双击级别查看对阵图</p>';
+        printWindow.focus();
+        setTimeout(() => { printWindow.print(); }, 300);
+        return;
+    }
+
     const stageMapResp = await apiGet('/brackets/stage-map?' + getEventParam());
     const stageMaps = (stageMapResp.success && stageMapResp.data) ? stageMapResp.data : [];
     if (stageMaps.length === 0) {
-        if (drawn) {
+        const { drawn: drawnCheck } = await checkAthletesDrawn();
+        if (drawnCheck && !_autoGenerateAttempted) {
             try {
                 const resp = await apiPost('/auto-arrange/generate-bracket', { event_id: currentEventId });
-                if (resp.success) {
+                if (resp.success && resp.data && resp.data.generated > 0) {
+                    _autoGenerateAttempted = true;
                     clearBracketCache();
                     await loadBracketClassList();
                     await viewAllBrackets();
@@ -189,6 +258,7 @@ async function printAllBrackets() {
                 }
             } catch (e) {}
         }
+        _autoGenerateAttempted = false;
         alert('没有已生成对阵图的级别');
         return;
     }
@@ -198,14 +268,18 @@ async function printAllBrackets() {
     display.innerHTML = '';
 
     const bracketHtmlList = [];
+    const printClassStageMap = new Map();
     for (const sm of stageMaps) {
         if (!sm.stage_id) continue;
         const cls = sm.class_name;
-        const stageDataResp = await apiGet('/brackets/stage/' + sm.stage_id);
-        if (!stageDataResp.success || !stageDataResp.data || !stageDataResp.data.stages || stageDataResp.data.stages.length === 0) continue;
+        if (!printClassStageMap.has(cls)) {
+            printClassStageMap.set(cls, { stageIds: [], stageType: sm.stage_type || 'single_elimination' });
+        }
+        printClassStageMap.get(cls).stageIds.push(sm.stage_id);
+    }
 
-        const data = stageDataResp.data;
-        const viewerId = 'print-all-' + sm.stage_id;
+    for (const [cls, pinfo] of printClassStageMap) {
+        const viewerId = 'print-all-' + pinfo.stageIds.join('-');
         const section = document.createElement('div');
         section.style.cssText = 'margin-bottom: 32px;';
         const title = document.createElement('h3');
@@ -222,12 +296,58 @@ async function printAllBrackets() {
         await new Promise(resolve => setTimeout(resolve, 50));
 
         try {
-            await window.bracketsViewer.render(data, {
+            let printAllStages = [];
+            let printAllGroups = [];
+            let printAllRounds = [];
+            let printAllMatchData = [];
+            let printAllMatchGames = [];
+            let printAllParticipants = [];
+
+            for (const sid of pinfo.stageIds) {
+                const stageDataResp = await apiGet('/brackets/stage/' + sid);
+                if (!stageDataResp.success || !stageDataResp.data || !stageDataResp.data.stages || stageDataResp.data.stages.length === 0) continue;
+                const sData = stageDataResp.data;
+                printAllStages = printAllStages.concat(sData.stages || []);
+                printAllGroups = printAllGroups.concat(sData.groups || []);
+                printAllRounds = printAllRounds.concat(sData.rounds || []);
+                printAllMatchData = printAllMatchData.concat(sData.matches || []);
+                printAllMatchGames = printAllMatchGames.concat(sData.matchGames || []);
+                printAllParticipants = printAllParticipants.concat(sData.participants || []);
+            }
+
+            const uniquePPIds = new Set();
+            printAllParticipants = printAllParticipants.filter(p => {
+                if (uniquePPIds.has(p.id)) return false;
+                uniquePPIds.add(p.id);
+                return true;
+            });
+
+            if (printAllStages.length === 0) continue;
+
+            const isPrintDoubleElim = pinfo.stageType === 'double_elimination';
+
+            await window.bracketsViewer.render({
+                stages: printAllStages, groups: printAllGroups, rounds: printAllRounds,
+                matches: printAllMatchData, matchGames: printAllMatchGames, participants: printAllParticipants
+            }, {
                 selector: '#' + viewerId,
                 clear: true,
-                showRankingTable: false,
+                showRankingTable: pinfo.stageType === 'round_robin',
                 participantOriginPlacement: 'none',
                 customRoundName: (info) => {
+                    if (isPrintDoubleElim) {
+                        const stageName = info.stageName || '';
+                        const isLosers = stageName.includes('败者') || stageName.includes('Loser');
+                        if (info.roundNumber && info.roundCount) {
+                            const d = Math.pow(2, info.roundCount - info.roundNumber);
+                            if (d === 1) return isLosers ? '败者组决赛' : '决赛';
+                            return isLosers ? `败者组1/${d}` : `1/${d}`;
+                        }
+                        return undefined;
+                    }
+                    if (pinfo.stageType === 'round_robin') {
+                        return `第${info.roundNumber}轮`;
+                    }
                     if (info.roundNumber && info.roundCount) {
                         const d = Math.pow(2, info.roundCount - info.roundNumber);
                         if (d === 1) return '决赛';
@@ -278,7 +398,7 @@ async function printAllBrackets() {
                 });
             }
 
-            const athleteRespPrint = await apiGet('/athletes?' + getEventParam() + '&athlete_type=taekwondo_kyougi&weight_class=' + encodeURIComponent(cls));
+            const athleteRespPrint = await apiGet('/athletes?' + getEventParam() + '&athlete_type=' + getCurrentAthleteType() + '&weight_class=' + encodeURIComponent(cls));
             const unitMapByNamePrint = new Map();
             const unitMapByDrawNoPrint = new Map();
             const athleteIdToUnitPrint = new Map();
@@ -302,8 +422,8 @@ async function printAllBrackets() {
             }
 
             const participantUnitMapPrint = new Map();
-            if (data.participants) {
-                for (const p of data.participants) {
+            if (printAllParticipants) {
+                for (const p of printAllParticipants) {
                     if (p.name && p.custom_data) {
                         try {
                             const custom = JSON.parse(p.custom_data);
@@ -316,9 +436,9 @@ async function printAllBrackets() {
                 }
             }
 
-            if (data.participants) {
+            if (printAllParticipants) {
                 const drawNoByName = new Map();
-                for (const p of data.participants) {
+                for (const p of printAllParticipants) {
                     if (p.name) {
                         const fromAthletes = drawNoByNameFromAthletesPrint.get(p.name);
                         if (fromAthletes != null) {
@@ -351,7 +471,7 @@ async function printAllBrackets() {
                                     nameEl.insertBefore(span, nameEl.firstChild);
                                 }
                             }
-                            const unit = findUnitForParticipant(displayName, unitMapByNamePrint, data.participants, unitMapByDrawNoPrint, participantUnitMapPrint);
+                            const unit = findUnitForParticipant(displayName, unitMapByNamePrint, printAllParticipants, unitMapByDrawNoPrint, participantUnitMapPrint);
                             if (unit && !nameEl.querySelector('.unit-tag')) {
                                 const tag = document.createElement('span');
                                 tag.className = 'unit-tag';
@@ -428,13 +548,62 @@ async function viewAllBrackets() {
         return;
     }
 
+    if (isJJEvent()) {
+        const jjClassesResp = await apiGet('/jj-brackets/classes?' + getEventParam());
+        const jjClasses = (jjClassesResp.success && jjClassesResp.data) ? jjClassesResp.data : [];
+        if (jjClasses.length === 0) {
+            if (drawn && !_autoGenerateAttempted) {
+                try {
+                    const resp = await apiPost('/auto-arrange/generate-bracket', { event_id: currentEventId });
+                    if (resp.success && resp.data && resp.data.generated > 0) {
+                        _autoGenerateAttempted = true;
+                        clearBracketCache();
+                        await loadBracketClassList();
+                        await viewAllBrackets();
+                        return;
+                    }
+                } catch (e) {}
+            }
+            _autoGenerateAttempted = false;
+            alert('没有已生成对阵图的级别');
+            return;
+        }
+        _autoGenerateAttempted = false;
+
+        const display = document.getElementById('bracketDisplay');
+        display.innerHTML = '';
+
+        for (const cls of jjClasses) {
+            const jjMatchResp = await apiGet('/jj-brackets/matches?' + getEventParam() + '&weight_class=' + encodeURIComponent(cls));
+            if (!jjMatchResp.success || !jjMatchResp.data || jjMatchResp.data.length === 0) continue;
+
+            const section = document.createElement('div');
+            section.style.cssText = 'margin-bottom: 32px;';
+            const title = document.createElement('h3');
+            title.style.cssText = 'text-align: center; margin: 16px 0 8px; padding: 6px 0; border-bottom: 2px solid #409eff; font-size: 15px; color: #303133;';
+            title.textContent = cls;
+            section.appendChild(title);
+
+            const viewerDiv = document.createElement('div');
+            viewerDiv.id = 'all-jj-bracket-' + cls.replace(/[^a-zA-Z0-9]/g, '_');
+            viewerDiv.className = 'brackets-viewer';
+            viewerDiv.style.cssText = 'overflow-x:auto;padding:16px;background:#fff;border-radius:8px;';
+            section.appendChild(viewerDiv);
+            display.appendChild(section);
+
+            await renderJJBracketInSection(viewerDiv.id, cls, jjMatchResp.data);
+        }
+        return;
+    }
+
     const stageMapResp = await apiGet('/brackets/stage-map?' + getEventParam());
     const stageMaps = (stageMapResp.success && stageMapResp.data) ? stageMapResp.data : [];
     if (stageMaps.length === 0) {
-        if (drawn) {
+        if (drawn && !_autoGenerateAttempted) {
             try {
                 const resp = await apiPost('/auto-arrange/generate-bracket', { event_id: currentEventId });
-                if (resp.success) {
+                if (resp.success && resp.data && resp.data.generated > 0) {
+                    _autoGenerateAttempted = true;
                     clearBracketCache();
                     await loadBracketClassList();
                     await viewAllBrackets();
@@ -442,17 +611,26 @@ async function viewAllBrackets() {
                 }
             } catch (e) {}
         }
+        _autoGenerateAttempted = false;
         alert('没有已生成对阵图的级别');
         return;
     }
+    _autoGenerateAttempted = false;
 
     const display = document.getElementById('bracketDisplay');
     display.innerHTML = '';
 
+    const classStageMap = new Map();
     for (const sm of stageMaps) {
         if (!sm.stage_id) continue;
         const cls = sm.class_name;
+        if (!classStageMap.has(cls)) {
+            classStageMap.set(cls, { stageIds: [], stageType: sm.stage_type || 'single_elimination' });
+        }
+        classStageMap.get(cls).stageIds.push(sm.stage_id);
+    }
 
+    for (const [cls, info] of classStageMap) {
         const section = document.createElement('div');
         section.style.cssText = 'margin-bottom: 32px;';
         const title = document.createElement('h3');
@@ -461,7 +639,7 @@ async function viewAllBrackets() {
         section.appendChild(title);
 
         const viewerDiv = document.createElement('div');
-        viewerDiv.id = 'all-bracket-' + sm.stage_id;
+        viewerDiv.id = 'all-bracket-' + info.stageIds.join('-');
         viewerDiv.className = 'brackets-viewer';
         viewerDiv.style.cssText = 'overflow-x:auto;padding:16px;background:#fff;border-radius:8px;';
         section.appendChild(viewerDiv);
@@ -470,19 +648,60 @@ async function viewAllBrackets() {
         await new Promise(resolve => setTimeout(resolve, 50));
 
         try {
-            const stageDataResp = await apiGet('/brackets/stage/' + sm.stage_id);
-            if (!stageDataResp.success || !stageDataResp.data || !stageDataResp.data.stages || stageDataResp.data.stages.length === 0) continue;
+            let allStages = [];
+            let allGroups = [];
+            let allRounds = [];
+            let allMatchData = [];
+            let allMatchGames = [];
+            let allParticipants = [];
 
-            const data = stageDataResp.data;
+            for (const sid of info.stageIds) {
+                const stageDataResp = await apiGet('/brackets/stage/' + sid);
+                if (!stageDataResp.success || !stageDataResp.data || !stageDataResp.data.stages || stageDataResp.data.stages.length === 0) continue;
+                const data = stageDataResp.data;
+                allStages = allStages.concat(data.stages || []);
+                allGroups = allGroups.concat(data.groups || []);
+                allRounds = allRounds.concat(data.rounds || []);
+                allMatchData = allMatchData.concat(data.matches || []);
+                allMatchGames = allMatchGames.concat(data.matchGames || []);
+                allParticipants = allParticipants.concat(data.participants || []);
+            }
 
-            await window.bracketsViewer.render(data, {
+            const uniquePIds = new Set();
+            allParticipants = allParticipants.filter(p => {
+                if (uniquePIds.has(p.id)) return false;
+                uniquePIds.add(p.id);
+                return true;
+            });
+
+            if (allStages.length === 0) continue;
+
+            const isDoubleElim = info.stageType === 'double_elimination';
+
+            await window.bracketsViewer.render({
+                stages: allStages, groups: allGroups, rounds: allRounds,
+                matches: allMatchData, matchGames: allMatchGames, participants: allParticipants
+            }, {
                 selector: '#' + viewerDiv.id,
                 clear: true,
-                showRankingTable: false,
+                showRankingTable: info.stageType === 'round_robin',
                 participantOriginPlacement: 'none',
-                customRoundName: (info) => {
-                    if (info.roundNumber && info.roundCount) {
-                        const d = Math.pow(2, info.roundCount - info.roundNumber);
+                customRoundName: (info2) => {
+                    if (isDoubleElim) {
+                        const stageName = info2.stageName || '';
+                        const isLosers = stageName.includes('败者') || stageName.includes('Loser');
+                        if (info2.roundNumber && info2.roundCount) {
+                            const d = Math.pow(2, info2.roundCount - info2.roundNumber);
+                            if (d === 1) return isLosers ? '败者组决赛' : '决赛';
+                            return isLosers ? `败者组1/${d}` : `1/${d}`;
+                        }
+                        return undefined;
+                    }
+                    if (info.stageType === 'round_robin') {
+                        return `第${info2.roundNumber}轮`;
+                    }
+                    if (info2.roundNumber && info2.roundCount) {
+                        const d = Math.pow(2, info2.roundCount - info2.roundNumber);
                         if (d === 1) return '决赛';
                         return `1/${d}`;
                     }
@@ -531,7 +750,7 @@ async function viewAllBrackets() {
                 });
             }
 
-            const athleteRespAll = await apiGet('/athletes?' + getEventParam() + '&athlete_type=taekwondo_kyougi&weight_class=' + encodeURIComponent(cls));
+            const athleteRespAll = await apiGet('/athletes?' + getEventParam() + '&athlete_type=' + getCurrentAthleteType() + '&weight_class=' + encodeURIComponent(cls));
             const unitMapByNameAll = new Map();
             const unitMapByDrawNoAll = new Map();
             const athleteIdToUnitAll = new Map();
@@ -555,8 +774,8 @@ async function viewAllBrackets() {
             }
 
             const participantUnitMapAll = new Map();
-            if (data.participants) {
-                for (const p of data.participants) {
+            if (allParticipants) {
+                for (const p of allParticipants) {
                     if (p.name && p.custom_data) {
                         try {
                             const custom = JSON.parse(p.custom_data);
@@ -569,9 +788,9 @@ async function viewAllBrackets() {
                 }
             }
 
-            if (data.participants) {
+            if (allParticipants) {
                 const drawNoByName = new Map();
-                for (const p of data.participants) {
+                for (const p of allParticipants) {
                     if (p.name) {
                         const fromAthletes = drawNoByNameFromAthletesAll.get(p.name);
                         if (fromAthletes != null) {
@@ -604,7 +823,7 @@ async function viewAllBrackets() {
                                     nameEl.insertBefore(span, nameEl.firstChild);
                                 }
                             }
-                            const unit = findUnitForParticipant(displayName, unitMapByNameAll, data.participants, unitMapByDrawNoAll, participantUnitMapAll);
+                            const unit = findUnitForParticipant(displayName, unitMapByNameAll, allParticipants, unitMapByDrawNoAll, participantUnitMapAll);
                             if (unit && !nameEl.querySelector('.unit-tag')) {
                                 const tag = document.createElement('span');
                                 tag.className = 'unit-tag';
@@ -626,11 +845,71 @@ async function viewBracketTree() {
     const weightClass = selectedBracketClass;
     if (!weightClass) { alert('请选择级别'); return; }
 
+    if (isJJEvent()) {
+        const jjMatchResp = await apiGet('/jj-brackets/matches?' + getEventParam() + '&weight_class=' + encodeURIComponent(weightClass));
+        if (jjMatchResp.success && jjMatchResp.data && jjMatchResp.data.length > 0) {
+            _autoGenerateAttempted = false;
+            await renderJJBracketFromMatches(weightClass, jjMatchResp.data);
+        } else {
+            const { drawn, hasAthletes } = await checkAthletesDrawn(weightClass);
+            if (hasAthletes && !drawn) {
+                document.getElementById('bracketDisplay').innerHTML = '<p style="text-align: center; color: #909399; padding: 40px 0;">还没有对运动员进行抽签，暂无对阵图</p>';
+                return;
+            }
+            if (_autoGenerateAttempted) {
+                console.warn(`[自动生成] 级别「${weightClass}」已尝试自动生成但未产生数据，停止重试`);
+                document.getElementById('bracketDisplay').innerHTML = '<p style="text-align: center; color: #909399; padding: 40px 0;">自动生成未产生对阵数据，请检查运动员和竞赛方式配置</p>';
+                _autoGenerateAttempted = false;
+                return;
+            }
+            console.log(`[自动生成] 级别「${weightClass}」尚未生成对阵图，开始自动生成...`);
+            try {
+                const resp = await apiPost('/auto-arrange/generate-bracket', { event_id: currentEventId, weight_class: weightClass });
+                if (resp.success && resp.data && resp.data.generated > 0) {
+                    console.log(`[自动生成] 级别「${weightClass}」对阵表生成成功`);
+                    _autoGenerateAttempted = true;
+                    clearBracketCache();
+                    await loadBracketClassList();
+                    await viewBracketTree();
+                } else {
+                    const errMsg = resp.success ? '生成结果为空，请检查运动员数据和竞赛方式配置' : (resp.error || '未知错误');
+                    console.warn(`[自动生成] 级别「${weightClass}」生成失败:`, errMsg);
+                    document.getElementById('bracketDisplay').innerHTML = `<p style="text-align: center; color: #909399; padding: 40px 0;">自动生成失败：${errMsg}</p>`;
+                    _autoGenerateAttempted = false;
+                }
+            } catch (err) {
+                alert('自动生成失败: ' + err.message);
+                document.getElementById('bracketDisplay').innerHTML = '<p style="text-align: center; color: #909399; padding: 40px 0;">该级别暂无编排数据，请先生成对阵表</p>';
+                _autoGenerateAttempted = false;
+            }
+        }
+        return;
+    }
+
     const stageIdResp = await apiGet('/brackets/stage-id/' + encodeURIComponent(weightClass) + '?' + getEventParam());
     if (stageIdResp.success && stageIdResp.data && stageIdResp.data.stage_id) {
         const stageId = stageIdResp.data.stage_id;
-        const stageDataResp = await apiGet('/brackets/stage/' + stageId);
+        const stageType = stageIdResp.data.stage_type || 'single_elimination';
+        const stageIds = String(stageId).split(',').map(s => s.trim()).filter(Boolean);
+
+        if (stageType === 'double_elimination' && stageIds.length > 1) {
+            _autoGenerateAttempted = false;
+            await renderDoubleEliminationFromStages(weightClass, stageIds);
+            return;
+        }
+
+        if (stageType === 'round_robin') {
+            const matchResp = await apiGet('/matches?' + getEventParam() + '&weight_class=' + encodeURIComponent(weightClass));
+            if (matchResp.success && matchResp.data && matchResp.data.length > 0) {
+                _autoGenerateAttempted = false;
+                await renderRoundRobinFromMatches(weightClass, matchResp.data);
+                return;
+            }
+        }
+
+        const stageDataResp = await apiGet('/brackets/stage/' + stageIds[0]);
         if (stageDataResp.success && stageDataResp.data && stageDataResp.data.stages && stageDataResp.data.stages.length > 0) {
+            _autoGenerateAttempted = false;
             await renderBracketViewer(stageDataResp.data, weightClass);
             return;
         }
@@ -638,6 +917,7 @@ async function viewBracketTree() {
 
     const matchResp = await apiGet('/matches?' + getEventParam() + '&weight_class=' + encodeURIComponent(weightClass));
     if (matchResp.success && matchResp.data && matchResp.data.length > 0) {
+        _autoGenerateAttempted = false;
         await renderBracketFromMatches(weightClass);
     } else {
         const { drawn, hasAthletes } = await checkAthletesDrawn(weightClass);
@@ -645,21 +925,31 @@ async function viewBracketTree() {
             document.getElementById('bracketDisplay').innerHTML = '<p style="text-align: center; color: #909399; padding: 40px 0;">还没有对运动员进行抽签，暂无对阵图</p>';
             return;
         }
+        if (_autoGenerateAttempted) {
+            console.warn(`[自动生成] 级别「${weightClass}」已尝试自动生成但未产生数据，停止重试`);
+            document.getElementById('bracketDisplay').innerHTML = '<p style="text-align: center; color: #909399; padding: 40px 0;">自动生成未产生对阵数据，请检查运动员和竞赛方式配置</p>';
+            _autoGenerateAttempted = false;
+            return;
+        }
         console.log(`[自动生成] 级别「${weightClass}」尚未生成对阵图，开始自动生成...`);
         try {
             const resp = await apiPost('/auto-arrange/generate-bracket', { event_id: currentEventId, weight_class: weightClass });
-            if (resp.success) {
+            if (resp.success && resp.data && resp.data.generated > 0) {
                 console.log(`[自动生成] 级别「${weightClass}」对阵表生成成功`);
+                _autoGenerateAttempted = true;
                 clearBracketCache();
                 await loadBracketClassList();
                 await viewBracketTree();
             } else {
-                alert('自动生成失败: ' + (resp.error || '未知错误'));
-                document.getElementById('bracketDisplay').innerHTML = '<p style="text-align: center; color: #909399; padding: 40px 0;">该级别暂无编排数据，请先生成对阵表</p>';
+                const errMsg = resp.success ? '生成结果为空，请检查运动员数据和竞赛方式配置' : (resp.error || '未知错误');
+                console.warn(`[自动生成] 级别「${weightClass}」生成失败:`, errMsg);
+                document.getElementById('bracketDisplay').innerHTML = `<p style="text-align: center; color: #909399; padding: 40px 0;">自动生成失败：${errMsg}</p>`;
+                _autoGenerateAttempted = false;
             }
         } catch (err) {
             alert('自动生成失败: ' + err.message);
             document.getElementById('bracketDisplay').innerHTML = '<p style="text-align: center; color: #909399; padding: 40px 0;">该级别暂无编排数据，请先生成对阵表</p>';
+            _autoGenerateAttempted = false;
         }
     }
 }
@@ -737,7 +1027,7 @@ async function renderBracketViewer(data, weightClass) {
                 });
             }
 
-            const athleteResp = await apiGet('/athletes?' + getEventParam() + '&athlete_type=taekwondo_kyougi&weight_class=' + encodeURIComponent(weightClass));
+            const athleteResp = await apiGet('/athletes?' + getEventParam() + '&athlete_type=' + getCurrentAthleteType() + '&weight_class=' + encodeURIComponent(weightClass));
             const unitMapByName = new Map();
             const unitMapByDrawNo = new Map();
             const athleteIdToUnit = new Map();
@@ -864,6 +1154,29 @@ async function renderBracketFromMatches(weightClass) {
                 bracketMatchIdMap.set(String(m.bracket_match_id), m);
             }
         }
+
+        let currentCompMode = 'single_elimination';
+        try {
+            const catResp = await fetch(`${API_BASE}/category-mode?event_id=${currentEventId}`);
+            const catData = await catResp.json();
+            if (catData.success && catData.data) {
+                const cat = catData.data.find(c => c.weight_class === weightClass);
+                if (cat && cat.mode) {
+                    currentCompMode = cat.mode;
+                }
+            }
+        } catch (e) {}
+
+        if (currentCompMode === 'round_robin') {
+            await renderRoundRobinFromMatches(weightClass, matches);
+            return;
+        }
+
+        if (currentCompMode === 'double_elimination') {
+            await renderDoubleEliminationFromMatches(weightClass, matches);
+            return;
+        }
+
         const totalRounds = matches[0].total_rounds || 1;
 
         const participantMap = new Map();
@@ -963,6 +1276,715 @@ async function renderBracketFromMatches(weightClass) {
         attachBracketDblClick();
     } else {
         document.getElementById('bracketDisplay').innerHTML = '<p style="text-align: center; color: #888;">该级别暂无编排数据，请先生成对阵表</p>';
+    }
+}
+
+async function renderRoundRobinFromMatches(weightClass, matches) {
+    const participantMap = new Map();
+    let pid = 1;
+    const getParticipantId = (name, unit) => {
+        const key = name + '|' + (unit || '');
+        if (!participantMap.has(key)) {
+            const nameWithUnit = unit ? `${name} (${unit})` : name;
+            participantMap.set(key, { id: pid++, name: nameWithUnit });
+        }
+        return participantMap.get(key).id;
+    };
+
+    matches.forEach(m => {
+        if (m.blue_name) getParticipantId(m.blue_name, m.blue_unit);
+        if (m.red_name) getParticipantId(m.red_name, m.red_unit);
+    });
+
+    const participants = Array.from(participantMap.values());
+    const n = participants.length;
+
+    const roundSet = new Set();
+    matches.forEach(m => { if (m.round) roundSet.add(m.round); });
+    const maxRound = Math.max(...roundSet, 1);
+
+    const stage = [{ id: 1, tournament_id: Number(currentEventId), name: weightClass, type: 'round_robin', number: 1, settings: { size: n, groupCount: 1, roundRobinMode: 'simple' } }];
+    const group = [{ id: 1, stage_id: 1, number: 1 }];
+
+    const roundData = [];
+    for (let r = 1; r <= maxRound; r++) {
+        roundData.push({ id: r, stage_id: 1, group_id: 1, number: r, name: `第${r}轮` });
+    }
+
+    const matchData = [];
+    const matchGames = [];
+    matches.forEach((m, idx) => {
+        const blueId = m.blue_name ? getParticipantId(m.blue_name, m.blue_unit) : null;
+        const redId = m.red_name ? getParticipantId(m.red_name, m.red_unit) : null;
+
+        let status = 'pending';
+        if (m.match_status === '进行中') status = 'running';
+        if (m.match_status === '已结束') status = 'completed';
+
+        const opponent1 = blueId ? { id: blueId, score: m.blue_score || 0 } : null;
+        const opponent2 = redId ? { id: redId, score: m.red_score || 0 } : null;
+
+        if (m.match_status === '已结束') {
+            if (m.winner === '青方' && opponent1) opponent1.result = 'win';
+            if (m.winner === '红方' && opponent2) opponent2.result = 'win';
+        }
+
+        const venueLabel = m.venue_no || (m.venue ? `${m.venue}${idx + 1}` : `A${2000 + (idx + 1)}`);
+
+        matchData.push({
+            id: m.id || (idx + 1), stage_id: 1, group_id: 1,
+            round_id: m.round || 1, number: venueLabel,
+            opponent1, opponent2, status
+        });
+
+        matchGames.push({
+            id: idx + 1, stage_id: 1, parent_id: m.id || (idx + 1),
+            number: 1, status,
+            opponent1: opponent1 ? { ...opponent1 } : null,
+            opponent2: opponent2 ? { ...opponent2 } : null
+        });
+    });
+
+    document.getElementById('bracketDisplay').innerHTML = `
+        <h3 style="margin-bottom:16px;">${weightClass} 循环赛对阵图</h3>
+        <div id="bracket-viewer-container" class="brackets-viewer" style="overflow-x:auto;padding:16px;background:#fff;border-radius:8px;"></div>
+    `;
+
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    if (window.bracketsViewer) {
+        try {
+            await window.bracketsViewer.render({
+                stages: stage, groups: group, rounds: roundData,
+                matches: matchData, matchGames: matchGames, participants: participants
+            }, {
+                selector: '#bracket-viewer-container',
+                clear: true,
+                showRankingTable: true,
+                participantOriginPlacement: 'none',
+                customRoundName: (info) => {
+                    return `第${info.roundNumber}轮`;
+                }
+            });
+
+            const athleteResp = await apiGet('/athletes?' + getEventParam() + '&athlete_type=' + getCurrentAthleteType() + '&weight_class=' + encodeURIComponent(weightClass));
+            const unitMapByName = new Map();
+            const drawNoByName = new Map();
+            if (athleteResp.success && athleteResp.data) {
+                for (const a of athleteResp.data) {
+                    const athleteName = a.name || a.athlete_name || '';
+                    const athleteUnit = a.unit || a.athlete_team || '';
+                    const drawNo = a.draw_no || a.drawNo || a.athlete_draw_num;
+                    if (athleteName && athleteUnit) unitMapByName.set(athleteName, athleteUnit);
+                    if (athleteName && drawNo) drawNoByName.set(athleteName, drawNo);
+                }
+            }
+
+            document.querySelectorAll('#bracket-viewer-container .participant').forEach(el => {
+                const nameEl = el.querySelector('.name');
+                if (nameEl) {
+                    const displayName = nameEl.childNodes[0]?.textContent?.trim();
+                    if (displayName) {
+                        const drawNo = drawNoByName.get(displayName);
+                        if (drawNo != null && !nameEl.querySelector('.seed-no')) {
+                            const span = document.createElement('span');
+                            span.className = 'seed-no';
+                            span.textContent = `${drawNo} `;
+                            nameEl.insertBefore(span, nameEl.firstChild);
+                        }
+                        const unit = unitMapByName.get(displayName);
+                        if (unit && !nameEl.querySelector('.unit-tag')) {
+                            const tag = document.createElement('span');
+                            tag.className = 'unit-tag';
+                            tag.textContent = `(${unit})`;
+                            nameEl.appendChild(tag);
+                        }
+                    }
+                }
+            });
+
+            requestAnimationFrame(() => { replaceByeText(document.getElementById('bracket-viewer-container')); });
+            attachBracketDblClick();
+        } catch (err) {
+            console.error('渲染循环赛对阵图失败:', err);
+            renderRoundRobinAsTable(weightClass, matches);
+        }
+    } else {
+        renderRoundRobinAsTable(weightClass, matches);
+    }
+}
+
+function renderRoundRobinAsTable(weightClass, matches) {
+    const roundSet = new Set();
+    matches.forEach(m => { if (m.round) roundSet.add(m.round); });
+    const maxRound = Math.max(...roundSet, 0);
+
+    let html = `<h3 style="margin-bottom:16px;">${weightClass} 循环赛对阵表</h3>`;
+    html += '<div style="overflow-x:auto;">';
+
+    for (let r = 1; r <= maxRound; r++) {
+        const roundMatches = matches.filter(m => m.round === r);
+        if (roundMatches.length === 0) continue;
+
+        html += `<div style="margin-bottom:20px;">`;
+        html += `<h4 style="margin:8px 0;padding:6px 12px;background:#ecf5ff;border-radius:4px;color:#409eff;">第${r}轮</h4>`;
+        html += `<table style="width:100%;border-collapse:collapse;font-size:13px;">`;
+        html += `<thead><tr style="background:linear-gradient(to right,#8B0000,#00008B);color:#fff;">
+            <th style="padding:6px 10px;">场次</th>
+            <th style="padding:6px 10px;">青方</th>
+            <th style="padding:6px 10px;">代表队</th>
+            <th style="padding:6px 10px;"></th>
+            <th style="padding:6px 10px;">红方</th>
+            <th style="padding:6px 10px;">代表队</th>
+            <th style="padding:6px 10px;">状态</th>
+        </tr></thead><tbody>`;
+
+        roundMatches.forEach(m => {
+            const statusClass = m.match_status === '已结束' ? 'status-finished' : (m.match_status === '进行中' ? 'status-active' : 'status-pending');
+            html += `<tr style="background:#f0f7ed;">
+                <td style="padding:6px 10px;text-align:center;">${m.venue_no || '-'}</td>
+                <td style="padding:6px 10px;color:#409eff;font-weight:500;text-align:right;">${m.blue_name || '-'}</td>
+                <td style="padding:6px 10px;font-size:12px;color:#909399;">${m.blue_unit || ''}</td>
+                <td style="padding:6px 10px;color:#909399;font-weight:bold;">VS</td>
+                <td style="padding:6px 10px;color:#F56C6C;font-weight:500;text-align:left;">${m.red_name || '-'}</td>
+                <td style="padding:6px 10px;font-size:12px;color:#909399;">${m.red_unit || ''}</td>
+                <td style="padding:6px 10px;text-align:center;"><span class="${statusClass}">${m.match_status || '未开始'}</span></td>
+            </tr>`;
+        });
+
+        html += '</tbody></table></div>';
+    }
+
+    html += '</div>';
+    document.getElementById('bracketDisplay').innerHTML = html;
+}
+
+async function renderDoubleEliminationFromStages(weightClass, stageIds) {
+    document.getElementById('bracketDisplay').innerHTML = `
+        <h3 style="margin-bottom:16px;">${weightClass} 双败淘汰对阵图</h3>
+        <div id="bracket-viewer-container" class="brackets-viewer" style="overflow-x:auto;padding:16px;background:#fff;border-radius:8px;"></div>
+    `;
+
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    let allStages = [];
+    let allGroups = [];
+    let allRounds = [];
+    let allMatches = [];
+    let allMatchGames = [];
+    let allParticipants = [];
+
+    for (const sid of stageIds) {
+        try {
+            const stageDataResp = await apiGet('/brackets/stage/' + sid);
+            if (stageDataResp.success && stageDataResp.data && stageDataResp.data.stages) {
+                const data = stageDataResp.data;
+                allStages = allStages.concat(data.stages || []);
+                allGroups = allGroups.concat(data.groups || []);
+                allRounds = allRounds.concat(data.rounds || []);
+                allMatches = allMatches.concat(data.matches || []);
+                allMatchGames = allMatchGames.concat(data.matchGames || []);
+                allParticipants = allParticipants.concat(data.participants || []);
+            }
+        } catch (e) {
+            console.warn(`加载stage ${sid}失败:`, e);
+        }
+    }
+
+    const uniqueParticipantIds = new Set();
+    allParticipants = allParticipants.filter(p => {
+        if (uniqueParticipantIds.has(p.id)) return false;
+        uniqueParticipantIds.add(p.id);
+        return true;
+    });
+
+    if (window.bracketsViewer && allStages.length > 0) {
+        try {
+            await window.bracketsViewer.render({
+                stages: allStages, groups: allGroups, rounds: allRounds,
+                matches: allMatches, matchGames: allMatchGames, participants: allParticipants
+            }, {
+                selector: '#bracket-viewer-container',
+                clear: true,
+                showRankingTable: false,
+                participantOriginPlacement: 'none',
+                customRoundName: (info) => {
+                    const stageName = info.stageName || '';
+                    const isLosers = stageName.includes('败者') || stageName.includes('Loser');
+                    if (info.roundNumber && info.roundCount) {
+                        const d = Math.pow(2, info.roundCount - info.roundNumber);
+                        if (d === 1) return isLosers ? '败者组决赛' : '决赛';
+                        return isLosers ? `败者组1/${d}` : `1/${d}`;
+                    }
+                    return undefined;
+                }
+            });
+
+            const athleteResp = await apiGet('/athletes?' + getEventParam() + '&athlete_type=' + getCurrentAthleteType() + '&weight_class=' + encodeURIComponent(weightClass));
+            const unitMapByName = new Map();
+            const drawNoByName = new Map();
+            const athleteIdToUnit = new Map();
+            if (athleteResp.success && athleteResp.data) {
+                for (const a of athleteResp.data) {
+                    const athleteName = a.name || a.athlete_name || '';
+                    const athleteUnit = a.unit || a.athlete_team || '';
+                    const drawNo = a.draw_no || a.drawNo || a.athlete_draw_num;
+                    if (a.id && athleteUnit) athleteIdToUnit.set(a.id, athleteUnit);
+                    if (athleteName && athleteUnit) {
+                        unitMapByName.set(athleteName, athleteUnit);
+                        unitMapByName.set(`${athleteName}(${athleteUnit})`, athleteUnit);
+                    }
+                    if (athleteName && drawNo) drawNoByName.set(athleteName, drawNo);
+                }
+            }
+
+            const participantUnitMap = new Map();
+            for (const p of allParticipants) {
+                if (p.name && p.custom_data) {
+                    try {
+                        const custom = JSON.parse(p.custom_data);
+                        if (custom.athlete_id) {
+                            const u = athleteIdToUnit.get(custom.athlete_id);
+                            if (u) participantUnitMap.set(p.name, u);
+                        }
+                    } catch (e) {}
+                }
+            }
+
+            document.querySelectorAll('#bracket-viewer-container .participant').forEach(el => {
+                const nameEl = el.querySelector('.name');
+                if (nameEl) {
+                    const displayName = nameEl.childNodes[0]?.textContent?.trim();
+                    if (displayName) {
+                        const pureName = extractPureName(displayName);
+                        if (pureName && pureName !== displayName && nameEl.childNodes[0]) {
+                            nameEl.childNodes[0].textContent = pureName;
+                        }
+                        const drawNo = drawNoByName.get(displayName) || drawNoByName.get(pureName);
+                        if (drawNo != null && !nameEl.querySelector('.seed-no')) {
+                            const span = document.createElement('span');
+                            span.className = 'seed-no';
+                            span.textContent = `${drawNo} `;
+                            nameEl.insertBefore(span, nameEl.firstChild);
+                        }
+                        const unit = findUnitForParticipant(displayName, unitMapByName, allParticipants, null, participantUnitMap)
+                            || unitMapByName.get(pureName);
+                        if (unit && !nameEl.querySelector('.unit-tag')) {
+                            const tag = document.createElement('span');
+                            tag.className = 'unit-tag';
+                            tag.textContent = `(${unit})`;
+                            nameEl.appendChild(tag);
+                        }
+                    }
+                }
+            });
+
+            const matchResp = await apiGet('/matches?' + getEventParam() + '&weight_class=' + encodeURIComponent(weightClass));
+            if (matchResp.success && matchResp.data) {
+                bracketMatchDataCache = matchResp.data;
+                bracketMatchIdMap.clear();
+                for (const m of matchResp.data) {
+                    if (m.bracket_match_id) {
+                        bracketMatchIdMap.set(String(m.bracket_match_id), m);
+                    }
+                }
+            }
+
+            requestAnimationFrame(() => { replaceByeText(document.getElementById('bracket-viewer-container')); });
+            attachBracketDblClick();
+        } catch (err) {
+            console.error('渲染双败淘汰对阵图失败:', err);
+            document.getElementById('bracketDisplay').innerHTML = '<p style="text-align:center;color:#f56c6c;padding:20px;">双败淘汰对阵图渲染失败，请刷新重试</p>';
+        }
+    } else {
+        document.getElementById('bracketDisplay').innerHTML = '<p style="text-align:center;color:#909399;padding:40px 0;">双败淘汰对阵图数据加载失败</p>';
+    }
+}
+
+async function renderDoubleEliminationFromMatches(weightClass, matches) {
+    const stageIdResp = await apiGet('/brackets/stage-id/' + encodeURIComponent(weightClass) + '?' + getEventParam());
+    if (stageIdResp.success && stageIdResp.data && stageIdResp.data.stage_id) {
+        const stageId = stageIdResp.data.stage_id;
+        const stageIds = String(stageId).split(',').map(s => s.trim()).filter(Boolean);
+
+        document.getElementById('bracketDisplay').innerHTML = `
+            <h3 style="margin-bottom:16px;">${weightClass} 双败淘汰对阵图</h3>
+            <div id="bracket-viewer-container" class="brackets-viewer" style="overflow-x:auto;padding:16px;background:#fff;border-radius:8px;"></div>
+        `;
+
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        let allStages = [];
+        let allGroups = [];
+        let allRounds = [];
+        let allMatches = [];
+        let allMatchGames = [];
+        let allParticipants = [];
+
+        for (const sid of stageIds) {
+            try {
+                const stageDataResp = await apiGet('/brackets/stage/' + sid);
+                if (stageDataResp.success && stageDataResp.data && stageDataResp.data.stages) {
+                    const data = stageDataResp.data;
+                    allStages = allStages.concat(data.stages || []);
+                    allGroups = allGroups.concat(data.groups || []);
+                    allRounds = allRounds.concat(data.rounds || []);
+                    allMatches = allMatches.concat(data.matches || []);
+                    allMatchGames = allMatchGames.concat(data.matchGames || []);
+                    allParticipants = allParticipants.concat(data.participants || []);
+                }
+            } catch (e) {
+                console.warn(`加载stage ${sid}失败:`, e);
+            }
+        }
+
+        const uniqueParticipantIds = new Set();
+        allParticipants = allParticipants.filter(p => {
+            if (uniqueParticipantIds.has(p.id)) return false;
+            uniqueParticipantIds.add(p.id);
+            return true;
+        });
+
+        if (window.bracketsViewer && allStages.length > 0) {
+            try {
+                await window.bracketsViewer.render({
+                    stages: allStages, groups: allGroups, rounds: allRounds,
+                    matches: allMatches, matchGames: allMatchGames, participants: allParticipants
+                }, {
+                    selector: '#bracket-viewer-container',
+                    clear: true,
+                    showRankingTable: false,
+                    participantOriginPlacement: 'none',
+                    customRoundName: (info) => {
+                        const stageName = info.stageName || '';
+                        const isLosers = stageName.includes('败者') || stageName.includes('Loser');
+                        if (info.roundNumber && info.roundCount) {
+                            const d = Math.pow(2, info.roundCount - info.roundNumber);
+                            if (d === 1) return isLosers ? '败者组决赛' : '决赛';
+                            return isLosers ? `败者组1/${d}` : `1/${d}`;
+                        }
+                        return undefined;
+                    }
+                });
+
+                const athleteResp = await apiGet('/athletes?' + getEventParam() + '&athlete_type=' + getCurrentAthleteType() + '&weight_class=' + encodeURIComponent(weightClass));
+                const unitMapByName = new Map();
+                const drawNoByName = new Map();
+                if (athleteResp.success && athleteResp.data) {
+                    for (const a of athleteResp.data) {
+                        const athleteName = a.name || a.athlete_name || '';
+                        const athleteUnit = a.unit || a.athlete_team || '';
+                        const drawNo = a.draw_no || a.drawNo || a.athlete_draw_num;
+                        if (athleteName && athleteUnit) unitMapByName.set(athleteName, athleteUnit);
+                        if (athleteName && drawNo) drawNoByName.set(athleteName, drawNo);
+                    }
+                }
+
+                document.querySelectorAll('#bracket-viewer-container .participant').forEach(el => {
+                    const nameEl = el.querySelector('.name');
+                    if (nameEl) {
+                        const displayName = nameEl.childNodes[0]?.textContent?.trim();
+                        if (displayName) {
+                            const pureName = extractPureName(displayName);
+                            if (pureName && pureName !== displayName && nameEl.childNodes[0]) {
+                                nameEl.childNodes[0].textContent = pureName;
+                            }
+                            const drawNo = drawNoByName.get(displayName) || drawNoByName.get(pureName);
+                            if (drawNo != null && !nameEl.querySelector('.seed-no')) {
+                                const span = document.createElement('span');
+                                span.className = 'seed-no';
+                                span.textContent = `${drawNo} `;
+                                nameEl.insertBefore(span, nameEl.firstChild);
+                            }
+                            const unit = unitMapByName.get(displayName) || unitMapByName.get(pureName);
+                            if (unit && !nameEl.querySelector('.unit-tag')) {
+                                const tag = document.createElement('span');
+                                tag.className = 'unit-tag';
+                                tag.textContent = `(${unit})`;
+                                nameEl.appendChild(tag);
+                            }
+                        }
+                    }
+                });
+
+                requestAnimationFrame(() => { replaceByeText(document.getElementById('bracket-viewer-container')); });
+                attachBracketDblClick();
+            } catch (err) {
+                console.error('渲染双败淘汰对阵图失败:', err);
+                document.getElementById('bracketDisplay').innerHTML = '<p style="text-align:center;color:#f56c6c;padding:20px;">双败淘汰对阵图渲染失败，请刷新重试</p>';
+            }
+        }
+    } else {
+        document.getElementById('bracketDisplay').innerHTML = '<p style="text-align:center;color:#909399;padding:40px 0;">双败淘汰对阵图数据尚未生成，请先生成对阵表</p>';
+    }
+}
+
+async function renderJJBracketFromMatches(weightClass, jjMatches) {
+    if (!jjMatches || jjMatches.length === 0) {
+        document.getElementById('bracketDisplay').innerHTML = '<p style="text-align: center; color: #909399; padding: 40px 0;">该级别暂无编排数据，请先生成对阵表</p>';
+        return;
+    }
+
+    let currentCompMode = 'single_elimination';
+    if (typeof JiuJitsuBrackets !== 'undefined' && JiuJitsuBrackets.compModeConfig) {
+        currentCompMode = JiuJitsuBrackets.compModeConfig[weightClass] || 'single_elimination';
+    }
+
+    const participantMap = new Map();
+    let pid = 1;
+    const getParticipantId = (name, team, isBlue) => {
+        const key = name + '|' + (team || '');
+        if (!participantMap.has(key)) {
+            const side = isBlue ? 'B:' : 'R:';
+            const nameWithUnit = team ? `${name || '待定'} (${team})` : (name || '待定');
+            const displayName = `${side} ${nameWithUnit}`;
+            participantMap.set(key, { id: pid++, name: displayName });
+        }
+        return participantMap.get(key).id;
+    };
+
+    jjMatches.forEach(m => {
+        if (m.jiu_jitsu_blue_athlete_name) getParticipantId(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, true);
+        if (m.jiu_jitsu_red_athlete_name) getParticipantId(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, false);
+    });
+
+    const participants = Array.from(participantMap.values());
+    const totalRounds = jjMatches[0].jiu_jitsu_match_category_total_rounds || 1;
+
+    const roundSet = new Set();
+    jjMatches.forEach(m => { if (m.jiu_jitsu_match_round_num) roundSet.add(m.jiu_jitsu_match_round_num); });
+    const maxRound = Math.max(...roundSet, 1);
+
+    const n = participants.length;
+    let stageSettings = {};
+    let stageType = currentCompMode;
+
+    if (currentCompMode === 'round_robin') {
+        stageSettings = { size: n, groupCount: 1, roundRobinMode: 'simple' };
+    } else if (currentCompMode === 'double_elimination') {
+        stageSettings = { size: Math.pow(2, Math.ceil(Math.log2(n || 2))), skipFirstRound: false, grandFinal: 'none' };
+    } else {
+        stageSettings = { size: Math.pow(2, Math.ceil(Math.log2(n || 2))), skipFirstRound: false, grandFinal: 'none' };
+    }
+
+    const stage = [{ id: 1, tournament_id: Number(currentEventId), name: weightClass, type: stageType, number: 1, settings: stageSettings }];
+    const group = [{ id: 1, stage_id: 1, number: 1 }];
+
+    const roundData = [];
+    for (let r = 1; r <= maxRound; r++) {
+        const sampleMatch = jjMatches.find(m => m.jiu_jitsu_match_round_num === r);
+        const roundName = sampleMatch ? sampleMatch.jiu_jitsu_match_round_name : `赛${r}`;
+        roundData.push({ id: r, stage_id: 1, group_id: 1, number: r, name: roundName });
+    }
+
+    const matchData = [];
+    const matchGames = [];
+    jjMatches.forEach((m, idx) => {
+        const blueId = m.jiu_jitsu_blue_athlete_name ? getParticipantId(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, true) : null;
+        const redId = m.jiu_jitsu_red_athlete_name ? getParticipantId(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, false) : null;
+
+        let status = 'pending';
+        if (m.jiu_jitsu_match_status === 'bye') status = 'completed';
+        if (m.jiu_jitsu_match_status === '进行中') status = 'running';
+        if (m.jiu_jitsu_match_status === '已结束') status = 'completed';
+
+        const opponent1 = blueId ? { id: blueId, score: 0 } : null;
+        const opponent2 = redId ? { id: redId, score: 0 } : null;
+
+        if (m.jiu_jitsu_match_status === '已结束') {
+            if (m.jiu_jitsu_winner === '青方' && opponent1) opponent1.result = 'win';
+            if (m.jiu_jitsu_winner === '红方' && opponent2) opponent2.result = 'win';
+        }
+
+        const venueLabel = m.jiu_jitsu_match_venue || m.jiu_jitsu_match_id || `${idx + 1}`;
+
+        matchData.push({
+            id: m.id || (idx + 1), stage_id: 1, group_id: 1,
+            round_id: m.jiu_jitsu_match_round_num || 1, number: venueLabel,
+            opponent1, opponent2, status
+        });
+
+        matchGames.push({
+            id: idx + 1, stage_id: 1, parent_id: m.id || (idx + 1),
+            number: 1, status,
+            opponent1: opponent1 ? { ...opponent1 } : null,
+            opponent2: opponent2 ? { ...opponent2 } : null
+        });
+    });
+
+    const bracketData = {
+        stages: stage, groups: group, rounds: roundData,
+        matches: matchData, matchGames: matchGames, participants: participants
+    };
+
+    document.getElementById('bracketDisplay').innerHTML = `
+        <h3 style="margin-bottom:16px;">${weightClass} ${currentCompMode === 'round_robin' ? '循环赛' : currentCompMode === 'double_elimination' ? '双败淘汰' : ''}对阵图</h3>
+        <div id="bracket-viewer-container" class="brackets-viewer" style="overflow-x:auto;padding:16px;background:#fff;border-radius:8px;"></div>
+    `;
+
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    if (window.bracketsViewer) {
+        try {
+            await window.bracketsViewer.render(bracketData, {
+                selector: '#bracket-viewer-container',
+                clear: true,
+                showRankingTable: currentCompMode === 'round_robin',
+                participantOriginPlacement: 'none',
+                customRoundName: (info) => {
+                    if (currentCompMode === 'round_robin') {
+                        return `第${info.roundNumber}轮`;
+                    }
+                    if (currentCompMode === 'double_elimination') {
+                        if (info.roundNumber && info.roundCount) {
+                            const d = Math.pow(2, info.roundCount - info.roundNumber);
+                            if (d === 1) return '决赛';
+                            return `1/${d}`;
+                        }
+                        return undefined;
+                    }
+                    if (info.roundNumber && info.roundCount) {
+                        const d = Math.pow(2, info.roundCount - info.roundNumber);
+                        if (d === 1) return '决赛';
+                        return `1/${d}`;
+                    }
+                    return undefined;
+                }
+            });
+            requestAnimationFrame(() => { replaceByeText(document.getElementById('bracket-viewer-container')); });
+            attachBracketDblClick();
+        } catch (err) {
+            console.error('渲染柔术对阵图失败:', err);
+        }
+    }
+    attachBracketDblClick();
+}
+
+async function renderJJBracketInSection(selector, weightClass, jjMatches) {
+    if (!jjMatches || jjMatches.length === 0) return;
+
+    let currentCompMode = 'single_elimination';
+    if (typeof JiuJitsuBrackets !== 'undefined' && JiuJitsuBrackets.compModeConfig) {
+        currentCompMode = JiuJitsuBrackets.compModeConfig[weightClass] || 'single_elimination';
+    }
+
+    const participantMap = new Map();
+    let pid = 1;
+    const getParticipantId = (name, team, isBlue) => {
+        const key = name + '|' + (team || '');
+        if (!participantMap.has(key)) {
+            const side = isBlue ? 'B:' : 'R:';
+            const nameWithUnit = team ? `${name || '待定'} (${team})` : (name || '待定');
+            const displayName = `${side} ${nameWithUnit}`;
+            participantMap.set(key, { id: pid++, name: displayName });
+        }
+        return participantMap.get(key).id;
+    };
+
+    jjMatches.forEach(m => {
+        if (m.jiu_jitsu_blue_athlete_name) getParticipantId(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, true);
+        if (m.jiu_jitsu_red_athlete_name) getParticipantId(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, false);
+    });
+
+    const participants = Array.from(participantMap.values());
+    const roundSet = new Set();
+    jjMatches.forEach(m => { if (m.jiu_jitsu_match_round_num) roundSet.add(m.jiu_jitsu_match_round_num); });
+    const maxRound = Math.max(...roundSet, 1);
+
+    const n = participants.length;
+    let stageSettings = {};
+    let stageType = currentCompMode;
+
+    if (currentCompMode === 'round_robin') {
+        stageSettings = { size: n, groupCount: 1, roundRobinMode: 'simple' };
+    } else if (currentCompMode === 'double_elimination') {
+        stageSettings = { size: Math.pow(2, Math.ceil(Math.log2(n || 2))), skipFirstRound: false, grandFinal: 'none' };
+    } else {
+        stageSettings = { size: Math.pow(2, Math.ceil(Math.log2(n || 2))), skipFirstRound: false, grandFinal: 'none' };
+    }
+
+    const stage = [{ id: 1, tournament_id: Number(currentEventId), name: weightClass, type: stageType, number: 1, settings: stageSettings }];
+    const group = [{ id: 1, stage_id: 1, number: 1 }];
+
+    const roundData = [];
+    for (let r = 1; r <= maxRound; r++) {
+        const sampleMatch = jjMatches.find(m => m.jiu_jitsu_match_round_num === r);
+        const roundName = sampleMatch ? sampleMatch.jiu_jitsu_match_round_name : `赛${r}`;
+        roundData.push({ id: r, stage_id: 1, group_id: 1, number: r, name: roundName });
+    }
+
+    const matchData = [];
+    const matchGames = [];
+    jjMatches.forEach((m, idx) => {
+        const blueId = m.jiu_jitsu_blue_athlete_name ? getParticipantId(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, true) : null;
+        const redId = m.jiu_jitsu_red_athlete_name ? getParticipantId(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, false) : null;
+
+        let status = 'pending';
+        if (m.jiu_jitsu_match_status === 'bye') status = 'completed';
+        if (m.jiu_jitsu_match_status === '进行中') status = 'running';
+        if (m.jiu_jitsu_match_status === '已结束') status = 'completed';
+
+        const opponent1 = blueId ? { id: blueId, score: 0 } : null;
+        const opponent2 = redId ? { id: redId, score: 0 } : null;
+
+        if (m.jiu_jitsu_match_status === '已结束') {
+            if (m.jiu_jitsu_winner === '青方' && opponent1) opponent1.result = 'win';
+            if (m.jiu_jitsu_winner === '红方' && opponent2) opponent2.result = 'win';
+        }
+
+        const venueLabel = m.jiu_jitsu_match_venue || m.jiu_jitsu_match_id || `${idx + 1}`;
+
+        matchData.push({
+            id: m.id || (idx + 1), stage_id: 1, group_id: 1,
+            round_id: m.jiu_jitsu_match_round_num || 1, number: venueLabel,
+            opponent1, opponent2, status
+        });
+
+        matchGames.push({
+            id: idx + 1, stage_id: 1, parent_id: m.id || (idx + 1),
+            number: 1, status,
+            opponent1: opponent1 ? { ...opponent1 } : null,
+            opponent2: opponent2 ? { ...opponent2 } : null
+        });
+    });
+
+    const data = {
+        stages: stage, groups: group, rounds: roundData,
+        matches: matchData, matchGames: matchGames, participants: participants
+    };
+
+    if (window.bracketsViewer) {
+        try {
+            await window.bracketsViewer.render(data, {
+                selector: typeof selector === 'string' ? '#' + selector : selector,
+                clear: true,
+                showRankingTable: currentCompMode === 'round_robin',
+                participantOriginPlacement: 'none',
+                customRoundName: (info) => {
+                    if (currentCompMode === 'round_robin') {
+                        return `第${info.roundNumber}轮`;
+                    }
+                    if (currentCompMode === 'double_elimination') {
+                        if (info.roundNumber && info.roundCount) {
+                            const d = Math.pow(2, info.roundCount - info.roundNumber);
+                            if (d === 1) return '决赛';
+                            return `1/${d}`;
+                        }
+                        return undefined;
+                    }
+                    if (info.roundNumber && info.roundCount) {
+                        const d = Math.pow(2, info.roundCount - info.roundNumber);
+                        if (d === 1) return '决赛';
+                        return `1/${d}`;
+                    }
+                    return undefined;
+                }
+            });
+            const container = typeof selector === 'string' ? document.getElementById(selector) : selector;
+            if (container) requestAnimationFrame(() => { replaceByeText(container); });
+        } catch (e) {
+            console.warn(`渲染柔术对阵图 ${weightClass} 失败:`, e);
+        }
     }
 }
 
@@ -1067,13 +2089,15 @@ async function loadBracketClassList() {
     list.innerHTML = '';
     if (!currentEventId) return;
 
-    try {
-        const syncResp = await apiPost('/brackets/sync-cache', { event_id: currentEventId });
-        if (syncResp.success && syncResp.data && syncResp.data.syncedClasses && syncResp.data.syncedClasses.length > 0) {
-            console.log('[sync-cache] 同步了以下级别的对阵数据:', syncResp.data.syncedClasses.join(', '));
+    if (!isJJEvent()) {
+        try {
+            const syncResp = await apiPost('/brackets/sync-cache', { event_id: currentEventId });
+            if (syncResp.success && syncResp.data && syncResp.data.syncedClasses && syncResp.data.syncedClasses.length > 0) {
+                console.log('[sync-cache] 同步了以下级别的对阵数据:', syncResp.data.syncedClasses.join(', '));
+            }
+        } catch (e) {
+            console.warn('[sync-cache] 同步缓存失败:', e);
         }
-    } catch (e) {
-        console.warn('[sync-cache] 同步缓存失败:', e);
     }
 
     if (typeof CategoryModeComponent !== 'undefined') {
@@ -1089,14 +2113,24 @@ async function loadBracketClassList() {
     }
 
     generatedClasses.clear();
-    const stageMapResp = await apiGet('/brackets/stage-map?' + getEventParam());
-    const stageMaps = (stageMapResp.success && stageMapResp.data) ? stageMapResp.data : [];
-    stageMaps.forEach(sm => { if (sm.stage_id) generatedClasses.add(sm.class_name); });
 
-    saveBracketCache(stageMaps);
+    if (isJJEvent()) {
+        const jjClassesResp = await apiGet('/jj-brackets/classes?' + getEventParam());
+        if (jjClassesResp.success && jjClassesResp.data) {
+            jjClassesResp.data.forEach(cls => { generatedClasses.add(cls); });
+        }
+    } else {
+        const stageMapResp = await apiGet('/brackets/stage-map?' + getEventParam());
+        const stageMaps = (stageMapResp.success && stageMapResp.data) ? stageMapResp.data : [];
+        stageMaps.forEach(sm => { if (sm.stage_id) generatedClasses.add(sm.class_name); });
+        saveBracketCache(stageMaps);
+    }
 
     let allAthletes = [];
-    if (typeof CategoryModeComponent !== 'undefined' && CategoryModeComponent.categoryData.length > 0) {
+    if (isJJEvent()) {
+        const resp = await apiGet('/athletes?' + getEventParam() + '&athlete_type=jiu_jitsu');
+        allAthletes = resp.data || [];
+    } else if (typeof CategoryModeComponent !== 'undefined' && CategoryModeComponent.categoryData.length > 0) {
         const resp = await apiGet('/athletes?' + getEventParam() + '&athlete_type=taekwondo_kyougi');
         allAthletes = resp.data || [];
     } else {
@@ -1205,7 +2239,8 @@ function selectBracketClass(cls) {
 }
 
 async function checkAthletesDrawn(weightClass) {
-    let url = '/athletes?' + getEventParam() + '&athlete_type=taekwondo_kyougi';
+    let url = '/athletes?' + getEventParam();
+    url += '&athlete_type=' + getCurrentAthleteType();
     if (weightClass) {
         url += '&weight_class=' + encodeURIComponent(weightClass);
     }
@@ -1350,7 +2385,12 @@ async function clearSelectedBracket() {
     if (!confirm(`确定要清除「${selectedBracketClass}」的对阵图吗？此操作不可恢复！`)) return;
 
     try {
-        const resp = await apiPost('/brackets/clear', { weight_class: selectedBracketClass, event_id: currentEventId });
+        let resp;
+        if (isJJEvent()) {
+            resp = await apiPost('/jj-brackets/clear', { weight_class: selectedBracketClass, event_id: currentEventId });
+        } else {
+            resp = await apiPost('/brackets/clear', { weight_class: selectedBracketClass, event_id: currentEventId });
+        }
         if (resp.success) {
             alert(`「${selectedBracketClass}」对阵图已清除`);
             clearBracket();
@@ -1369,7 +2409,12 @@ async function clearAllBrackets() {
     if (!confirm('确定要清除全部级别的对阵图吗？此操作不可恢复！')) return;
 
     try {
-        const resp = await apiPost('/brackets/clear-all', { event_id: currentEventId });
+        let resp;
+        if (isJJEvent()) {
+            resp = await apiPost('/jj-brackets/clear', { event_id: currentEventId });
+        } else {
+            resp = await apiPost('/brackets/clear-all', { event_id: currentEventId });
+        }
         if (resp.success) {
             alert('全部对阵图已清除');
             clearBracket();
@@ -1395,7 +2440,12 @@ async function resetAllBrackets() {
     if (!confirm(confirmMessage)) return;
 
     try {
-        const resp = await apiPost('/brackets/clear-all', { event_id: currentEventId });
+        let resp;
+        if (isJJEvent()) {
+            resp = await apiPost('/jj-brackets/clear', { event_id: currentEventId });
+        } else {
+            resp = await apiPost('/brackets/clear-all', { event_id: currentEventId });
+        }
         if (resp.success) {
             clearBracket();
             clearBracketCache();
@@ -1414,6 +2464,10 @@ async function checkBracketsGeneratedForEvent() {
     if (!currentEventId) return false;
 
     try {
+        if (isJJEvent()) {
+            const jjClassesResp = await apiGet('/jj-brackets/classes?' + getEventParam());
+            return jjClassesResp.success && jjClassesResp.data && jjClassesResp.data.length > 0;
+        }
         const stageMapResp = await apiGet('/brackets/stage-map?' + getEventParam());
         const stageMaps = (stageMapResp.success && stageMapResp.data) ? stageMapResp.data : [];
         return stageMaps.some(sm => sm.stage_id);
@@ -1547,7 +2601,7 @@ async function openDrawNoModal() {
 
     document.getElementById('drawNoClassName').textContent = selectedBracketClass;
 
-    const resp = await apiGet('/athletes?' + getEventParam() + '&athlete_type=taekwondo_kyougi&weight_class=' + encodeURIComponent(selectedBracketClass));
+    const resp = await apiGet('/athletes?' + getEventParam() + '&athlete_type=' + getCurrentAthleteType() + '&weight_class=' + encodeURIComponent(selectedBracketClass));
     if (!resp.success || !resp.data || resp.data.length === 0) {
         alert('该级别没有运动员');
         return;

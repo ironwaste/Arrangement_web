@@ -145,7 +145,7 @@ class MySQLDatabase {
           event_name VARCHAR(255) NOT NULL,
           event_venue VARCHAR(255) DEFAULT NULL,
           event_date VARCHAR(50) DEFAULT NULL,
-          event_type VARCHAR(50) DEFAULT '跆拳道比赛',
+          event_type VARCHAR(50) DEFAULT 'taekwondo_kyougi',
           event_status VARCHAR(50) DEFAULT '报名中',
           comp_start VARCHAR(50) DEFAULT NULL,
           comp_end VARCHAR(50) DEFAULT NULL,

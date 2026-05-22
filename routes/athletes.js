@@ -76,6 +76,8 @@ module.exports = (db) => {
             athlete_type = 'chinese_wrestle';
           } else if (event.event_type === 'taekwondo_poomsae') {
             athlete_type = 'poomsae';
+          } else if (event.event_type === 'jiu_jitsu') {
+            athlete_type = 'jiu_jitsu';
           }
         }
       }
@@ -228,6 +230,8 @@ module.exports = (db) => {
             aType = 'chinese_wrestle';
           } else if (event.event_type === 'taekwondo_poomsae') {
             aType = 'poomsae';
+          } else if (event.event_type === 'jiu_jitsu') {
+            aType = 'jiu_jitsu';
           }
         }
       }

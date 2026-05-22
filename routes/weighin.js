@@ -179,7 +179,17 @@ async function importPoomsaeTeam(db, eventId, sheetName, rowIndex, row, errors) 
   );
 }
 
-async function importKyougiExcel(db, workbook, eventId) {
+async function importKyougiExcel(db, workbook, eventId, athleteType) {
+  if (!athleteType || athleteType === 'taekwondo_kyougi') {
+    const eventTypeRow = await db.get('SELECT event_type FROM events WHERE event_id = ?', [eventId]);
+    if (eventTypeRow && eventTypeRow.event_type) {
+      if (eventTypeRow.event_type === 'jiu_jitsu') athleteType = 'jiu_jitsu';
+      else if (eventTypeRow.event_type === 'chinese_wrestle') athleteType = 'chinese_wrestle';
+      else if (eventTypeRow.event_type === 'taekwondo_poomsae') athleteType = 'poomsae';
+    }
+  }
+  if (!athleteType) athleteType = 'taekwondo_kyougi';
+
   const sheetName = workbook.SheetNames[0];
   const worksheet = workbook.Sheets[sheetName];
   const data = xlsx.utils.sheet_to_json(worksheet, { header: 1 });
@@ -230,8 +240,8 @@ async function importKyougiExcel(db, workbook, eventId) {
     try {
       await db.run(
         `INSERT INTO athletes (athlete_id, athlete_name, athlete_gender, athlete_team, athlete_age_group, athlete_category, event_id, athlete_type)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'taekwondo_kyougi')`,
-        [a.athlete_id, a.athlete_name, a.athlete_gender, a.athlete_team, a.athlete_age_group || null, a.athlete_category, eventId]
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [a.athlete_id, a.athlete_name, a.athlete_gender, a.athlete_team, a.athlete_age_group || null, a.athlete_category, eventId, athleteType]
       );
       success++;
     } catch (err) {
@@ -421,7 +431,7 @@ router.post('/athletes/import-excel', upload.single('file'), async (req, res) =>
       fs.unlinkSync(req.file.path);
       res.json({ success: true, data: result });
     } else {
-      const result = await importKyougiExcel(db, workbook, event_id);
+      const result = await importKyougiExcel(db, workbook, event_id, athlete_type);
       fs.unlinkSync(req.file.path);
       if (result.total === 0) {
         return res.status(400).json({ success: false, error: '文件数据不足' });
