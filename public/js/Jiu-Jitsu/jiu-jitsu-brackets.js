@@ -400,6 +400,17 @@ const JiuJitsuBrackets = {
             this.compModeConfig = {};
             return;
         }
+        const modeNameMap = {
+            '单败淘汰赛': 'single_elimination',
+            '双败淘汰赛': 'double_elimination',
+            '单循环赛': 'round_robin',
+            '分区循环赛': 'pool_elimination'
+        };
+        const resolveMode = (item) => {
+            if (item.mode) return item.mode;
+            if (item.categroy_mode_name && modeNameMap[item.categroy_mode_name]) return modeNameMap[item.categroy_mode_name];
+            return 'single_elimination';
+        };
         try {
             const syncResp = await fetch(`${API_BASE}/category-mode/sync`, {
                 method: 'POST',
@@ -410,7 +421,7 @@ const JiuJitsuBrackets = {
             if (syncData.success && syncData.data) {
                 this.compModeConfig = {};
                 syncData.data.forEach(item => {
-                    this.compModeConfig[item.weight_class] = item.mode || 'single_elimination';
+                    this.compModeConfig[item.weight_class] = resolveMode(item);
                 });
                 return;
             }
@@ -424,7 +435,7 @@ const JiuJitsuBrackets = {
             if (data.success && data.data) {
                 this.compModeConfig = {};
                 data.data.forEach(item => {
-                    this.compModeConfig[item.weight_class] = item.mode || 'single_elimination';
+                    this.compModeConfig[item.weight_class] = resolveMode(item);
                 });
             }
         } catch (e) {

@@ -1764,7 +1764,7 @@ module.exports = (db, bracketsManager) => {
       const eventType = eventRow ? eventRow.event_type : 'taekwondo_kyougi';
 
       if (eventType === 'jiu_jitsu') {
-        const jjResult = await generateJJBracketForEvent(db, Number(event_id), weight_class || null);
+        const jjResult = await generateJJBracketForEvent(db, bracketsManager, Number(event_id), weight_class || null);
         return res.json({
           success: true,
           data: { generated: jjResult.generated, skipped: 0, errors: jjResult.errors, results: jjResult.results }

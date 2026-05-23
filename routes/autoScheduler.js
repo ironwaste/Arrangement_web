@@ -333,21 +333,15 @@ async function generateBracketForClass(db, manager, weightClass, athletes, event
       stageId = String(finalStage.id);
       stageType = 'divisional_round_robin';
     } else {
-      const upperAthletes = cleanSeeding.slice(0, upperSize);
-      const lowerAthletes = cleanSeeding.slice(upperSize, upperSize + lowerSize);
-
-      const upperSeedingWithByes = [...upperAthletes];
-      while (upperSeedingWithByes.length < upperSize) upperSeedingWithByes.push(null);
-
-      const lowerSeedingWithByes = [...lowerAthletes];
-      while (lowerSeedingWithByes.length < lowerSize) lowerSeedingWithByes.push(null);
+      const upperAthletes = cleanSeeding.slice(0, upperSize).filter(s => s !== null);
+      const lowerAthletes = cleanSeeding.slice(upperSize, upperSize + lowerSize).filter(s => s !== null);
 
       const upperRRStage = await manager.create.stage({
         tournamentId: Number(event_id),
         name: `${weightClass}_上区`,
         type: 'round_robin',
-        seeding: upperSeedingWithByes,
-        settings: { size: upperSize, groupCount: 1 },
+        seeding: upperAthletes,
+        settings: { size: upperAthletes.length, groupCount: 1 },
       });
 
       // 更新 stage 的 event_id 和 category_id
@@ -359,8 +353,8 @@ async function generateBracketForClass(db, manager, weightClass, athletes, event
         tournamentId: Number(event_id),
         name: `${weightClass}_下区`,
         type: 'round_robin',
-        seeding: lowerSeedingWithByes,
-        settings: { size: lowerSize, groupCount: 1 },
+        seeding: lowerAthletes,
+        settings: { size: lowerAthletes.length, groupCount: 1 },
       });
 
       // 更新 stage 的 event_id 和 category_id
@@ -396,16 +390,17 @@ async function generateBracketForClass(db, manager, weightClass, athletes, event
 
     const poolStages = [];
     for (let pi = 0; pi < poolCount; pi++) {
-      const poolAthletes = cleanSeeding.slice(pi * poolSize, (pi + 1) * poolSize);
-      const poolSeeding = [...poolAthletes];
-      while (poolSeeding.length < poolSize) poolSeeding.push(null);
+      const poolAthletesRaw = cleanSeeding.slice(pi * poolSize, (pi + 1) * poolSize);
+      const poolAthletes = poolAthletesRaw.filter(s => s !== null);
+
+      if (poolAthletes.length < 2) continue;
 
       const poolStage = await manager.create.stage({
         tournamentId: Number(event_id),
         name: `${weightClass}_小组${pi + 1}`,
         type: 'round_robin',
-        seeding: poolSeeding,
-        settings: { size: poolSize, groupCount: 1 },
+        seeding: poolAthletes,
+        settings: { size: poolAthletes.length, groupCount: 1 },
       });
 
       await db.prepare(
@@ -418,9 +413,9 @@ async function generateBracketForClass(db, manager, weightClass, athletes, event
       const updateParticipant = db.prepare(
         'UPDATE bracket_participant SET custom_data = ? WHERE id = ?'
       );
-      for (let i = 0; i < poolAthletes.length; i++) {
-        if (poolAthletes[i] === null) continue;
-        const p = participants.find(pp => pp.name === poolAthletes[i]);
+      for (let i = 0; i < poolAthletesRaw.length; i++) {
+        if (poolAthletesRaw[i] === null) continue;
+        const p = participants.find(pp => pp.name === poolAthletesRaw[i]);
         if (p) {
           const origIdx = pi * poolSize + i;
           const athlete = athletes[origIdx] || {};

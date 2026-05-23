@@ -5,6 +5,8 @@ async function loadAllAthletesForWeighin() {
     try {
         let url = API_BASE + '/athletes';
         if (currentEventId) url += '?event_id=' + currentEventId;
+        const weighinAthleteType = currentEventType === 'jiu_jitsu' ? 'jiu_jitsu' : currentEventType === 'chinese_wrestle' ? 'chinese_wrestle' : 'taekwondo_kyougi';
+        url += (currentEventId ? '&' : '?') + 'athlete_type=' + weighinAthleteType;
         const resp = await fetch(url);
         const data = await resp.json();
         if (data.success && data.data) {
@@ -21,6 +23,8 @@ async function loadWeighinData() {
         await loadAllAthletesForWeighin();
         let url = API_BASE + '/athletes/weighin-data';
         if (currentEventId) url += '?event_id=' + currentEventId;
+        const weighinAthleteType = currentEventType === 'jiu_jitsu' ? 'jiu_jitsu' : currentEventType === 'chinese_wrestle' ? 'chinese_wrestle' : 'taekwondo_kyougi';
+        url += (currentEventId ? '&' : '?') + 'athlete_type=' + weighinAthleteType;
         const resp = await fetch(url);
         const data = await resp.json();
         if (data.success && data.data.results.length > 0) {
@@ -79,7 +83,8 @@ async function exportWeighInSheet() {
     if (!currentEventId) { alert('请先选择赛事'); return; }
 
     const urlParams = getEventParam();
-    const resp = await apiGet('/athletes?' + urlParams + '&athlete_type=taekwondo_kyougi');
+    const weighinAthleteType = currentEventType === 'jiu_jitsu' ? 'jiu_jitsu' : currentEventType === 'chinese_wrestle' ? 'chinese_wrestle' : 'taekwondo_kyougi';
+    const resp = await apiGet('/athletes?' + urlParams + '&athlete_type=' + weighinAthleteType);
     if (!resp.success || resp.data.length === 0) { alert('没有运动员数据'); return; }
 
     try {
@@ -152,8 +157,9 @@ function displayWeighInResults(data) {
         html += `<td data-col="gender" style="display:table-cell;">${r.gender}</td>`;
         html += `<td data-col="unit" style="display:table-cell;">${r.unit}</td>`;
 
+        const weighinAthleteType = currentEventType === 'jiu_jitsu' ? 'jiu_jitsu' : currentEventType === 'chinese_wrestle' ? 'chinese_wrestle' : currentEventType === 'taekwondo_poomsae' ? 'poomsae' : 'taekwondo_kyougi';
         const availableClasses = typeof WeightClassSelector !== 'undefined' && allAthletesListForWeighin
-            ? WeightClassSelector.getAvailableClasses(allAthletesListForWeighin, r.ageGroup, r.gender)
+            ? WeightClassSelector.getAvailableClasses(allAthletesListForWeighin, r.ageGroup, r.gender, weighinAthleteType)
             : [...new Set(data.results.map(item => item.weightClass).filter(Boolean))].sort();
         const weightClassHtml = typeof WeightClassSelector !== 'undefined'
             ? WeightClassSelector.generateSelectWithButton('weighin_wc_' + i, r.weightClass, availableClasses, 'updateWeighinWeightClass(' + i + ')', 'data-idx="' + i + '"')
@@ -311,7 +317,8 @@ async function markAllQualified() {
     if (!currentEventId) { alert('请先选择赛事'); return; }
     if (!confirm('确定将所有运动员标记为合格？此操作将跳过称重环节。')) return;
 
-    const resp = await apiGet('/athletes?event_id=' + currentEventId + '&athlete_type=taekwondo_kyougi');
+    const weighinAthleteType = currentEventType === 'jiu_jitsu' ? 'jiu_jitsu' : currentEventType === 'chinese_wrestle' ? 'chinese_wrestle' : 'taekwondo_kyougi';
+    const resp = await apiGet('/athletes?event_id=' + currentEventId + '&athlete_type=' + weighinAthleteType);
     if (!resp.success || resp.data.length === 0) { alert('没有运动员数据'); return; }
 
     let successCount = 0;

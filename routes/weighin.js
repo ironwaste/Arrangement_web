@@ -681,7 +681,22 @@ router.post('/athletes/weighin-update', async (req, res) => {
 
 router.get('/athletes/weighin-data', async (req, res) => {
   try {
-    const { event_id } = req.query;
+    const { event_id, athlete_type } = req.query;
+
+    let targetAthleteType = athlete_type || 'taekwondo_kyougi';
+    if (event_id && !athlete_type) {
+      const event = await db.get('SELECT event_type FROM events WHERE event_id = ?', [event_id]);
+      if (event) {
+        if (event.event_type === 'chinese_wrestle') {
+          targetAthleteType = 'chinese_wrestle';
+        } else if (event.event_type === 'jiu_jitsu') {
+          targetAthleteType = 'jiu_jitsu';
+        } else if (event.event_type === 'taekwondo_poomsae') {
+          targetAthleteType = 'poomsae';
+        }
+      }
+    }
+
     let sql = `SELECT a.id, a.athlete_id, a.athlete_name, a.athlete_gender, a.athlete_team,
                       a.athlete_age_group, a.athlete_category, a.event_id,
                       w.frist_weight_record as firstWeight,
@@ -689,8 +704,8 @@ router.get('/athletes/weighin-data', async (req, res) => {
                       w.athlete_weight_qualified as isQualified
                FROM athletes a
                LEFT JOIN athletes_weighing w ON a.event_id = w.event_id AND a.athlete_id = w.athlete_id
-               WHERE a.athlete_type = 'taekwondo_kyougi'`;
-    const params = [];
+               WHERE a.athlete_type = ?`;
+    const params = [targetAthleteType];
     if (event_id) {
       sql += ' AND a.event_id = ?';
       params.push(event_id);

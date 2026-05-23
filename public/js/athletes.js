@@ -322,6 +322,7 @@ async function saveAthlete() {
             athlete_draw_num: parseInt(document.getElementById('newAthleteSeed').value) || 0,
             event_id: currentEventId
         };
+        applyAthleteTypeFilter(data, false);
         const resp = await apiPost('/athletes', data);
         if (resp.success) { 
             closeModal(); 

@@ -4,10 +4,11 @@ const router = express.Router();
 const {
     MODE_NAME_MAP,
     MODE_VALUE_MAP,
-    generateJJBracketForEvent
+    generateJJBracketForEvent,
+    clearJJBracketStageData
 } = require('./jiu-jitsu-bracket-helpers');
 
-module.exports = (db) => {
+module.exports = (db, manager) => {
 
     router.get('/jj-comp-mode', async (req, res) => {
         try {
@@ -97,7 +98,7 @@ module.exports = (db) => {
                 return res.status(400).json({ success: false, error: '缺少event_id参数' });
             }
 
-            const result = await generateJJBracketForEvent(db, event_id, weight_class || null);
+            const result = await generateJJBracketForEvent(db, manager, event_id, weight_class || null);
             res.json({ success: true, data: result });
         } catch (err) {
             res.status(500).json({ success: false, error: err.message });
@@ -229,11 +230,18 @@ module.exports = (db) => {
                 return res.status(400).json({ success: false, error: '缺少event_id参数' });
             }
             if (weight_class) {
+                await clearJJBracketStageData(db, event_id, weight_class);
                 await db.run(
                     'DELETE FROM jiu_jitsu_matchs WHERE event_id = ? AND jiu_jitsu_match_categroy = ?',
                     [event_id, weight_class]
                 );
             } else {
+                const allStages = await db.all('SELECT category_id FROM bracket_stage WHERE event_id = ?', [event_id]);
+                for (const s of allStages) {
+                    if (s.category_id) {
+                        await clearJJBracketStageData(db, event_id, s.category_id);
+                    }
+                }
                 await db.run(
                     'DELETE FROM jiu_jitsu_matchs WHERE event_id = ?',
                     [event_id]

@@ -39,7 +39,7 @@ const pageConfig = {
   athletes:       { title: '运动员管理',   scripts: '<script src="/js/athletes.js"></script><script src="/js/excel-filter.js"></script>',                                 init: 'loadAthletes();',            view: 'athletes.ejs' },
   weighin:        { title: '称重管理',     scripts: '<script src="/js/weighin.js"></script><script src="/js/excel-filter.js"></script>',                                 init: 'loadWeighinData(); loadWeighinTolerance();', view: 'weighin.ejs' },
   brackets:       { title: '跆拳道编排',   scripts: '<script src="/js/excel-filter.js"></script><script src="/js/category-mode.js"></script><script src="/js/Jiu-Jitsu/jiu-jitsu-bracket-generator.js"></script><script src="/js/Jiu-Jitsu/jiu-jitsu-brackets.js"></script><script src="/js/brackets.js"></script>', init: 'loadAutoArrangeData();', view: 'taekwondo-kyougi-brackets.ejs' },
-  bracketDetail:  { title: '对阵图',       scripts: '<script src="/js/category-mode.js"></script><script src="/js/bracket-detail.js"></script>',                          init: 'loadBracketClassList();',    view: 'bracket-detail.ejs' },
+  bracketDetail:  { title: '对阵图',       scripts: '<script src="/js/category-mode.js"></script><script src="/js/Jiu-Jitsu/jiu-jitsu-bracket-generator.js"></script><script src="/js/bracket-detail.js"></script>',                          init: 'loadBracketClassList();',    view: 'bracket-detail.ejs' },
   bracketTest:    { title: '摔跤编排',     scripts: '<script src="/js/bracket-test.js"></script>',                                                                       init: 'loadBracketTestPage();',     view: 'chinese-wrestle-arrange.ejs' },
   jjBrackets:     { title: '柔术编排',     scripts: '<script src="/js/excel-filter.js"></script><script src="/js/category-mode.js"></script><script src="/js/Jiu-Jitsu/jiu-jitsu-bracket-generator.js"></script><script src="/js/Jiu-Jitsu/jiu-jitsu-brackets.js"></script><script src="/js/brackets.js"></script>', init: 'loadAutoArrangeData();', view: 'jiu-jitsu-brackets.ejs' },
   matches:        { title: '对阵表',       scripts: '<script src="/js/matches.js"></script><script src="/js/medal-board.js"></script><script src="/js/team-scores.js"></script><script src="/js/excel-filter.js"></script>', init: 'loadMatches();', view: 'takewondo-kyougi-matches.ejs' },
@@ -142,7 +142,7 @@ async function initApp() {
     /* --- 业务 API 路由（需认证） --- */
     app.use('/api', authMiddleware);
     app.use('/api', routes(db, bracketsManager, upload));
-    app.use('/api', jjRoutes(db));
+    app.use('/api', jjRoutes(db, bracketsManager));
 
     /* --- 启动 HTTP 服务 --- */
     const server = app.listen(PORT, () => {

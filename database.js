@@ -330,6 +330,7 @@ class MySQLDatabase {
           tournament_id INT NOT NULL DEFAULT 1,
           event_id INT DEFAULT NULL,
           category_id VARCHAR(100) DEFAULT NULL,
+          mode_category_id INT DEFAULT NULL,
           name VARCHAR(255) NOT NULL,
           type VARCHAR(50) NOT NULL,
           number INT NOT NULL,
@@ -341,6 +342,26 @@ class MySQLDatabase {
       `);
 
       await this._createIndex(conn, 'idx_stage_event', 'bracket_stage', 'event_id');
+
+      try {
+        await conn.execute(
+          'ALTER TABLE bracket_stage ADD COLUMN mode_category_id INT DEFAULT NULL'
+        );
+      } catch (e) {
+        if (!e.message.includes('duplicate') && !e.message.includes('already exists')) {
+          console.log('添加 bracket_stage.mode_category_id 列失败（可能已存在）:', e.message);
+        }
+      }
+
+      try {
+        await conn.execute(
+          'ALTER TABLE bracket_stage ADD CONSTRAINT fk_bracket_stage_category_mode FOREIGN KEY (mode_category_id) REFERENCES category_mode(category_id) ON DELETE SET NULL'
+        );
+      } catch (e) {
+        if (!e.message.includes('already exists') && !e.message.includes('duplicate')) {
+          console.log('添加 bracket_stage 外键约束失败（可能已存在或类型不兼容）:', e.message);
+        }
+      }
 
       await conn.execute(`
         CREATE TABLE IF NOT EXISTS bracket_group (

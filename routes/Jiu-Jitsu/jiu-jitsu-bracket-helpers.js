@@ -12,9 +12,54 @@ const MODE_VALUE_MAP = {
     '分区循环赛': 'pool_elimination'
 };
 
-async function generateJJBracketForEvent(db, event_id, weight_class) {
+function generateJJSeedOrder(size) {
+    if (size <= 1) return [1];
+    let pairs = [[1, 2]];
+    let currentSize = 2;
+    while (currentSize < size) {
+        const nextSize = currentSize * 2;
+        const nextPairs = [];
+        for (const [a, b] of pairs) {
+            nextPairs.push([a, nextSize + 1 - a]);
+            nextPairs.push([nextSize + 1 - b, b]);
+        }
+        pairs = nextPairs;
+        currentSize = nextSize;
+    }
+    return pairs.flat();
+}
+
+async function clearJJBracketStageData(db, event_id, weightClass) {
+    const stageRows = await db.all(
+        'SELECT id FROM bracket_stage WHERE event_id = ? AND category_id = ?',
+        [event_id, weightClass]
+    );
+    for (const row of stageRows) {
+        const sid = row.id;
+        try {
+            const matchRows = await db.all('SELECT opponent1, opponent2 FROM bracket_match WHERE stage_id = ?', [sid]);
+            const pIds = new Set();
+            for (const m of matchRows) {
+                if (m.opponent1) { try { const o = JSON.parse(m.opponent1); if (o?.id) pIds.add(o.id); } catch (e) {} }
+                if (m.opponent2) { try { const o = JSON.parse(m.opponent2); if (o?.id) pIds.add(o.id); } catch (e) {} }
+            }
+            await db.run('DELETE FROM bracket_match_game WHERE stage_id = ?', [sid]);
+            await db.run('DELETE FROM bracket_match WHERE stage_id = ?', [sid]);
+            await db.run('DELETE FROM bracket_round WHERE stage_id = ?', [sid]);
+            await db.run('DELETE FROM bracket_group WHERE stage_id = ?', [sid]);
+            await db.run('DELETE FROM bracket_stage WHERE id = ?', [sid]);
+            for (const pid of pIds) {
+                await db.run('DELETE FROM bracket_participant WHERE id = ?', [pid]);
+            }
+        } catch (e) {
+            console.log('删除柔术bracket stage:', sid, e.message);
+        }
+    }
+}
+
+async function generateJJBracketForEvent(db, manager, event_id, weight_class) {
     const athletes = await db.all(
-        'SELECT * FROM athletes WHERE event_id = ? AND athlete_type = ?',
+        'SELECT * FROM athletes WHERE event_id = ? AND athlete_type = ? ORDER BY athlete_category, athlete_draw_num',
         [event_id, 'jiu_jitsu']
     );
 
@@ -23,20 +68,20 @@ async function generateJJBracketForEvent(db, event_id, weight_class) {
     }
 
     const categoryModes = await db.all(
-        'SELECT weight_class, mode, categroy_mode_name FROM category_mode WHERE event_id = ?',
+        'SELECT weight_class, mode, categroy_mode_name, category_id FROM category_mode WHERE event_id = ?',
         [event_id]
     );
     const modeMap = {};
+    const categoryIdMap = {};
     categoryModes.forEach(cm => {
         modeMap[cm.weight_class] = cm.mode || MODE_VALUE_MAP[cm.categroy_mode_name] || 'single_elimination';
+        if (cm.category_id) categoryIdMap[cm.weight_class] = cm.category_id;
     });
 
     const classMap = new Map();
     athletes.forEach(a => {
         const wc = a.athlete_category || '未分级';
-        if (!classMap.has(wc)) {
-            classMap.set(wc, []);
-        }
+        if (!classMap.has(wc)) classMap.set(wc, []);
         classMap.get(wc).push(a);
     });
 
@@ -45,30 +90,23 @@ async function generateJJBracketForEvent(db, event_id, weight_class) {
         if (!classAthletes || classAthletes.length === 0) {
             return { generated: 0, errors: [`${weight_class}: 没有运动员数据`], results: [] };
         }
+
         await db.run(
             'DELETE FROM jiu_jitsu_matchs WHERE event_id = ? AND jiu_jitsu_match_categroy = ?',
             [event_id, weight_class]
         );
+        await clearJJBracketStageData(db, event_id, weight_class);
 
         const mode = modeMap[weight_class] || 'single_elimination';
         const count = classAthletes.length;
-        let matchNum = 1;
 
         if (count < 2) {
             return { generated: 0, errors: [`${weight_class}: 仅${count}人，跳过`], results: [] };
         }
 
-        if (mode === 'single_elimination') {
-            matchNum = await generateSingleElimination(db, event_id, weight_class, classAthletes, matchNum);
-        } else if (mode === 'double_elimination') {
-            matchNum = await generateDoubleElimination(db, event_id, weight_class, classAthletes, matchNum);
-        } else if (mode === 'round_robin') {
-            matchNum = await generateRoundRobin(db, event_id, weight_class, classAthletes, matchNum);
-        } else if (mode === 'pool_elimination') {
-            matchNum = await generatePoolElimination(db, event_id, weight_class, classAthletes, matchNum);
-        }
+        const result = await generateJJBracketForClass(db, manager, weight_class, classAthletes, event_id, mode, categoryIdMap[weight_class]);
 
-        const totalMatches = matchNum - 1;
+        const totalMatches = result.matchCount || 0;
         return {
             generated: 1,
             errors: [],
@@ -76,10 +114,10 @@ async function generateJJBracketForEvent(db, event_id, weight_class) {
         };
     }
 
-    await db.run(
-        'DELETE FROM jiu_jitsu_matchs WHERE event_id = ?',
-        [event_id]
-    );
+    await db.run('DELETE FROM jiu_jitsu_matchs WHERE event_id = ?', [event_id]);
+    for (const [wc] of classMap) {
+        await clearJJBracketStageData(db, event_id, wc);
+    }
 
     let generated = 0;
     const errors = [];
@@ -95,20 +133,10 @@ async function generateJJBracketForEvent(db, event_id, weight_class) {
                 continue;
             }
 
-            let matchNum = 1;
-
-            if (mode === 'single_elimination') {
-                matchNum = await generateSingleElimination(db, event_id, wc, classAthletes, matchNum);
-            } else if (mode === 'double_elimination') {
-                matchNum = await generateDoubleElimination(db, event_id, wc, classAthletes, matchNum);
-            } else if (mode === 'round_robin') {
-                matchNum = await generateRoundRobin(db, event_id, wc, classAthletes, matchNum);
-            } else if (mode === 'pool_elimination') {
-                matchNum = await generatePoolElimination(db, event_id, wc, classAthletes, matchNum);
-            }
+            const result = await generateJJBracketForClass(db, manager, wc, classAthletes, event_id, mode, categoryIdMap[wc]);
 
             generated++;
-            const totalMatches = matchNum - 1;
+            const totalMatches = result.matchCount || 0;
             results.push(`${wc}: ${count}人, ${MODE_NAME_MAP[mode] || mode}, ${totalMatches}场`);
         } catch (err) {
             errors.push(`${wc}: ${err.message}`);
@@ -118,191 +146,300 @@ async function generateJJBracketForEvent(db, event_id, weight_class) {
     return { generated, errors, results };
 }
 
-async function generateSingleElimination(db, event_id, weightClass, classAthletes, matchNumStart) {
-    const count = classAthletes.length;
-    let bracketSize = 2;
-    while (bracketSize < count) bracketSize *= 2;
-    const totalRounds = Math.round(Math.log2(bracketSize));
+async function generateJJBracketForClass(db, manager, weightClass, athletes, event_id, mode, categoryId) {
+    const sortedAthletes = [...athletes].sort((a, b) => (a.athlete_draw_num || 999) - (b.athlete_draw_num || 999));
 
-    const seeded = seedAthletes(classAthletes, bracketSize);
-    let matchNum = matchNumStart;
-
-    for (let round = totalRounds; round >= 1; round--) {
-        const matchesInRound = Math.pow(2, round - 1);
-        let roundName;
-        if (round === 1) roundName = 'Final';
-        else roundName = `赛${totalRounds - round + 1}`;
-
-        for (let i = 0; i < matchesInRound; i++) {
-            const blueIdx = 2 * i;
-            const redIdx = 2 * i + 1;
-            const blue = seeded[blueIdx];
-            const red = seeded[redIdx];
-
-            await db.run(
-                `INSERT INTO jiu_jitsu_matchs 
-                (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy, 
-                 jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_category_total_rounds,
-                 jiu_jitsu_blue_athlete_id, jiu_jitsu_blue_athlete_name, jiu_jitsu_blue_athlete_team,
-                 jiu_jitsu_red_athlete_id, jiu_jitsu_red_athlete_name, jiu_jitsu_red_athlete_team,
-                 jiu_jitsu_match_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [
-                    event_id, null, null, weightClass,
-                    totalRounds - round + 1, roundName, totalRounds,
-                    blue ? blue.athlete_id : null,
-                    blue ? blue.athlete_name : null,
-                    blue ? blue.athlete_team : null,
-                    red ? red.athlete_id : null,
-                    red ? red.athlete_name : null,
-                    red ? red.athlete_team : null,
-                    (!blue || !red) ? 'bye' : '未开始'
-                ]
-            );
-            matchNum++;
-        }
-    }
-
-    return matchNum;
-}
-
-async function generateDoubleElimination(db, event_id, weightClass, classAthletes, matchNumStart) {
-    const count = classAthletes.length;
-    let bracketSize = 2;
-    while (bracketSize < count) bracketSize *= 2;
-    const totalRounds = Math.round(Math.log2(bracketSize));
-
-    const seeded = seedAthletes(classAthletes, bracketSize);
-    let matchNum = matchNumStart;
-
-    for (let round = totalRounds; round >= 1; round--) {
-        const matchesInRound = Math.pow(2, round - 1);
-        let roundName;
-        if (round === 1) roundName = 'Final（胜者组）';
-        else roundName = `赛${totalRounds - round + 1}（胜者组）`;
-
-        for (let i = 0; i < matchesInRound; i++) {
-            const blueIdx = 2 * i;
-            const redIdx = 2 * i + 1;
-            const blue = seeded[blueIdx];
-            const red = seeded[redIdx];
-
-            await db.run(
-                `INSERT INTO jiu_jitsu_matchs 
-                (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy, 
-                 jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_category_total_rounds,
-                 jiu_jitsu_blue_athlete_id, jiu_jitsu_blue_athlete_name, jiu_jitsu_blue_athlete_team,
-                 jiu_jitsu_red_athlete_id, jiu_jitsu_red_athlete_name, jiu_jitsu_red_athlete_team,
-                 jiu_jitsu_match_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [
-                    event_id, null, null, weightClass,
-                    totalRounds - round + 1, roundName, totalRounds,
-                    blue ? blue.athlete_id : null,
-                    blue ? blue.athlete_name : null,
-                    blue ? blue.athlete_team : null,
-                    red ? red.athlete_id : null,
-                    red ? red.athlete_name : null,
-                    red ? red.athlete_team : null,
-                    (!blue || !red) ? 'bye' : '未开始'
-                ]
-            );
-            matchNum++;
-        }
-    }
-
-    for (let round = 1; round <= totalRounds - 1; round++) {
-        const matchesInRound = Math.pow(2, totalRounds - round - 1);
-        for (let i = 0; i < matchesInRound; i++) {
-            await db.run(
-                `INSERT INTO jiu_jitsu_matchs 
-                (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy, 
-                 jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_category_total_rounds,
-                 jiu_jitsu_match_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                [event_id, null, null, weightClass, round, `败者组第${round}轮`, totalRounds, '未开始']
-            );
-            matchNum++;
-        }
-    }
-
-    await db.run(
-        `INSERT INTO jiu_jitsu_matchs 
-        (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy, 
-         jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_category_total_rounds,
-         jiu_jitsu_match_status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [event_id, null, null, weightClass, totalRounds + 1, 'Rep.（复活赛第一轮）', totalRounds, '未开始']
-    );
-    matchNum++;
-    await db.run(
-        `INSERT INTO jiu_jitsu_matchs 
-        (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy, 
-         jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_category_total_rounds,
-         jiu_jitsu_match_status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [event_id, null, null, weightClass, totalRounds + 2, 'Bro.m（复活赛第二轮）', totalRounds, '未开始']
-    );
-    matchNum++;
-
-    return matchNum;
-}
-
-async function generateRoundRobin(db, event_id, weightClass, classAthletes, matchNumStart) {
-    const count = classAthletes.length;
-    const sorted = [...classAthletes].sort((a, b) => (a.athlete_draw_num || 999) - (b.athlete_draw_num || 999));
-    let matchNum = matchNumStart;
-
-    const schedule = roundRobinSchedule(count);
-    for (let r = 0; r < schedule.length; r++) {
-        for (let i = 0; i < schedule[r].length; i++) {
-            const [p1, p2] = schedule[r][i];
-            const blue = p1 < count ? sorted[p1] : null;
-            const red = p2 < count ? sorted[p2] : null;
-            if (blue && red) {
-                await db.run(
-                    `INSERT INTO jiu_jitsu_matchs 
-                    (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy, 
-                     jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_category_total_rounds,
-                     jiu_jitsu_blue_athlete_id, jiu_jitsu_blue_athlete_name, jiu_jitsu_blue_athlete_team,
-                     jiu_jitsu_red_athlete_id, jiu_jitsu_red_athlete_name, jiu_jitsu_red_athlete_team,
-                     jiu_jitsu_match_status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [
-                        event_id, null, null, weightClass,
-                        r + 1, `赛${r + 1}`, schedule.length,
-                        blue.athlete_id, blue.athlete_name, blue.athlete_team,
-                        red.athlete_id, red.athlete_name, red.athlete_team,
-                        '未开始'
-                    ]
-                );
-                matchNum++;
-            }
-        }
-    }
-
-    return matchNum;
-}
-
-async function generatePoolElimination(db, event_id, weightClass, classAthletes, matchNumStart) {
-    const count = classAthletes.length;
-    const poolCount = Math.max(2, Math.ceil(count / 4));
-    const sorted = [...classAthletes].sort((a, b) => (a.athlete_draw_num || 999) - (b.athlete_draw_num || 999));
-
-    const pools = [];
-    for (let i = 0; i < poolCount; i++) {
-        pools.push([]);
-    }
-    sorted.forEach((a, idx) => {
-        pools[idx % poolCount].push(a);
+    const nameCount = {};
+    sortedAthletes.forEach(a => {
+        const baseName = (a.athlete_name || '').trim();
+        if (!baseName) return;
+        if (nameCount[baseName] === undefined) nameCount[baseName] = 1;
+        else nameCount[baseName]++;
     });
 
-    let matchNum = matchNumStart;
+    const cleanSeeding = sortedAthletes.map(a => {
+        const baseName = (a.athlete_name || '').trim();
+        if (!baseName) return null;
+        if (nameCount[baseName] > 1) {
+            const unit = (a.athlete_team || '').trim();
+            return unit ? `${baseName}(${unit})` : `${baseName}(${nameCount[baseName]})`;
+        }
+        return baseName;
+    });
 
-    for (let poolIdx = 0; poolIdx < pools.length; poolIdx++) {
-        const pool = pools[poolIdx];
-        for (let i = 0; i < pool.length; i++) {
-            for (let j = i + 1; j < pool.length; j++) {
+    const n = cleanSeeding.filter(s => s !== null).length;
+    if (n < 2) throw new Error('有效运动员不足2人');
+
+    let stageId = '';
+    let stageType = mode || 'single_elimination';
+    let matchCount = 0;
+
+    if (stageType === 'double_elimination') {
+        const targetSize = Math.pow(2, Math.ceil(Math.log2(n)));
+        const seedOrder = generateJJSeedOrder(targetSize);
+
+        for (let i = n; i < targetSize; i++) cleanSeeding.push(null);
+
+        const deStage = await manager.create.stage({
+            tournamentId: Number(event_id),
+            name: weightClass,
+            type: 'double_elimination',
+            seeding: cleanSeeding,
+            settings: {
+                manualOrdering: [seedOrder],
+                grandFinal: 'simple',
+            },
+        });
+
+        const allStageIds = [];
+        const deStages = await db.all(
+            'SELECT id FROM bracket_stage WHERE tournament_id = ? AND category_id IS NULL',
+            [Number(event_id)]
+        );
+        for (const s of deStages) {
+            await db.run(
+                'UPDATE bracket_stage SET event_id = ?, category_id = ?, mode_category_id = ? WHERE id = ?',
+                [event_id, weightClass, categoryId ? Number(categoryId) : null, s.id]
+            );
+            allStageIds.push(s.id);
+        }
+
+        for (const sid of allStageIds) {
+            const matches = await db.all('SELECT id FROM bracket_match WHERE stage_id = ?', [sid]);
+            for (const match of matches) {
+                const existing = await db.get('SELECT id FROM bracket_match_game WHERE parent_id = ?', [match.id]);
+                if (!existing) {
+                    await db.run('INSERT INTO bracket_match_game (stage_id, parent_id, number) VALUES (?, ?, ?)', [sid, match.id, 1]);
+                    await db.run('UPDATE bracket_match SET child_count = 1 WHERE id = ?', [match.id]);
+                }
+            }
+        }
+
+        for (const sid of allStageIds) {
+            const stageData = await manager.get.stageData(sid);
+            if (stageData?.stage?.[0]) {
+                const s = stageData.stage[0];
+                const size = s.settings?.size || stageData.participant?.length || 4;
+                const totalRounds = Math.log2(Math.pow(2, Math.ceil(Math.log2(size))));
+                const rounds = stageData.round || [];
+                const stageInfo = await db.get('SELECT id, name FROM bracket_stage WHERE id = ?', [sid]);
+                const isWinners = stageInfo && stageInfo.name && !stageInfo.name.includes('败者');
+                for (const round of rounds) {
+                    let roundName;
+                    if (round.number && totalRounds) {
+                        if (round.number === totalRounds) roundName = 'Final';
+                        else {
+                            const d = Math.pow(2, totalRounds - round.number);
+                            roundName = `1/${d}`;
+                        }
+                    }
+                    if (roundName) {
+                        const suffix = isWinners ? roundName + '（胜者组）' : roundName + '（败者组）';
+                        if (round.name !== suffix) {
+                            await db.run('UPDATE bracket_round SET name = ? WHERE id = ?', [suffix, round.id]);
+                        }
+                    }
+                }
+            }
+        }
+
+        for (let i = 0; i < sortedAthletes.length; i++) {
+            const athlete = sortedAthletes[i] || {};
+            const bracketName = cleanSeeding[i];
+            if (!bracketName) continue;
+            await db.run(
+                'UPDATE bracket_participant SET custom_data = ? WHERE name = ?',
+                [JSON.stringify({
+                    id: athlete.id != null ? athlete.id : null,
+                    athlete_draw_num: athlete.athlete_draw_num != null ? athlete.athlete_draw_num : (i + 1)
+                }), bracketName]
+            );
+        }
+
+        matchCount = await generateJJMatchsFromBracketData(db, event_id, weightClass, sortedAthletes, cleanSeeding, 'double_elimination');
+
+        stageId = allStageIds.join(',');
+
+    } else if (stageType === 'round_robin') {
+        const rrStage = await manager.create.stage({
+            tournamentId: Number(event_id),
+            name: weightClass,
+            type: 'round_robin',
+            seeding: cleanSeeding,
+            settings: { size: n, groupCount: 1 },
+        });
+
+        await db.run(
+            'UPDATE bracket_stage SET event_id = ?, category_id = ?, mode_category_id = ? WHERE id = ?',
+            [event_id, weightClass, categoryId ? Number(categoryId) : null, rrStage.id]
+        );
+
+        const participantList = await db.all(
+            'SELECT id, name FROM bracket_participant WHERE tournament_id = ?',
+            [Number(event_id)]
+        );
+        for (let i = 0; i < cleanSeeding.length; i++) {
+            const p = participantList.find(pp => pp.name === cleanSeeding[i]);
+            if (p) {
+                const athlete = sortedAthletes[i] || {};
+                await db.run(
+                    'UPDATE bracket_participant SET custom_data = ? WHERE id = ?',
+                    [JSON.stringify({
+                        id: athlete.id != null ? athlete.id : null,
+                        athlete_draw_num: athlete.athlete_draw_num != null ? athlete.athlete_draw_num : (i + 1)
+                    }), p.id]
+                );
+            }
+        }
+
+        matchCount = await generateJJMatchsFromBracketData(db, event_id, weightClass, sortedAthletes, cleanSeeding, 'round_robin');
+
+        stageId = String(rrStage.id);
+
+    } else if (stageType === 'pool_elimination') {
+        const poolCount = Math.max(2, Math.ceil(n / 4));
+        const poolSize = Math.ceil(n / poolCount);
+
+        const poolStages = [];
+        for (let pi = 0; pi < poolCount; pi++) {
+            const poolAthletesRaw = cleanSeeding.slice(pi * poolSize, (pi + 1) * poolSize);
+            const poolAthletes = poolAthletesRaw.filter(s => s !== null);
+
+            if (poolAthletes.length < 2) continue;
+
+            const poolStage = await manager.create.stage({
+                tournamentId: Number(event_id),
+                name: `${weightClass}_小组${pi + 1}`,
+                type: 'round_robin',
+                seeding: poolAthletes,
+                settings: { size: poolAthletes.length, groupCount: 1 },
+            });
+
+            await db.run(
+                'UPDATE bracket_stage SET event_id = ?, category_id = ?, mode_category_id = ? WHERE id = ?',
+                [event_id, weightClass, categoryId ? Number(categoryId) : null, poolStage.id]
+            );
+
+            const participantList = await db.all(
+                'SELECT id, name FROM bracket_participant WHERE tournament_id = ?',
+                [Number(event_id)]
+            );
+            for (let i = 0; i < poolAthletesRaw.length; i++) {
+                if (poolAthletesRaw[i] === null) continue;
+                const p = participantList.find(pp => pp.name === poolAthletesRaw[i]);
+                if (p) {
+                    const origIdx = pi * poolSize + i;
+                    const athlete = sortedAthletes[origIdx] || {};
+                    await db.run(
+                        'UPDATE bracket_participant SET custom_data = ? WHERE id = ?',
+                        [JSON.stringify({
+                            id: athlete.id != null ? athlete.id : null,
+                            athlete_draw_num: athlete.athlete_draw_num != null ? athlete.athlete_draw_num : (origIdx + 1),
+                            pool: pi + 1
+                        }), p.id]
+                    );
+                }
+            }
+
+            poolStages.push(poolStage.id);
+        }
+
+        matchCount = await generateJJMatchsFromBracketData(db, event_id, weightClass, sortedAthletes, cleanSeeding, 'pool_elimination');
+
+        stageId = poolStages.join(',');
+
+    } else {
+        const targetSize = Math.pow(2, Math.ceil(Math.log2(n)));
+        const seedOrder = generateJJSeedOrder(targetSize);
+
+        for (let i = n; i < targetSize; i++) cleanSeeding.push(null);
+
+        const stage = await manager.create.stage({
+            tournamentId: Number(event_id),
+            name: weightClass,
+            type: 'single_elimination',
+            seeding: cleanSeeding,
+            settings: {
+                manualOrdering: [seedOrder],
+            },
+        });
+
+        await db.run(
+            'UPDATE bracket_stage SET event_id = ?, category_id = ?, mode_category_id = ? WHERE id = ?',
+            [event_id, weightClass, categoryId ? Number(categoryId) : null, stage.id]
+        );
+
+        const matches = await db.all('SELECT id FROM bracket_match WHERE stage_id = ?', [stage.id]);
+        for (const match of matches) {
+            const existing = await db.get('SELECT id FROM bracket_match_game WHERE parent_id = ?', [match.id]);
+            if (!existing) {
+                await db.run('INSERT INTO bracket_match_game (stage_id, parent_id, number) VALUES (?, ?, ?)', [stage.id, match.id, 1]);
+                await db.run('UPDATE bracket_match SET child_count = 1 WHERE id = ?', [match.id]);
+            }
+        }
+
+        const stageData = await manager.get.stageData(stage.id);
+        if (stageData?.stage?.[0]) {
+            const s = stageData.stage[0];
+            const size = s.settings?.size || stageData.participant?.length || 4;
+            const totalRounds = Math.log2(Math.pow(2, Math.ceil(Math.log2(size))));
+            const rounds = stageData.round || [];
+            for (const round of rounds) {
+                let roundName;
+                if (round.number && totalRounds) {
+                    if (round.number === totalRounds) roundName = 'Final';
+                    else {
+                        const d = Math.pow(2, totalRounds - round.number);
+                        roundName = `1/${d}`;
+                    }
+                }
+                if (roundName && round.name !== roundName) {
+                    await db.run('UPDATE bracket_round SET name = ? WHERE id = ?', [roundName, round.id]);
+                }
+            }
+        }
+
+        for (let i = 0; i < sortedAthletes.length; i++) {
+            const athlete = sortedAthletes[i] || {};
+            const bracketName = cleanSeeding[i];
+            if (!bracketName) continue;
+            await db.run(
+                'UPDATE bracket_participant SET custom_data = ? WHERE name = ?',
+                [JSON.stringify({
+                    id: athlete.id != null ? athlete.id : null,
+                    athlete_draw_num: athlete.athlete_draw_num != null ? athlete.athlete_draw_num : (i + 1)
+                }), bracketName]
+            );
+        }
+
+        matchCount = await generateJJMatchsFromBracketData(db, event_id, weightClass, sortedAthletes, cleanSeeding, 'single_elimination');
+
+        stageId = String(stage.id);
+    }
+
+    return { stageId, stageType, matchCount };
+}
+
+async function generateJJMatchsFromBracketData(db, event_id, weightClass, athletes, cleanSeeding, mode) {
+    const sorted = [...athletes].sort((a, b) => (a.athlete_draw_num || 999) - (b.athlete_draw_num || 999));
+    const n = sorted.length;
+    let matchNum = 0;
+
+    if (mode === 'single_elimination' || mode === 'double_elimination') {
+        let bracketSize = 2;
+        while (bracketSize < n) bracketSize *= 2;
+        const totalRounds = Math.round(Math.log2(bracketSize));
+        const seeded = seedAthletes(sorted, bracketSize);
+
+        for (let round = totalRounds; round >= 1; round--) {
+            const matchesInRound = Math.pow(2, round - 1);
+            let roundName;
+            if (round === 1) roundName = 'Final';
+            else roundName = `赛${totalRounds - round + 1}`;
+
+            for (let i = 0; i < matchesInRound; i++) {
+                const blue = seeded[2 * i];
+                const red = seeded[2 * i + 1];
                 await db.run(
                     `INSERT INTO jiu_jitsu_matchs 
                     (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy, 
@@ -313,52 +450,146 @@ async function generatePoolElimination(db, event_id, weightClass, classAthletes,
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [
                         event_id, null, null, weightClass,
-                        1, `赛${poolIdx + 1}（小组赛）`, poolCount + Math.ceil(Math.log2(poolCount)),
-                        pool[i].athlete_id, pool[i].athlete_name, pool[i].athlete_team,
-                        pool[j].athlete_id, pool[j].athlete_name, pool[j].athlete_team,
-                        '未开始'
+                        totalRounds - round + 1, roundName + '（胜者组）', totalRounds,
+                        blue ? blue.athlete_id : null, blue ? blue.athlete_name : null, blue ? blue.athlete_team : null,
+                        red ? red.athlete_id : null, red ? red.athlete_name : null, red ? red.athlete_team : null,
+                        (!blue || !red) ? 'bye' : '未开始'
                     ]
                 );
                 matchNum++;
             }
         }
-    }
 
-    const elimRounds = Math.ceil(Math.log2(poolCount));
-    for (let r = 1; r <= elimRounds; r++) {
-        const matchesInRound = Math.pow(2, elimRounds - r);
-        const roundName = r === elimRounds ? 'Final' : `赛${poolCount + r}（淘汰赛）`;
-        for (let i = 0; i < matchesInRound; i++) {
+        if (mode === 'double_elimination') {
+            for (let round = 1; round <= totalRounds - 1; round++) {
+                const matchesInRound = Math.pow(2, totalRounds - round - 1);
+                for (let i = 0; i < matchesInRound; i++) {
+                    await db.run(
+                        `INSERT INTO jiu_jitsu_matchs 
+                        (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy, 
+                         jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_category_total_rounds,
+                         jiu_jitsu_match_status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [event_id, null, null, weightClass, round, `败者组第${round}轮`, totalRounds, '未开始']
+                    );
+                    matchNum++;
+                }
+            }
             await db.run(
                 `INSERT INTO jiu_jitsu_matchs 
                 (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy, 
                  jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_category_total_rounds,
                  jiu_jitsu_match_status)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                [event_id, null, null, weightClass, r + 1, roundName, poolCount + elimRounds, '未开始']
+                [event_id, null, null, weightClass, totalRounds + 1, 'Rep.（复活赛第一轮）', totalRounds, '未开始']
+            );
+            matchNum++;
+            await db.run(
+                `INSERT INTO jiu_jitsu_matchs 
+                (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy, 
+                 jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_category_total_rounds,
+                 jiu_jitsu_match_status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                [event_id, null, null, weightClass, totalRounds + 2, 'Bro.m（复活赛第二轮）', totalRounds, '未开始']
             );
             matchNum++;
         }
-    }
 
-    await db.run(
-        `INSERT INTO jiu_jitsu_matchs 
-        (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy, 
-         jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_category_total_rounds,
-         jiu_jitsu_match_status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [event_id, null, null, weightClass, elimRounds + 2, 'Rep.（复活赛第一轮）', poolCount + elimRounds, '未开始']
-    );
-    matchNum++;
-    await db.run(
-        `INSERT INTO jiu_jitsu_matchs 
-        (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy, 
-         jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_category_total_rounds,
-         jiu_jitsu_match_status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [event_id, null, null, weightClass, elimRounds + 3, 'Bro.m（复活赛第二轮）', poolCount + elimRounds, '未开始']
-    );
-    matchNum++;
+    } else if (mode === 'round_robin') {
+        const schedule = roundRobinSchedule(n);
+        for (let r = 0; r < schedule.length; r++) {
+            for (let i = 0; i < schedule[r].length; i++) {
+                const [p1, p2] = schedule[r][i];
+                const blue = p1 < n ? sorted[p1] : null;
+                const red = p2 < n ? sorted[p2] : null;
+                if (blue && red) {
+                    await db.run(
+                        `INSERT INTO jiu_jitsu_matchs 
+                        (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy, 
+                         jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_category_total_rounds,
+                         jiu_jitsu_blue_athlete_id, jiu_jitsu_blue_athlete_name, jiu_jitsu_blue_athlete_team,
+                         jiu_jitsu_red_athlete_id, jiu_jitsu_red_athlete_name, jiu_jitsu_red_athlete_team,
+                         jiu_jitsu_match_status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                            event_id, null, null, weightClass,
+                            r + 1, `赛${r + 1}`, schedule.length,
+                            blue.athlete_id, blue.athlete_name, blue.athlete_team,
+                            red.athlete_id, red.athlete_name, red.athlete_team,
+                            '未开始'
+                        ]
+                    );
+                    matchNum++;
+                }
+            }
+        }
+
+    } else if (mode === 'pool_elimination') {
+        const poolCount = Math.max(2, Math.ceil(n / 4));
+        const pools = [];
+        for (let i = 0; i < poolCount; i++) pools.push([]);
+        sorted.forEach((a, idx) => { pools[idx % poolCount].push(a); });
+
+        for (let poolIdx = 0; poolIdx < pools.length; poolIdx++) {
+            const pool = pools[poolIdx];
+            for (let i = 0; i < pool.length; i++) {
+                for (let j = i + 1; j < pool.length; j++) {
+                    await db.run(
+                        `INSERT INTO jiu_jitsu_matchs 
+                        (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy, 
+                         jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_category_total_rounds,
+                         jiu_jitsu_blue_athlete_id, jiu_jitsu_blue_athlete_name, jiu_jitsu_blue_athlete_team,
+                         jiu_jitsu_red_athlete_id, jiu_jitsu_red_athlete_name, jiu_jitsu_red_athlete_team,
+                         jiu_jitsu_match_status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                            event_id, null, null, weightClass,
+                            1, `赛${poolIdx + 1}（小组赛）`, poolCount + Math.ceil(Math.log2(poolCount)),
+                            pool[i].athlete_id, pool[i].athlete_name, pool[i].athlete_team,
+                            pool[j].athlete_id, pool[j].athlete_name, pool[j].athlete_team,
+                            '未开始'
+                        ]
+                    );
+                    matchNum++;
+                }
+            }
+        }
+
+        const elimRounds = Math.ceil(Math.log2(poolCount));
+        for (let r = 1; r <= elimRounds; r++) {
+            const matchesInRound = Math.pow(2, elimRounds - r);
+            const roundName = r === elimRounds ? 'Final' : `赛${poolCount + r}（淘汰赛）`;
+            for (let i = 0; i < matchesInRound; i++) {
+                await db.run(
+                    `INSERT INTO jiu_jitsu_matchs 
+                    (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy, 
+                     jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_category_total_rounds,
+                     jiu_jitsu_match_status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [event_id, null, null, weightClass, r + 1, roundName, poolCount + elimRounds, '未开始']
+                );
+                matchNum++;
+            }
+        }
+        await db.run(
+            `INSERT INTO jiu_jitsu_matchs 
+            (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy, 
+             jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_category_total_rounds,
+             jiu_jitsu_match_status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [event_id, null, null, weightClass, elimRounds + 2, 'Rep.（复活赛第一轮）', poolCount + elimRounds, '未开始']
+        );
+        matchNum++;
+        await db.run(
+            `INSERT INTO jiu_jitsu_matchs 
+            (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy, 
+             jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_category_total_rounds,
+             jiu_jitsu_match_status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [event_id, null, null, weightClass, elimRounds + 3, 'Bro.m（复活赛第二轮）', poolCount + elimRounds, '未开始']
+        );
+        matchNum++;
+    }
 
     return matchNum;
 }
@@ -412,11 +643,11 @@ module.exports = {
     MODE_NAME_MAP,
     MODE_VALUE_MAP,
     generateJJBracketForEvent,
-    generateSingleElimination,
-    generateDoubleElimination,
-    generateRoundRobin,
-    generatePoolElimination,
+    generateJJBracketForClass,
+    generateJJMatchsFromBracketData,
     seedAthletes,
     getSeedingPositions,
-    roundRobinSchedule
+    roundRobinSchedule,
+    clearJJBracketStageData,
+    generateJJSeedOrder
 };
