@@ -53,14 +53,18 @@ class JJBracketGenerator {
 
         const losersMatches = [];
         let matchNum = winnersMatches.length + 1;
+        const losersRounds = totalRounds - 1;
 
-        for (let round = 1; round <= totalRounds - 1; round++) {
+        for (let round = 1; round <= losersRounds; round++) {
             const matchesInRound = Math.pow(2, totalRounds - round - 1);
+            let roundName;
+            if (round === losersRounds) roundName = 'Bro.m';
+            else roundName = `rep.${round}`;
             for (let i = 0; i < matchesInRound; i++) {
                 losersMatches.push({
                     match_num: matchNum++,
-                    round_num: round,
-                    round_name: `败者组第${round}轮`,
+                    round_num: totalRounds + round,
+                    round_name: roundName,
                     blue_athlete_id: null,
                     blue_athlete_name: null,
                     blue_athlete_team: null,
@@ -73,43 +77,14 @@ class JJBracketGenerator {
             }
         }
 
-        const repechageMatches = [];
-        repechageMatches.push({
-            match_num: matchNum++,
-            round_num: 1,
-            round_name: 'Rep.（复活赛第一轮）',
-            blue_athlete_id: null,
-            blue_athlete_name: null,
-            blue_athlete_team: null,
-            red_athlete_id: null,
-            red_athlete_name: null,
-            red_athlete_team: null,
-            match_status: 'pending',
-            bracket_type: 'repechage'
-        });
-        repechageMatches.push({
-            match_num: matchNum++,
-            round_num: 2,
-            round_name: 'Bro.m（复活赛第二轮）',
-            blue_athlete_id: null,
-            blue_athlete_name: null,
-            blue_athlete_team: null,
-            red_athlete_id: null,
-            red_athlete_name: null,
-            red_athlete_team: null,
-            match_status: 'pending',
-            bracket_type: 'repechage_brom'
-        });
-
-        const allMatches = [...winnersMatches, ...losersMatches, ...repechageMatches];
+        const allMatches = [...winnersMatches, ...losersMatches];
 
         return {
             matches: allMatches,
             rounds: totalRounds,
             bracketSize,
             winnersMatches,
-            losersMatches,
-            repechageMatches
+            losersMatches
         };
     }
 
@@ -120,7 +95,6 @@ class JJBracketGenerator {
         const shuffled = [...athletes].sort(() => Math.random() - 0.5);
         const matches = [];
         let matchNum = 1;
-        let roundNum = 1;
         const totalRounds = count - 1;
 
         const schedule = this._roundRobinSchedule(count);
@@ -133,7 +107,7 @@ class JJBracketGenerator {
                     matches.push({
                         match_num: matchNum++,
                         round_num: r + 1,
-                        round_name: `赛${r + 1}`,
+                        round_name: `R${r + 1}`,
                         blue_athlete_id: blue.athlete_id,
                         blue_athlete_name: blue.athlete_name,
                         blue_athlete_team: blue.athlete_team,
@@ -169,22 +143,28 @@ class JJBracketGenerator {
         let matchNum = 1;
 
         pools.forEach((pool, poolIdx) => {
-            for (let i = 0; i < pool.length; i++) {
-                for (let j = i + 1; j < pool.length; j++) {
-                    matches.push({
-                        match_num: matchNum++,
-                        round_num: 1,
-                        round_name: `赛${poolIdx + 1}（小组赛）`,
-                        blue_athlete_id: pool[i].athlete_id,
-                        blue_athlete_name: pool[i].athlete_name,
-                        blue_athlete_team: pool[i].athlete_team,
-                        red_athlete_id: pool[j].athlete_id,
-                        red_athlete_name: pool[j].athlete_name,
-                        red_athlete_team: pool[j].athlete_team,
-                        match_status: 'pending',
-                        bracket_type: 'pool',
-                        pool_index: poolIdx + 1
-                    });
+            const poolSchedule = this._roundRobinSchedule(pool.length);
+            for (let r = 0; r < poolSchedule.length; r++) {
+                for (let i = 0; i < poolSchedule[r].length; i++) {
+                    const [p1, p2] = poolSchedule[r][i];
+                    const blue = p1 < pool.length ? pool[p1] : null;
+                    const red = p2 < pool.length ? pool[p2] : null;
+                    if (blue && red) {
+                        matches.push({
+                            match_num: matchNum++,
+                            round_num: r + 1,
+                            round_name: `R${r + 1}`,
+                            blue_athlete_id: blue.athlete_id,
+                            blue_athlete_name: blue.athlete_name,
+                            blue_athlete_team: blue.athlete_team,
+                            red_athlete_id: red.athlete_id,
+                            red_athlete_name: red.athlete_name,
+                            red_athlete_team: red.athlete_team,
+                            match_status: 'pending',
+                            bracket_type: 'pool',
+                            pool_index: poolIdx + 1
+                        });
+                    }
                 }
             }
         });
@@ -192,7 +172,12 @@ class JJBracketGenerator {
         const elimRounds = Math.ceil(Math.log2(poolCount));
         for (let r = 1; r <= elimRounds; r++) {
             const matchesInRound = Math.pow(2, elimRounds - r);
-            const roundName = r === elimRounds ? 'Final' : `赛${poolCount + r}（淘汰赛）`;
+            let roundName;
+            if (r === elimRounds) roundName = 'Final';
+            else {
+                const denominator = Math.pow(2, elimRounds - r);
+                roundName = `1/${denominator}`;
+            }
             for (let i = 0; i < matchesInRound; i++) {
                 matches.push({
                     match_num: matchNum++,
@@ -210,35 +195,27 @@ class JJBracketGenerator {
             }
         }
 
-        matches.push({
-            match_num: matchNum++,
-            round_num: elimRounds + 2,
-            round_name: 'Rep.（复活赛第一轮）',
-            blue_athlete_id: null,
-            blue_athlete_name: null,
-            blue_athlete_team: null,
-            red_athlete_id: null,
-            red_athlete_name: null,
-            red_athlete_team: null,
-            match_status: 'pending',
-            bracket_type: 'repechage'
-        });
+        const repRounds = Math.max(1, elimRounds - 1);
+        for (let r = 1; r <= repRounds; r++) {
+            let roundName;
+            if (r === repRounds) roundName = 'Bro.m';
+            else roundName = `rep.${r}`;
+            matches.push({
+                match_num: matchNum++,
+                round_num: elimRounds + 1 + r,
+                round_name: roundName,
+                blue_athlete_id: null,
+                blue_athlete_name: null,
+                blue_athlete_team: null,
+                red_athlete_id: null,
+                red_athlete_name: null,
+                red_athlete_team: null,
+                match_status: 'pending',
+                bracket_type: r === repRounds ? 'repechage_brom' : 'repechage'
+            });
+        }
 
-        matches.push({
-            match_num: matchNum++,
-            round_num: elimRounds + 3,
-            round_name: 'Bro.m（复活赛第二轮）',
-            blue_athlete_id: null,
-            blue_athlete_name: null,
-            blue_athlete_team: null,
-            red_athlete_id: null,
-            red_athlete_name: null,
-            red_athlete_team: null,
-            match_status: 'pending',
-            bracket_type: 'repechage_brom'
-        });
-
-        return { matches, rounds: elimRounds + 3, pools, poolCount };
+        return { matches, rounds: elimRounds + 1 + repRounds, pools, poolCount };
     }
 
     static _seedAthletes(athletes, bracketSize) {
@@ -269,7 +246,8 @@ class JJBracketGenerator {
 
     static _getRoundName(round, totalRounds) {
         if (round === 1) return 'Final';
-        return `赛${totalRounds - round + 1}`;
+        const denominator = Math.pow(2, totalRounds - round);
+        return `1/${denominator}`;
     }
 
     static _roundRobinSchedule(n) {

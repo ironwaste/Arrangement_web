@@ -73,6 +73,52 @@ function getRoundName(roundNumber, totalRounds) {
   return `1/${denominator}`;
 }
 
+async function createBergenRoundRobinMatches(db, stageId, effectiveSeeding, participantList) {
+  const n = effectiveSeeding.length;
+  if (n < 2) return;
+
+  await db.prepare('DELETE FROM bracket_match_game WHERE stage_id = ?').run(stageId);
+  await db.prepare('DELETE FROM bracket_match WHERE stage_id = ?').run(stageId);
+  await db.prepare('DELETE FROM bracket_round WHERE stage_id = ?').run(stageId);
+
+  const groupRow = await db.prepare('SELECT id FROM bracket_group WHERE stage_id = ?').get(stageId);
+  const groupId = groupRow ? groupRow.id : null;
+
+  const seedingToParticipant = new Map();
+  for (let i = 0; i < effectiveSeeding.length; i++) {
+    const p = participantList.find(pp => pp.name === effectiveSeeding[i]);
+    if (p) {
+      seedingToParticipant.set(i + 1, p.id);
+    }
+  }
+
+  const rrMatches = generateRoundRobinMatches(n, '循环赛');
+
+  let matchNumber = 1;
+  for (let roundIdx = 0; roundIdx < rrMatches.length; roundIdx++) {
+    const roundName = `R${roundIdx + 1}`;
+
+    const roundResult = await db.prepare(
+      'INSERT INTO bracket_round (stage_id, group_id, name, number) VALUES (?, ?, ?, ?)'
+    ).run(stageId, groupId, roundName, roundIdx + 1);
+    const roundId = roundResult.lastInsertRowid;
+
+    for (const match of rrMatches[roundIdx]) {
+      const opp1ParticipantId = seedingToParticipant.get(match.seed1);
+      const opp2ParticipantId = seedingToParticipant.get(match.seed2);
+
+      const opponent1 = opp1ParticipantId ? JSON.stringify({ id: opp1ParticipantId }) : null;
+      const opponent2 = opp2ParticipantId ? JSON.stringify({ id: opp2ParticipantId }) : null;
+
+      await db.prepare(
+        'INSERT INTO bracket_match (stage_id, round_id, group_id, number, child_count, opponent1, opponent2, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(stageId, roundId, groupId, matchNumber, 0, opponent1, opponent2, 2);
+
+      matchNumber++;
+    }
+  }
+}
+
 /** 为单个级别生成对阵图（支持淘汰赛/循环赛/分区赛） */
 async function generateBracketForClass(db, manager, weightClass, athletes, event_id, forceElimination = false) {
   await deleteKyougiMatchsByClass(db, weightClass, event_id);
@@ -257,17 +303,16 @@ async function generateBracketForClass(db, manager, weightClass, athletes, event
     stageType = 'double_elimination';
 
   } else if (isRoundRobin && !isDivisional) {
-    const rrMatches = generateRoundRobinMatches(n, method);
+    const effectiveSeeding = cleanSeeding.filter(s => s !== null);
 
     const rrStage = await manager.create.stage({
       tournamentId: Number(event_id),
       name: weightClass,
       type: 'round_robin',
-      seeding: cleanSeeding,
+      seeding: effectiveSeeding,
       settings: { size: n, groupCount: 1 },
     });
 
-    // 更新 stage 的 event_id 和 category_id
     await db.prepare(
       'UPDATE bracket_stage SET event_id = ?, category_id = ? WHERE id = ?'
     ).run(event_id, weightClass, rrStage.id);
@@ -275,18 +320,24 @@ async function generateBracketForClass(db, manager, weightClass, athletes, event
     const participantList = await db.prepare(
       'SELECT id, name FROM bracket_participant WHERE tournament_id = ?'
     ).all(Number(event_id));
+
+    await createBergenRoundRobinMatches(db, rrStage.id, effectiveSeeding, participantList);
+
     const updateParticipant = db.prepare(
       'UPDATE bracket_participant SET custom_data = ? WHERE id = ?'
     );
+    let seedIdx = 0;
     for (let i = 0; i < cleanSeeding.length; i++) {
+      if (cleanSeeding[i] === null) continue;
       const p = participantList.find(pp => pp.name === cleanSeeding[i]);
       if (p) {
         const athlete = athletes[i] || {};
         await updateParticipant.run(JSON.stringify({
           id: athlete.id != null ? athlete.id : null,
-          athlete_draw_num: athlete.athlete_draw_num != null ? athlete.athlete_draw_num : (i + 1)
+          athlete_draw_num: athlete.athlete_draw_num != null ? athlete.athlete_draw_num : (seedIdx + 1)
         }), p.id);
       }
+      seedIdx++;
     }
 
     stageId = String(rrStage.id);
@@ -308,7 +359,6 @@ async function generateBracketForClass(db, manager, weightClass, athletes, event
         seeding: cleanSeeding,
       });
 
-      // 更新 stage 的 event_id 和 category_id
       await db.prepare(
         'UPDATE bracket_stage SET event_id = ?, category_id = ? WHERE id = ?'
       ).run(event_id, weightClass, finalStage.id);
@@ -344,7 +394,6 @@ async function generateBracketForClass(db, manager, weightClass, athletes, event
         settings: { size: upperAthletes.length, groupCount: 1 },
       });
 
-      // 更新 stage 的 event_id 和 category_id
       await db.prepare(
         'UPDATE bracket_stage SET event_id = ?, category_id = ? WHERE id = ?'
       ).run(event_id, weightClass, upperRRStage.id);
@@ -357,7 +406,6 @@ async function generateBracketForClass(db, manager, weightClass, athletes, event
         settings: { size: lowerAthletes.length, groupCount: 1 },
       });
 
-      // 更新 stage 的 event_id 和 category_id
       await db.prepare(
         'UPDATE bracket_stage SET event_id = ?, category_id = ? WHERE id = ?'
       ).run(event_id, weightClass, lowerRRStage.id);
@@ -365,6 +413,10 @@ async function generateBracketForClass(db, manager, weightClass, athletes, event
       const participants = await db.prepare(
         'SELECT id, name FROM bracket_participant WHERE tournament_id = ?'
       ).all(Number(event_id));
+
+      await createBergenRoundRobinMatches(db, upperRRStage.id, upperAthletes, participants);
+      await createBergenRoundRobinMatches(db, lowerRRStage.id, lowerAthletes, participants);
+
       const updateParticipant = db.prepare(
         'UPDATE bracket_participant SET custom_data = ? WHERE id = ?'
       );
@@ -410,6 +462,9 @@ async function generateBracketForClass(db, manager, weightClass, athletes, event
       const participants = await db.prepare(
         'SELECT id, name FROM bracket_participant WHERE tournament_id = ?'
       ).all(Number(event_id));
+
+      await createBergenRoundRobinMatches(db, poolStage.id, poolAthletes, participants);
+
       const updateParticipant = db.prepare(
         'UPDATE bracket_participant SET custom_data = ? WHERE id = ?'
       );
@@ -512,5 +567,6 @@ module.exports = {
   generateRoundRobinMatches,
   generateDivisionalRoundRobin,
   getRoundName,
+  createBergenRoundRobinMatches,
   generateBracketForClass
 };

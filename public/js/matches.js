@@ -2,6 +2,15 @@ let _allMatchRows = [];
 let _filterState = { left: { col: -1, val: '' }, right: { col: -1, val: '' } };
 let _matchScheduleData = [];
 
+function parseJJScores(scoresStr) {
+    if (!scoresStr) return { blue_score: 0, red_score: 0 };
+    const parts = String(scoresStr).split(':');
+    return {
+        blue_score: parseInt(parts[0]) || 0,
+        red_score: parseInt(parts[1]) || 0
+    };
+}
+
 async function loadMatches() {
     const leftBody = document.getElementById('matchesTableLeftBody');
     const rightBody = document.getElementById('matchesTableRightBody');
@@ -23,10 +32,54 @@ async function loadMatches() {
     let matchesData = [];
     let scheduleData = [];
 
-    try {
-        const resp = await apiGet('/matches?' + urlParams + '&arranged_only=true');
-        if (resp.success && resp.data) matchesData = resp.data;
-    } catch (e) { console.error('加载matches失败:', e); }
+    if (currentEventType === 'jiu_jitsu') {
+        try {
+            const jjParams = currentEventId ? `event_id=${currentEventId}` : '';
+            const resp = await apiGet('/jj-brackets/matches?' + jjParams);
+            if (resp.success && resp.data) {
+                matchesData = resp.data.filter(m => {
+                    if (m.jiu_jitsu_match_venue === null || m.jiu_jitsu_match_id === null) return false;
+                    if (m.jiu_jitsu_match_status === 'bye') return false;
+                    return true;
+                }).map(m => {
+                    const scores = parseJJScores(m.jiu_jitsu_match_scores);
+                    const venueStr = m.jiu_jitsu_match_venue || '';
+                    return {
+                        id: m.id,
+                        event_id: m.event_id,
+                        weight_class: m.jiu_jitsu_match_categroy,
+                        round: m.jiu_jitsu_match_round_num,
+                        round_name: m.jiu_jitsu_match_round_name,
+                        total_rounds: m.jiu_jitsu_match_category_total_rounds,
+                        bracket_match_id: m.jiu_jitsu_bracket_match_id,
+                        match_id: m.jiu_jitsu_match_id,
+                        blue_athlete_id: m.jiu_jitsu_blue_athlete_id,
+                        blue_name: m.jiu_jitsu_blue_athlete_name,
+                        blue_unit: m.jiu_jitsu_blue_athlete_team,
+                        blue_prev_winner: m.jiu_jitsu_blue_prev_winner,
+                        blue_score: scores.blue_score,
+                        red_athlete_id: m.jiu_jitsu_red_athlete_id,
+                        red_name: m.jiu_jitsu_red_athlete_name,
+                        red_unit: m.jiu_jitsu_red_athlete_team,
+                        red_prev_winner: m.jiu_jitsu_red_prev_winner_id,
+                        red_score: scores.red_score,
+                        match_status: m.jiu_jitsu_match_status,
+                        win_method: m.jiu_jitsu_win_method,
+                        winner: m.jiu_jitsu_winner,
+                        venue_no: (m.jiu_jitsu_match_venue !== null && m.jiu_jitsu_match_id !== null)
+                            ? (String(m.jiu_jitsu_match_venue) + String(m.jiu_jitsu_match_id))
+                            : '',
+                        venue: venueStr.charAt(0) || ''
+                    };
+                });
+            }
+        } catch (e) { console.error('加载jj-brackets/matches失败:', e); }
+    } else {
+        try {
+            const resp = await apiGet('/matches?' + urlParams + '&arranged_only=true');
+            if (resp.success && resp.data) matchesData = resp.data;
+        } catch (e) { console.error('加载matches失败:', e); }
+    }
 
     if (currentEventType === 'wrestling') {
         try {
@@ -350,7 +403,13 @@ document.addEventListener('DOMContentLoaded', function() {
 async function resetMatchFilter() {
     if (!confirm('确定要清空所有比赛数据吗？此操作不可恢复！')) return;
     try {
-        if (currentEventType === 'wrestling' && currentEventId) {
+        if (currentEventType === 'jiu_jitsu' && currentEventId) {
+            const clearResp = await apiPost('/jj-brackets/clear', { event_id: currentEventId, clear_bracket: false });
+            if (!clearResp.success) {
+                alert('清除编排数据失败：' + (clearResp.error || '未知错误'));
+                return;
+            }
+        } else if (currentEventType === 'wrestling' && currentEventId) {
             const clearResp = await apiPost('/wrestling-arrange/clear', { event_id: currentEventId });
             if (!clearResp.success) {
                 alert('清除编排数据失败：' + (clearResp.error || '未知错误'));
@@ -382,14 +441,42 @@ async function resetMatchFilter() {
 async function printMatchSchedule() {
     if (!currentEventId) { alert('请先选择赛事'); return; }
 
-    const urlParams = getEventParam();
-    const resp = await apiGet('/matches?' + urlParams + '&arranged_only=true');
-    if (!resp.success || !resp.data || resp.data.length === 0) {
+    let matches = [];
+    if (currentEventType === 'jiu_jitsu') {
+        const jjParams = currentEventId ? `event_id=${currentEventId}` : '';
+        const resp = await apiGet('/jj-brackets/matches?' + jjParams);
+        if (resp.success && resp.data) {
+            matches = resp.data.filter(m => m.jiu_jitsu_match_venue && m.jiu_jitsu_match_id && m.jiu_jitsu_match_status !== 'bye').map(m => {
+                const scores = parseJJScores(m.jiu_jitsu_match_scores);
+                const venueStr = m.jiu_jitsu_match_venue || '';
+                return {
+                    id: m.id,
+                    weight_class: m.jiu_jitsu_match_categroy,
+                    round_name: m.jiu_jitsu_match_round_name,
+                    match_id: m.jiu_jitsu_match_id,
+                    blue_name: m.jiu_jitsu_blue_athlete_name,
+                    blue_prev_winner: m.jiu_jitsu_blue_prev_winner,
+                    blue_unit: m.jiu_jitsu_blue_athlete_team,
+                    red_name: m.jiu_jitsu_red_athlete_name,
+                    red_prev_winner: m.jiu_jitsu_red_prev_winner_id,
+                    red_unit: m.jiu_jitsu_red_athlete_team,
+                    venue_no: (m.jiu_jitsu_match_venue !== null && m.jiu_jitsu_match_id !== null)
+                        ? (String(m.jiu_jitsu_match_venue) + String(m.jiu_jitsu_match_id))
+                        : '',
+                    venue: venueStr.charAt(0) || ''
+                };
+            });
+        }
+    } else {
+        const urlParams = getEventParam();
+        const resp = await apiGet('/matches?' + urlParams + '&arranged_only=true');
+        if (resp.success && resp.data) matches = resp.data;
+    }
+
+    if (matches.length === 0) {
         alert('没有可打印的比赛数据');
         return;
     }
-
-    const matches = resp.data;
     const venueGroups = new Map();
 
     matches.forEach(m => {
@@ -471,6 +558,10 @@ async function printMatchSchedule() {
 
 function exportMatchesExcelTemplate() {
     if (!currentEventId) { alert('请先选择赛事'); return; }
+    if (currentEventType === 'jiu_jitsu') {
+        alert('柔术赛事暂不支持导出Excel对阵表，请使用打印功能');
+        return;
+    }
     downloadFile(`${API_BASE}/matches/export-excel-template?event_id=${currentEventId}`);
 }
 
@@ -867,7 +958,23 @@ async function resetScore() {
 
     if (!confirm('确定要重置该比赛数据吗？比分、胜方、获胜方式将全部清空。')) return;
 
-    if (matchType === 'match' && matchId) {
+    if (currentEventType === 'jiu_jitsu' && matchType === 'match' && matchId) {
+        try {
+            const resp = await fetch(API_BASE + '/jj-brackets/matches/' + matchId + '/reset', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await resp.json();
+            if (data.success) {
+                closeScoreModal();
+                loadMatches();
+            } else {
+                alert('重置失败: ' + data.error);
+            }
+        } catch (err) {
+            alert('请求失败: ' + err.message);
+        }
+    } else if (matchType === 'match' && matchId) {
         try {
             const resp = await fetch(API_BASE + '/matches/' + matchId + '/reset', {
                 method: 'POST',
@@ -914,7 +1021,30 @@ async function saveScore() {
 
     if (!winner) { alert('请选择获胜方'); return; }
 
-    if (matchType === 'match' && matchId) {
+    if (currentEventType === 'jiu_jitsu' && matchType === 'match' && matchId) {
+        try {
+            const resp = await fetch(API_BASE + '/jj-brackets/matches/' + matchId, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    blue_score: parseInt(blueScore) || 0,
+                    red_score: parseInt(redScore) || 0,
+                    winner: winner,
+                    win_method: winMethod || null,
+                    match_status: '已结束'
+                })
+            });
+            const data = await resp.json();
+            if (data.success) {
+                closeScoreModal();
+                loadMatches();
+            } else {
+                alert('保存失败: ' + data.error);
+            }
+        } catch (err) {
+            alert('请求失败: ' + err.message);
+        }
+    } else if (matchType === 'match' && matchId) {
         try {
             const resp = await fetch(API_BASE + '/matches/' + matchId, {
                 method: 'PUT',
@@ -970,14 +1100,35 @@ let _printMatchesCache = [];
 async function showPrintDialog() {
     if (!currentEventId) { alert('请先选择赛事'); return; }
 
-    const urlParams = getEventParam();
-    const resp = await apiGet('/matches?' + urlParams + '&arranged_only=true');
-    if (!resp.success || !resp.data || resp.data.length === 0) {
+    let matches = [];
+    if (currentEventType === 'jiu_jitsu') {
+        const jjParams = currentEventId ? `event_id=${currentEventId}` : '';
+        const resp = await apiGet('/jj-brackets/matches?' + jjParams);
+        if (resp.success && resp.data) {
+            matches = resp.data.filter(m => m.jiu_jitsu_match_venue && m.jiu_jitsu_match_id && m.jiu_jitsu_match_status !== 'bye').map(m => {
+                const venueStr = m.jiu_jitsu_match_venue || '';
+                return {
+                    weight_class: m.jiu_jitsu_match_categroy,
+                    match_id: m.jiu_jitsu_match_id,
+                    venue_no: (m.jiu_jitsu_match_venue !== null && m.jiu_jitsu_match_id !== null)
+                        ? (String(m.jiu_jitsu_match_venue) + String(m.jiu_jitsu_match_id))
+                        : '',
+                    venue: venueStr.charAt(0) || ''
+                };
+            });
+        }
+    } else {
+        const urlParams = getEventParam();
+        const resp = await apiGet('/matches?' + urlParams + '&arranged_only=true');
+        if (resp.success && resp.data) matches = resp.data;
+    }
+
+    if (matches.length === 0) {
         alert('没有可打印的比赛数据');
         return;
     }
 
-    _printMatchesCache = resp.data;
+    _printMatchesCache = matches;
 
     const venueSet = new Set();
     _printMatchesCache.forEach(m => {

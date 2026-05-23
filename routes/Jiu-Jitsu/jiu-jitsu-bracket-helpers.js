@@ -1,3 +1,5 @@
+const { createBergenRoundRobinMatches } = require('../autoScheduler');
+
 const MODE_NAME_MAP = {
     'single_elimination': '单败淘汰赛',
     'double_elimination': '双败淘汰赛',
@@ -261,11 +263,13 @@ async function generateJJBracketForClass(db, manager, weightClass, athletes, eve
         stageId = allStageIds.join(',');
 
     } else if (stageType === 'round_robin') {
+        const effectiveSeeding = cleanSeeding.filter(s => s !== null);
+
         const rrStage = await manager.create.stage({
             tournamentId: Number(event_id),
             name: weightClass,
             type: 'round_robin',
-            seeding: cleanSeeding,
+            seeding: effectiveSeeding,
             settings: { size: n, groupCount: 1 },
         });
 
@@ -278,7 +282,11 @@ async function generateJJBracketForClass(db, manager, weightClass, athletes, eve
             'SELECT id, name FROM bracket_participant WHERE tournament_id = ?',
             [Number(event_id)]
         );
+
+        await createBergenRoundRobinMatches(db, rrStage.id, effectiveSeeding, participantList);
+
         for (let i = 0; i < cleanSeeding.length; i++) {
+            if (cleanSeeding[i] === null) continue;
             const p = participantList.find(pp => pp.name === cleanSeeding[i]);
             if (p) {
                 const athlete = sortedAthletes[i] || {};
@@ -324,6 +332,9 @@ async function generateJJBracketForClass(db, manager, weightClass, athletes, eve
                 'SELECT id, name FROM bracket_participant WHERE tournament_id = ?',
                 [Number(event_id)]
             );
+
+            await createBergenRoundRobinMatches(db, poolStage.id, poolAthletes, participantList);
+
             for (let i = 0; i < poolAthletesRaw.length; i++) {
                 if (poolAthletesRaw[i] === null) continue;
                 const p = participantList.find(pp => pp.name === poolAthletesRaw[i]);
@@ -431,11 +442,17 @@ async function generateJJMatchsFromBracketData(db, event_id, weightClass, athlet
         const totalRounds = Math.round(Math.log2(bracketSize));
         const seeded = seedAthletes(sorted, bracketSize);
 
-        for (let round = totalRounds; round >= 1; round--) {
-            const matchesInRound = Math.pow(2, round - 1);
+        for (let round = 1; round <= totalRounds; round++) {
+            const matchesInRound = Math.pow(2, totalRounds - round);
             let roundName;
-            if (round === 1) roundName = 'Final';
-            else roundName = `赛${totalRounds - round + 1}`;
+            if (round === totalRounds) roundName = 'Final';
+            else {
+                const denominator = Math.pow(2, totalRounds - round);
+                roundName = `1/${denominator}`;
+            }
+            if (mode === 'double_elimination') {
+                roundName = roundName + '（胜者组）';
+            }
 
             for (let i = 0; i < matchesInRound; i++) {
                 const blue = seeded[2 * i];
@@ -450,7 +467,7 @@ async function generateJJMatchsFromBracketData(db, event_id, weightClass, athlet
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [
                         event_id, null, null, weightClass,
-                        totalRounds - round + 1, roundName + '（胜者组）', totalRounds,
+                        round, roundName, totalRounds,
                         blue ? blue.athlete_id : null, blue ? blue.athlete_name : null, blue ? blue.athlete_team : null,
                         red ? red.athlete_id : null, red ? red.athlete_name : null, red ? red.athlete_team : null,
                         (!blue || !red) ? 'bye' : '未开始'
@@ -461,8 +478,15 @@ async function generateJJMatchsFromBracketData(db, event_id, weightClass, athlet
         }
 
         if (mode === 'double_elimination') {
-            for (let round = 1; round <= totalRounds - 1; round++) {
-                const matchesInRound = Math.pow(2, totalRounds - round - 1);
+            const losersRounds = totalRounds - 1;
+            for (let round = 1; round <= losersRounds; round++) {
+                const matchesInRound = Math.pow(2, losersRounds - round);
+                let roundName;
+                if (round === losersRounds) roundName = 'Final（败者组）';
+                else {
+                    const denominator = Math.pow(2, losersRounds - round);
+                    roundName = `1/${denominator}（败者组）`;
+                }
                 for (let i = 0; i < matchesInRound; i++) {
                     await db.run(
                         `INSERT INTO jiu_jitsu_matchs 
@@ -470,29 +494,11 @@ async function generateJJMatchsFromBracketData(db, event_id, weightClass, athlet
                          jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_category_total_rounds,
                          jiu_jitsu_match_status)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                        [event_id, null, null, weightClass, round, `败者组第${round}轮`, totalRounds, '未开始']
+                        [event_id, null, null, weightClass, totalRounds + round, roundName, totalRounds, '未开始']
                     );
                     matchNum++;
                 }
             }
-            await db.run(
-                `INSERT INTO jiu_jitsu_matchs 
-                (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy, 
-                 jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_category_total_rounds,
-                 jiu_jitsu_match_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                [event_id, null, null, weightClass, totalRounds + 1, 'Rep.（复活赛第一轮）', totalRounds, '未开始']
-            );
-            matchNum++;
-            await db.run(
-                `INSERT INTO jiu_jitsu_matchs 
-                (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy, 
-                 jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_category_total_rounds,
-                 jiu_jitsu_match_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                [event_id, null, null, weightClass, totalRounds + 2, 'Bro.m（复活赛第二轮）', totalRounds, '未开始']
-            );
-            matchNum++;
         }
 
     } else if (mode === 'round_robin') {
@@ -513,7 +519,7 @@ async function generateJJMatchsFromBracketData(db, event_id, weightClass, athlet
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                         [
                             event_id, null, null, weightClass,
-                            r + 1, `赛${r + 1}`, schedule.length,
+                            r + 1, `R${r + 1}`, schedule.length,
                             blue.athlete_id, blue.athlete_name, blue.athlete_team,
                             red.athlete_id, red.athlete_name, red.athlete_team,
                             '未开始'
@@ -532,25 +538,32 @@ async function generateJJMatchsFromBracketData(db, event_id, weightClass, athlet
 
         for (let poolIdx = 0; poolIdx < pools.length; poolIdx++) {
             const pool = pools[poolIdx];
-            for (let i = 0; i < pool.length; i++) {
-                for (let j = i + 1; j < pool.length; j++) {
-                    await db.run(
-                        `INSERT INTO jiu_jitsu_matchs 
-                        (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy, 
-                         jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_category_total_rounds,
-                         jiu_jitsu_blue_athlete_id, jiu_jitsu_blue_athlete_name, jiu_jitsu_blue_athlete_team,
-                         jiu_jitsu_red_athlete_id, jiu_jitsu_red_athlete_name, jiu_jitsu_red_athlete_team,
-                         jiu_jitsu_match_status)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                        [
-                            event_id, null, null, weightClass,
-                            1, `赛${poolIdx + 1}（小组赛）`, poolCount + Math.ceil(Math.log2(poolCount)),
-                            pool[i].athlete_id, pool[i].athlete_name, pool[i].athlete_team,
-                            pool[j].athlete_id, pool[j].athlete_name, pool[j].athlete_team,
-                            '未开始'
-                        ]
-                    );
-                    matchNum++;
+            const poolRounds = pool.length - 1;
+            const poolSchedule = roundRobinSchedule(pool.length);
+            for (let r = 0; r < poolSchedule.length; r++) {
+                for (let i = 0; i < poolSchedule[r].length; i++) {
+                    const [p1, p2] = poolSchedule[r][i];
+                    const blue = p1 < pool.length ? pool[p1] : null;
+                    const red = p2 < pool.length ? pool[p2] : null;
+                    if (blue && red) {
+                        await db.run(
+                            `INSERT INTO jiu_jitsu_matchs 
+                            (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy, 
+                             jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_category_total_rounds,
+                             jiu_jitsu_blue_athlete_id, jiu_jitsu_blue_athlete_name, jiu_jitsu_blue_athlete_team,
+                             jiu_jitsu_red_athlete_id, jiu_jitsu_red_athlete_name, jiu_jitsu_red_athlete_team,
+                             jiu_jitsu_match_status)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            [
+                                event_id, null, null, weightClass,
+                                r + 1, `R${r + 1}`, poolRounds,
+                                blue.athlete_id, blue.athlete_name, blue.athlete_team,
+                                red.athlete_id, red.athlete_name, red.athlete_team,
+                                '未开始'
+                            ]
+                        );
+                        matchNum++;
+                    }
                 }
             }
         }
@@ -558,7 +571,12 @@ async function generateJJMatchsFromBracketData(db, event_id, weightClass, athlet
         const elimRounds = Math.ceil(Math.log2(poolCount));
         for (let r = 1; r <= elimRounds; r++) {
             const matchesInRound = Math.pow(2, elimRounds - r);
-            const roundName = r === elimRounds ? 'Final' : `赛${poolCount + r}（淘汰赛）`;
+            let roundName;
+            if (r === elimRounds) roundName = 'Final';
+            else {
+                const denominator = Math.pow(2, elimRounds - r);
+                roundName = `1/${denominator}`;
+            }
             for (let i = 0; i < matchesInRound; i++) {
                 await db.run(
                     `INSERT INTO jiu_jitsu_matchs 
@@ -571,24 +589,24 @@ async function generateJJMatchsFromBracketData(db, event_id, weightClass, athlet
                 matchNum++;
             }
         }
-        await db.run(
-            `INSERT INTO jiu_jitsu_matchs 
-            (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy, 
-             jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_category_total_rounds,
-             jiu_jitsu_match_status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [event_id, null, null, weightClass, elimRounds + 2, 'Rep.（复活赛第一轮）', poolCount + elimRounds, '未开始']
-        );
-        matchNum++;
-        await db.run(
-            `INSERT INTO jiu_jitsu_matchs 
-            (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy, 
-             jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_category_total_rounds,
-             jiu_jitsu_match_status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [event_id, null, null, weightClass, elimRounds + 3, 'Bro.m（复活赛第二轮）', poolCount + elimRounds, '未开始']
-        );
-        matchNum++;
+        const repRounds = Math.max(1, elimRounds - 1);
+        for (let r = 1; r <= repRounds; r++) {
+            let roundName;
+            if (r === repRounds) roundName = 'Final（败者组）';
+            else {
+                const denominator = Math.pow(2, repRounds - r);
+                roundName = `1/${denominator}（败者组）`;
+            }
+            await db.run(
+                `INSERT INTO jiu_jitsu_matchs 
+                (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy, 
+                 jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_category_total_rounds,
+                 jiu_jitsu_match_status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                [event_id, null, null, weightClass, elimRounds + 1 + r, roundName, poolCount + elimRounds, '未开始']
+            );
+            matchNum++;
+        }
     }
 
     return matchNum;
