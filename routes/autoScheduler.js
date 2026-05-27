@@ -386,36 +386,28 @@ async function generateBracketForClass(db, manager, weightClass, athletes, event
       const upperAthletes = cleanSeeding.slice(0, upperSize).filter(s => s !== null);
       const lowerAthletes = cleanSeeding.slice(upperSize, upperSize + lowerSize).filter(s => s !== null);
 
-      const upperRRStage = await manager.create.stage({
+      const upperNum = upperAthletes.map((_, idx) => idx + 1);
+      const lowerNum = lowerAthletes.map((_, idx) => upperSize + idx + 1);
+      const combinedSeeding = [...upperAthletes, ...lowerAthletes];
+
+      const divisionalStage = await manager.create.stage({
         tournamentId: Number(event_id),
-        name: `${weightClass}_上区`,
+        name: `${weightClass}_分区循环赛`,
         type: 'round_robin',
-        seeding: upperAthletes,
-        settings: { size: upperAthletes.length, groupCount: 1 },
+        seeding: combinedSeeding,
+        settings: {
+          groupCount: 2,
+          manualOrdering: [upperNum, lowerNum],
+        },
       });
 
       await db.prepare(
         'UPDATE bracket_stage SET event_id = ?, category_id = ? WHERE id = ?'
-      ).run(event_id, weightClass, upperRRStage.id);
-
-      const lowerRRStage = await manager.create.stage({
-        tournamentId: Number(event_id),
-        name: `${weightClass}_下区`,
-        type: 'round_robin',
-        seeding: lowerAthletes,
-        settings: { size: lowerAthletes.length, groupCount: 1 },
-      });
-
-      await db.prepare(
-        'UPDATE bracket_stage SET event_id = ?, category_id = ? WHERE id = ?'
-      ).run(event_id, weightClass, lowerRRStage.id);
+      ).run(event_id, weightClass, divisionalStage.id);
 
       const participants = await db.prepare(
         'SELECT id, name FROM bracket_participant WHERE tournament_id = ?'
       ).all(Number(event_id));
-
-      await createBergenRoundRobinMatches(db, upperRRStage.id, upperAthletes, participants);
-      await createBergenRoundRobinMatches(db, lowerRRStage.id, lowerAthletes, participants);
 
       const updateParticipant = db.prepare(
         'UPDATE bracket_participant SET custom_data = ? WHERE id = ?'
@@ -433,59 +425,110 @@ async function generateBracketForClass(db, manager, weightClass, athletes, event
         }
       }
 
-      stageId = `${upperRRStage.id},${lowerRRStage.id}`;
+      const finalStage = await manager.create.stage({
+        tournamentId: Number(event_id),
+        name: `${weightClass}_决赛`,
+        type: 'round_robin',
+        settings: { groupCount: 1 },
+        seeding: ['上区第一', '下区第一'],
+      });
+
+      await db.prepare(
+        'UPDATE bracket_stage SET event_id = ?, category_id = ? WHERE id = ?'
+      ).run(event_id, weightClass, finalStage.id);
+
+      const finalMatches = await db.prepare('SELECT id FROM bracket_match WHERE stage_id = ?').all(finalStage.id);
+      if (finalMatches && finalMatches.length > 0) {
+        const insertMatchGame = db.prepare(
+          'INSERT INTO bracket_match_game (stage_id, parent_id, number) VALUES (?, ?, ?)'
+        );
+        const updateChildCount = db.prepare(
+          'UPDATE bracket_match SET child_count = 1 WHERE id = ?'
+        );
+        for (const match of finalMatches) {
+          const existing = await db.prepare('SELECT id FROM bracket_match_game WHERE parent_id = ?').get(match.id);
+          if (!existing) {
+            await insertMatchGame.run(finalStage.id, match.id, 1);
+            await updateChildCount.run(match.id);
+          }
+        }
+      }
+
+      const finalStageData = await manager.get.stageData(finalStage.id);
+      if (finalStageData?.round?.length > 0) {
+        for (const round of finalStageData.round) {
+          if (round.name !== 'R.Final') {
+            await db.run('UPDATE bracket_round SET name = ? WHERE id = ?', ['R.Final', round.id]);
+          }
+        }
+      }
+
+      stageId = `${divisionalStage.id},${finalStage.id}`;
       stageType = 'divisional_round_robin';
     }
   } else if (isPoolElimination) {
     const poolCount = Math.max(2, Math.ceil(n / 4));
     const poolSize = Math.ceil(n / poolCount);
 
-    const poolStages = [];
+    const effectiveSeeding = cleanSeeding.filter(s => s !== null);
+    const manualOrdering = [];
+    let seedOffset = 0;
     for (let pi = 0; pi < poolCount; pi++) {
-      const poolAthletesRaw = cleanSeeding.slice(pi * poolSize, (pi + 1) * poolSize);
-      const poolAthletes = poolAthletesRaw.filter(s => s !== null);
-
-      if (poolAthletes.length < 2) continue;
-
-      const poolStage = await manager.create.stage({
-        tournamentId: Number(event_id),
-        name: `${weightClass}_小组${pi + 1}`,
-        type: 'round_robin',
-        seeding: poolAthletes,
-        settings: { size: poolAthletes.length, groupCount: 1 },
-      });
-
-      await db.prepare(
-        'UPDATE bracket_stage SET event_id = ?, category_id = ? WHERE id = ?'
-      ).run(event_id, weightClass, poolStage.id);
-
-      const participants = await db.prepare(
-        'SELECT id, name FROM bracket_participant WHERE tournament_id = ?'
-      ).all(Number(event_id));
-
-      await createBergenRoundRobinMatches(db, poolStage.id, poolAthletes, participants);
-
-      const updateParticipant = db.prepare(
-        'UPDATE bracket_participant SET custom_data = ? WHERE id = ?'
-      );
-      for (let i = 0; i < poolAthletesRaw.length; i++) {
-        if (poolAthletesRaw[i] === null) continue;
-        const p = participants.find(pp => pp.name === poolAthletesRaw[i]);
-        if (p) {
-          const origIdx = pi * poolSize + i;
-          const athlete = athletes[origIdx] || {};
-          await updateParticipant.run(JSON.stringify({
-            id: athlete.id != null ? athlete.id : null,
-            athlete_draw_num: athlete.athlete_draw_num != null ? athlete.athlete_draw_num : (origIdx + 1),
-            pool: pi + 1
-          }), p.id);
-        }
+      const poolSeeds = [];
+      const poolCount_ = Math.min(poolSize, effectiveSeeding.length - seedOffset);
+      for (let j = 0; j < poolCount_; j++) {
+        poolSeeds.push(seedOffset + j + 1);
       }
-
-      poolStages.push(poolStage.id);
+      if (poolSeeds.length > 0) {
+        manualOrdering.push(poolSeeds);
+      }
+      seedOffset += poolCount_;
     }
 
-    stageId = poolStages.join(',');
+    const poolStage = await manager.create.stage({
+      tournamentId: Number(event_id),
+      name: `${weightClass}_分区循环赛`,
+      type: 'round_robin',
+      seeding: effectiveSeeding,
+      settings: {
+        groupCount: manualOrdering.length,
+        manualOrdering: manualOrdering,
+      },
+    });
+
+    await db.prepare(
+      'UPDATE bracket_stage SET event_id = ?, category_id = ? WHERE id = ?'
+    ).run(event_id, weightClass, poolStage.id);
+
+    const participants = await db.prepare(
+      'SELECT id, name FROM bracket_participant WHERE tournament_id = ?'
+    ).all(Number(event_id));
+
+    const updateParticipant = db.prepare(
+      'UPDATE bracket_participant SET custom_data = ? WHERE id = ?'
+    );
+    let seedIdx = 0;
+    for (let i = 0; i < cleanSeeding.length; i++) {
+      if (cleanSeeding[i] === null) continue;
+      const p = participants.find(pp => pp.name === cleanSeeding[i]);
+      if (p) {
+        const athlete = athletes[i] || {};
+        let poolNum = 1;
+        let cumSize = 0;
+        for (let pi = 0; pi < manualOrdering.length; pi++) {
+          cumSize += manualOrdering[pi].length;
+          if (seedIdx < cumSize) { poolNum = pi + 1; break; }
+        }
+        await updateParticipant.run(JSON.stringify({
+          id: athlete.id != null ? athlete.id : null,
+          athlete_draw_num: athlete.athlete_draw_num != null ? athlete.athlete_draw_num : (seedIdx + 1),
+          pool: poolNum
+        }), p.id);
+      }
+      seedIdx++;
+    }
+
+    stageId = String(poolStage.id);
     stageType = 'pool_elimination';
 
   } else {

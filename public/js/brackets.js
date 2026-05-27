@@ -2200,11 +2200,17 @@ async function generateBrackets() {
         });
         const genData = await genRes.json();
         if (!genData.success) {
-            alert('❌ 生成对阵图失败: ' + (genData.error || '未知错误'));
+            const failedClasses = genData.data?.failedClasses || [];
+            if (failedClasses.length > 0) {
+                showBracketGenerateFailedModal(failedClasses, genData.error || '对阵图无法生成');
+            } else {
+                alert('❌ 生成对阵图失败: ' + (genData.error || '未知错误'));
+            }
             return;
         }
 
         const genResult = genData.data;
+        const failedClasses = genResult.failedClasses || [];
         let msg = '✅ 对阵图生成完成！\n\n成功: ' + genResult.generated + ' 个级别';
         if (genResult.skipped > 0) {
             msg += '\n跳过: ' + genResult.skipped + ' 个级别';
@@ -2233,12 +2239,83 @@ async function generateBrackets() {
         if (genResult.results && genResult.results.length > 0) {
             msg += '\n\n详情:\n' + genResult.results.join('\n');
         }
-        alert(msg);
+
+        if (failedClasses.length > 0) {
+            showBracketGeneratePartialModal(genResult.generated, failedClasses, genResult.results);
+        } else {
+            alert(msg);
+        }
 
         await loadAutoArrangeData();
     } catch (e) {
         alert('❌ 生成请求失败: ' + e.message);
     }
+}
+
+function showBracketGenerateFailedModal(failedClasses, errorTitle) {
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#fff;border-radius:8px;padding:24px;max-width:560px;width:90%;max-height:70vh;display:flex;flex-direction:column;box-shadow:0 4px 20px rgba(0,0,0,0.3);';
+    box.innerHTML = `
+        <div style="font-size:18px;font-weight:bold;color:#F56C6C;margin-bottom:16px;">❌ ${errorTitle}</div>
+        <div style="margin-bottom:12px;font-size:14px;color:#606266;">以下级别的对阵图未能生成：</div>
+        <div style="flex:1;overflow-y:auto;margin-bottom:16px;border:1px solid #EBEEF5;border-radius:4px;padding:12px;">
+            ${failedClasses.map(fc => `
+                <div style="padding:8px 0;font-size:13px;border-bottom:1px solid #F2F6FC;display:flex;align-items:center;">
+                    <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#F56C6C;margin-right:10px;flex-shrink:0;"></span>
+                    <span style="font-weight:500;color:#303133;">${fc.weightClass}</span>
+                    <span style="margin-left:auto;color:#909399;font-size:12px;">${fc.reason}</span>
+                </div>
+            `).join('')}
+        </div>
+        <div style="text-align:right;">
+            <button class="close-gen-modal-btn" style="padding:8px 24px;border:1px solid #dcdfe6;border-radius:4px;background:#fff;cursor:pointer;font-size:14px;">确定</button>
+        </div>
+    `;
+    modal.appendChild(box);
+    document.body.appendChild(modal);
+    modal.querySelector('.close-gen-modal-btn').onclick = () => document.body.removeChild(modal);
+    modal.onclick = (e) => { if (e.target === modal) document.body.removeChild(modal); };
+}
+
+function showBracketGeneratePartialModal(generated, failedClasses, successResults) {
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#fff;border-radius:8px;padding:24px;max-width:600px;width:90%;max-height:75vh;display:flex;flex-direction:column;box-shadow:0 4px 20px rgba(0,0,0,0.3);';
+
+    let successHtml = '';
+    if (successResults && successResults.length > 0) {
+        successHtml = `
+            <div style="margin-bottom:12px;font-size:14px;color:#67C23A;font-weight:500;">✅ 成功生成 (${generated} 个级别)</div>
+            <div style="margin-bottom:16px;border:1px solid #e1f3d8;border-radius:4px;padding:10px;background:#f0f9eb;max-height:120px;overflow-y:auto;">
+                ${successResults.map(r => `<div style="padding:3px 0;font-size:12px;color:#67C23A;">${r}</div>`).join('')}
+            </div>
+        `;
+    }
+
+    box.innerHTML = `
+        <div style="font-size:18px;font-weight:bold;color:#E6A23C;margin-bottom:16px;">⚠️ 对阵图生成完成（部分失败）</div>
+        ${successHtml}
+        <div style="margin-bottom:12px;font-size:14px;color:#F56C6C;font-weight:500;">❌ 以下级别对阵图未生成 (${failedClasses.length} 个)</div>
+        <div style="flex:1;overflow-y:auto;margin-bottom:16px;border:1px solid #EBEEF5;border-radius:4px;padding:12px;">
+            ${failedClasses.map(fc => `
+                <div style="padding:8px 0;font-size:13px;border-bottom:1px solid #F2F6FC;display:flex;align-items:center;">
+                    <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#F56C6C;margin-right:10px;flex-shrink:0;"></span>
+                    <span style="font-weight:500;color:#303133;">${fc.weightClass}</span>
+                    <span style="margin-left:auto;color:#909399;font-size:12px;">${fc.reason}</span>
+                </div>
+            `).join('')}
+        </div>
+        <div style="text-align:right;">
+            <button class="close-gen-modal-btn" style="padding:8px 24px;border:1px solid #dcdfe6;border-radius:4px;background:#fff;cursor:pointer;font-size:14px;">确定</button>
+        </div>
+    `;
+    modal.appendChild(box);
+    document.body.appendChild(modal);
+    modal.querySelector('.close-gen-modal-btn').onclick = () => document.body.removeChild(modal);
+    modal.onclick = (e) => { if (e.target === modal) document.body.removeChild(modal); };
 }
 
 async function autoAssignVenueNumbersAfterGenerate() {

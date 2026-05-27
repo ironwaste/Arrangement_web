@@ -212,7 +212,7 @@ module.exports = (db, bracketsManager) => {
   /* ==================== 对阵图数据同步 ==================== */
   async function syncMatchesFromBracket(weightClass, event_id) {
     const stageMapRows = await db.all(
-      'SELECT id AS stage_id, type AS stage_type FROM bracket_stage WHERE event_id = ? AND category_id = ?',
+      'SELECT id AS stage_id, type AS stage_type, settings FROM bracket_stage WHERE event_id = ? AND category_id = ?',
       [event_id, weightClass]
     );
 
@@ -220,7 +220,12 @@ module.exports = (db, bracketsManager) => {
 
     const stageIds = stageMapRows.map(r => String(r.stage_id)).filter(Boolean);
     const stageType = stageMapRows[0].stage_type || 'single_elimination';
-    const isDivisional = stageType === 'divisional_round_robin';
+    const isDivisional = stageType === 'round_robin' && stageMapRows.length === 1 && (() => {
+      try {
+        const settings = JSON.parse(stageMapRows[0].settings || '{}');
+        return settings.groupCount >= 2;
+      } catch (e) { return false; }
+    })();
 
     const nameUnitMap = new Map();
     const unitRows = await db.prepare('SELECT id, athlete_name, athlete_team FROM athletes WHERE event_id = ? AND athlete_category = ?').all(event_id, weightClass);
@@ -378,26 +383,6 @@ module.exports = (db, bracketsManager) => {
       });
     }
 
-    if (isDivisional) {
-      matchOrderInClass++;
-      const finalRound = maxRoundNumber + 1;
-      const venueNo = venueVal;
-      await insertKyougiMatch(db, {
-        event_id: event_id ?? null,
-        weight_class: weightClass,
-        round: finalRound,
-        total_rounds: finalRound,
-        venue_no: venueNo,
-        kyougi_match_id: null,
-        blue_name: '上区第一',
-        blue_unit: '',
-        red_name: '下区第一',
-        red_unit: '',
-        winner: '无',
-        match_status: '未开始',
-        round_name: '决赛'
-      });
-    }
   }
 
   /* ==================== 对阵表重排 ==================== */
@@ -1721,7 +1706,7 @@ module.exports = (db, bracketsManager) => {
 
       for (const [wc, classAthletes] of sortedClasses) {
         if (classAthletes.length < 2) {
-          errors.push(`${wc}: 运动员不足2人，跳过`);
+          errors.push(`${wc}: 运动员不足2人,跳过`);
           skipped++;
           continue;
         }
@@ -1807,6 +1792,7 @@ module.exports = (db, bracketsManager) => {
 
       const results = [];
       const errors = [];
+      const failedClasses = [];
       let generated = 0;
       let skipped = 0;
 
@@ -1814,6 +1800,7 @@ module.exports = (db, bracketsManager) => {
         try {
           if (classAthletes.length < 2) {
             errors.push(`${wc}: 运动员不足2人,跳过`);
+            failedClasses.push({ weightClass: wc, reason: '运动员不足2人' });
             skipped++;
             continue;
           }
@@ -1830,13 +1817,22 @@ module.exports = (db, bracketsManager) => {
           results.push(`${wc}: ${classAthletes.length}人，对阵图已生成`);
         } catch (err) {
           errors.push(`${wc}: ${err.message}`);
+          failedClasses.push({ weightClass: wc, reason: err.message });
           skipped++;
         }
       }
 
+      if (generated === 0 && failedClasses.length > 0) {
+        return res.json({
+          success: false,
+          error: '对阵图无法生成',
+          data: { generated, skipped, errors, results, failedClasses }
+        });
+      }
+
       res.json({
         success: true,
-        data: { generated, skipped, errors, results }
+        data: { generated, skipped, errors, results, failedClasses }
       });
     } catch (err) {
       console.error('生成对阵表失败:', err);
@@ -1849,10 +1845,18 @@ module.exports = (db, bracketsManager) => {
     try {
       const { event_id } = req.query;
       const rows = await db.all(
-        'SELECT category_id AS class_name, id AS stage_id, type AS stage_type FROM bracket_stage WHERE event_id = ?',
+        'SELECT category_id AS class_name, id AS stage_id, type AS stage_type, settings FROM bracket_stage WHERE event_id = ?',
         [Number(event_id)]
       );
-      res.json({ success: true, data: rows || [] });
+      const result = (rows || []).map(r => {
+        let groupCount = 1;
+        try {
+          const settings = JSON.parse(r.settings || '{}');
+          groupCount = settings.groupCount || 1;
+        } catch (e) {}
+        return { class_name: r.class_name, stage_id: r.stage_id, stage_type: r.stage_type, group_count: groupCount };
+      });
+      res.json({ success: true, data: result });
     } catch (err) {
       res.status(500).json({ success: false, error: err.message });
     }
@@ -1863,13 +1867,18 @@ module.exports = (db, bracketsManager) => {
       const { weightClass } = req.params;
       const { event_id } = req.query;
       const rows = await db.all(
-        'SELECT id AS stage_id, type AS stage_type FROM bracket_stage WHERE event_id = ? AND category_id = ?',
+        'SELECT id AS stage_id, type AS stage_type, settings FROM bracket_stage WHERE event_id = ? AND category_id = ?',
         [Number(event_id), weightClass]
       );
       if (rows && rows.length > 0) {
         const stageIds = rows.map(r => r.stage_id).join(',');
         const stageType = rows[0].stage_type || 'single_elimination';
-        res.json({ success: true, data: { stage_id: stageIds, stage_type: stageType } });
+        let groupCount = 1;
+        try {
+          const settings = JSON.parse(rows[0].settings || '{}');
+          groupCount = settings.groupCount || 1;
+        } catch (e) {}
+        res.json({ success: true, data: { stage_id: stageIds, stage_type: stageType, group_count: groupCount } });
       } else {
         res.json({ success: true, data: null });
       }

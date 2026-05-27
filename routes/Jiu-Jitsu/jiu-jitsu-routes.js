@@ -204,47 +204,23 @@ module.exports = (db, manager) => {
                 const venueCmp = (sa.category_venue || '').localeCompare(sb.category_venue || '');
                 if (venueCmp !== 0) return venueCmp;
 
-                const compA = a.jiu_jitsu_match_comp_mode || '';
-                const compB = b.jiu_jitsu_match_comp_mode || '';
-
                 const roundNumA = a.jiu_jitsu_match_round_num || 0;
                 const roundNumB = b.jiu_jitsu_match_round_num || 0;
                 const isFinalA = roundNumA >= 999 ? 1 : 0;
                 const isFinalB = roundNumB >= 999 ? 1 : 0;
                 if (isFinalA !== isFinalB) return isFinalA - isFinalB;
 
-                const compTypeA = getCompTypeSortOrder(compA);
-                const compTypeB = getCompTypeSortOrder(compB);
-                if (compTypeA !== compTypeB) return compTypeA - compTypeB;
-
-                if (isFinalA && isFinalB) {
-                    const rnA = a.jiu_jitsu_match_round_name || '';
-                    const rnB = b.jiu_jitsu_match_round_name || '';
-                    const finalOrder = { 'Final': 1, 'R.Final': 2, 'D.Final': 3 };
-                    const fA = finalOrder[rnA] || 9;
-                    const fB = finalOrder[rnB] || 9;
-                    if (fA !== fB) return fA - fB;
-                }
-
-                if (compA === 'double_elimination' && compB === 'double_elimination') {
-                    const rnA = a.jiu_jitsu_match_round_name || '';
-                    const rnB = b.jiu_jitsu_match_round_name || '';
-                    const isWinnerA = rnA.match(/^1\/\d+$/) || rnA === 'D.Final' ? 0 : 1;
-                    const isWinnerB = rnB.match(/^1\/\d+$/) || rnB === 'D.Final' ? 0 : 1;
-                    if (isWinnerA !== isWinnerB) return isWinnerA - isWinnerB;
-                }
-
                 if (roundNumA !== roundNumB) return roundNumA - roundNumB;
-
-                const zoneA = getZoneSortValue(a);
-                const zoneB = getZoneSortValue(b);
-                if (zoneA !== zoneB) return zoneA - zoneB;
 
                 const orderA = parseFloat(sa.category_order) || 0;
                 const orderB = parseFloat(sb.category_order) || 0;
                 if (orderA !== orderB) return orderA - orderB;
 
-                return (a.jiu_jitsu_match_round_num || 0) - (b.jiu_jitsu_match_round_num || 0);
+                const zoneA = getZoneSortValue(a);
+                const zoneB = getZoneSortValue(b);
+                if (zoneA !== zoneB) return zoneA - zoneB;
+
+                return (a.jiu_jitsu_bracket_match_id || 0) - (b.jiu_jitsu_bracket_match_id || 0);
             });
 
             const byeMatchIds = new Set();
@@ -396,17 +372,21 @@ module.exports = (db, manager) => {
                 const compMode = m.jiu_jitsu_match_comp_mode || '';
                 const rn = m.jiu_jitsu_match_round_num || 1;
                 const isElimination = compMode === 'single_elimination' || compMode === 'double_elimination';
-                if (!isElimination) continue;
+                const isDependentMatch = !isElimination && (
+                    (m.jiu_jitsu_blue_prev_bracket_match_id || m.jiu_jitsu_red_prev_bracket_match_id) ||
+                    ((m.jiu_jitsu_blue_athlete_name || '').includes('第一') || (m.jiu_jitsu_red_athlete_name || '').includes('第一'))
+                );
+                if (!isElimination && !isDependentMatch) continue;
 
                 const wc = m.jiu_jitsu_match_categroy;
                 const firstRound = classFirstRound.get(wc) || 1;
-                if (rn <= firstRound && rn < 999) continue;
+                if (isElimination && rn <= firstRound && rn < 999) continue;
 
                 let bluePrevWinner = m.jiu_jitsu_blue_prev_winner || '';
                 let redPrevWinner = m.jiu_jitsu_red_prev_winner_id || '';
 
-                if (!m.jiu_jitsu_blue_athlete_name || !m.jiu_jitsu_blue_athlete_name.trim()) {
-                    let prevBmId = findPrevBracketMatchId(m.jiu_jitsu_bracket_match_id, 'blue');
+                if (!m.jiu_jitsu_blue_athlete_name || !m.jiu_jitsu_blue_athlete_name.trim() || (m.jiu_jitsu_blue_athlete_name || '').includes('第一')) {
+                    let prevBmId = m.jiu_jitsu_blue_prev_bracket_match_id || findPrevBracketMatchId(m.jiu_jitsu_bracket_match_id, 'blue');
                     if (!prevBmId) {
                         prevBmId = findPrevFromBracketData(m.jiu_jitsu_bracket_match_id, 'blue');
                     }
@@ -424,8 +404,8 @@ module.exports = (db, manager) => {
                     bluePrevWinner = '';
                 }
 
-                if (!m.jiu_jitsu_red_athlete_name || !m.jiu_jitsu_red_athlete_name.trim()) {
-                    let prevBmId = findPrevBracketMatchId(m.jiu_jitsu_bracket_match_id, 'red');
+                if (!m.jiu_jitsu_red_athlete_name || !m.jiu_jitsu_red_athlete_name.trim() || (m.jiu_jitsu_red_athlete_name || '').includes('第一')) {
+                    let prevBmId = m.jiu_jitsu_red_prev_bracket_match_id || findPrevBracketMatchId(m.jiu_jitsu_bracket_match_id, 'red');
                     if (!prevBmId) {
                         prevBmId = findPrevFromBracketData(m.jiu_jitsu_bracket_match_id, 'red');
                     }

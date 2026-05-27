@@ -26,9 +26,15 @@
  * customRoundName 回调中的 groupType 值说明（来自 brackets-viewer 库）：
  *   'single_bracket'   单败淘汰赛
  *   'winner_bracket'   双败淘汰赛-胜者组
- *   'loser_bracket'    双败淘汰赛-败者组（通过 info.groupType === 'loser-bracket' 判断）
+ *   'loser_bracket'    双败淘汰赛-败者组（铜牌赛，通过 info.groupType === 'loser-bracket' 判断）
  *   'final_group'      决赛场次
  *   'round-robin'      循环赛
+ *
+ * 双败淘汰赛赛制说明（使用两个独立 single_elimination stage 实现）：
+ *   Stage 1 胜者组（single_elimination）：1/4 → 1/2 → Final（决赛，决出冠军）
+ *   Stage 2 铜牌赛（single_elimination，可选）：仅 Bro.m 铜牌赛场次
+ *   无 Grand Final，胜者组决赛冠军即为总冠军
+ *   注意：不使用 brackets-viewer 的 double_elimination 类型（该类型有硬编码的完整败者组+Grand Final结构）
  */
 const JJBracketRenderer = {
 
@@ -159,7 +165,8 @@ const JJBracketRenderer = {
 
     /**
      * 渲染分区循环赛对阵图（独立页面模式）
-     * 创建3个stage：上区循环(group1)、下区循环(group2)、决赛(group3)
+     * 创建1个stage（2个group）+ 决赛stage
+     * group1: 上区循环, group2: 下区循环
      * 决赛中"上区第一"/"下区第一"作为虚拟participant显示。
      *
      * @param {string} weightClass  级别名称
@@ -184,8 +191,7 @@ const JJBracketRenderer = {
             if (m.jiu_jitsu_red_athlete_name) getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team);
         });
 
-        const participants = Array.from(participantMap.values());
-        if (participants.length === 0) {
+        if (participantMap.size === 0) {
             document.getElementById('bracketDisplay').innerHTML = '<p style="text-align:center;color:#909399;padding:40px 0;">该级别暂无参赛者数据</p>';
             return;
         }
@@ -199,6 +205,8 @@ const JJBracketRenderer = {
         const lowerFirstPid = pid++;
         participantMap.set('下区第一|', { id: lowerFirstPid, name: '下区第一' });
 
+        const participants = Array.from(participantMap.values());
+
         const stages = [];
         const groups = [];
         const rounds = [];
@@ -210,41 +218,45 @@ const JJBracketRenderer = {
         let roundId = 0;
         let matchId = 0;
 
-        /**
-         * 内部辅助函数：为上区或下区创建一个 round_robin stage + group + rounds + matches
-         */
-        const addZoneStage = (zoneMatches, zoneName, zoneLabel) => {
+        const divisionalSid = ++stageId;
+
+        const upperPids = new Set();
+        upperMatches.forEach(m => {
+            const rId = m.jiu_jitsu_red_athlete_name ? getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team) : null;
+            const bId = m.jiu_jitsu_blue_athlete_name ? getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team) : null;
+            if (rId) upperPids.add(rId);
+            if (bId) upperPids.add(bId);
+        });
+        const lowerPids = new Set();
+        lowerMatches.forEach(m => {
+            const rId = m.jiu_jitsu_red_athlete_name ? getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team) : null;
+            const bId = m.jiu_jitsu_blue_athlete_name ? getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team) : null;
+            if (rId) lowerPids.add(rId);
+            if (bId) lowerPids.add(bId);
+        });
+
+        stages.push({
+            id: divisionalSid, tournament_id: Number(currentEventId),
+            name: `${weightClass}_分区循环赛`, type: 'round_robin', number: divisionalSid,
+            settings: { size: upperPids.size + lowerPids.size, groupCount: 2 }
+        });
+
+        const addZoneGroup = (zoneMatches, zoneLabel) => {
             if (zoneMatches.length === 0) return;
-            stageId++;
-            const sid = stageId;
             groupId++;
             const gid = groupId;
 
             const zoneRoundNums = [...new Set(zoneMatches.map(m => m.jiu_jitsu_match_round_num).filter(n => n && n < 999))].sort((a, b) => a - b);
             const zoneMaxRound = zoneRoundNums.length;
 
-            const zonePids = new Set();
-            zoneMatches.forEach(m => {
-                const rId = m.jiu_jitsu_red_athlete_name ? getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team) : null;
-                const bId = m.jiu_jitsu_blue_athlete_name ? getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team) : null;
-                if (rId) zonePids.add(rId);
-                if (bId) zonePids.add(bId);
-            });
-            const zoneSize = zonePids.size || 2;
-
-            stages.push({
-                id: sid, tournament_id: Number(currentEventId),
-                name: `${weightClass}_${zoneName}`, type: 'round_robin', number: sid,
-                settings: { size: zoneSize, groupCount: 1 }
-            });
-            groups.push({ id: gid, stage_id: sid, number: 1, name: zoneLabel });
+            groups.push({ id: gid, stage_id: divisionalSid, number: gid, name: zoneLabel });
 
             const roundNumToRid = new Map();
             const firstRoundId = roundId + 1;
             for (let r = 1; r <= zoneMaxRound; r++) {
                 roundId++;
                 roundNumToRid.set(zoneRoundNums[r - 1], roundId);
-                rounds.push({ id: roundId, stage_id: sid, group_id: gid, number: r, name: `R${r}` });
+                rounds.push({ id: roundId, stage_id: divisionalSid, group_id: gid, number: r, name: `R${r}` });
             }
 
             zoneMatches.forEach(m => {
@@ -267,13 +279,13 @@ const JJBracketRenderer = {
                 matchId++;
                 const rid = roundNumToRid.get(m.jiu_jitsu_match_round_num) || firstRoundId;
                 matches.push({
-                    id: m.id || matchId, stage_id: sid, group_id: gid,
+                    id: m.id || matchId, stage_id: divisionalSid, group_id: gid,
                     round_id: rid, number: matchId,
                     child_count: 1, opponent1, opponent2, status
                 });
 
                 matchGames.push({
-                    id: matchId, stage_id: sid, parent_id: m.id || matchId,
+                    id: matchId, stage_id: divisionalSid, parent_id: m.id || matchId,
                     number: 1, status,
                     opponent1: opponent1 ? { ...opponent1 } : null,
                     opponent2: opponent2 ? { ...opponent2 } : null
@@ -281,8 +293,8 @@ const JJBracketRenderer = {
             });
         };
 
-        addZoneStage(upperMatches, '上区', '上半区');
-        addZoneStage(lowerMatches, '下区', '下半区');
+        addZoneGroup(upperMatches, '上半区');
+        addZoneGroup(lowerMatches, '下半区');
 
         if (finalMatches.length > 0) {
             stageId++;
@@ -294,8 +306,8 @@ const JJBracketRenderer = {
 
             stages.push({
                 id: sid, tournament_id: Number(currentEventId),
-                name: `${weightClass}_决赛`, type: 'single_elimination', number: sid,
-                settings: { size: 2 }
+                name: `${weightClass}_决赛`, type: 'round_robin', number: sid,
+                settings: { groupCount: 1 }
             });
             groups.push({ id: gid, stage_id: sid, number: 1, name: 'R.Final' });
             rounds.push({ id: rid, stage_id: sid, group_id: gid, number: 1, name: 'R.Final' });
@@ -438,43 +450,14 @@ const JJBracketRenderer = {
         }
 
         const n = participants.length;
+        const bSize = Math.pow(2, Math.ceil(Math.log2(n || 2)));
 
-        let stageSettings = {};
-        if (compMode === 'double_elimination') {
-            const bSize = Math.pow(2, Math.ceil(Math.log2(n || 2)));
-            stageSettings = { size: bSize, manualOrdering: [generateJJSeedOrder(bSize)], grandFinal: 'simple' };
-        } else {
-            const bSize = Math.pow(2, Math.ceil(Math.log2(n || 2)));
-            stageSettings = { size: bSize, manualOrdering: [generateJJSeedOrder(bSize)] };
-        }
+        const isBronzeMatch = (m) => {
+            const rn = (m.jiu_jitsu_match_round_name || '').trim();
+            return rn === 'Bro.m' || rn.includes('铜牌');
+        };
 
-        const stage = [{ id: 1, tournament_id: Number(currentEventId), name: weightClass, type: compMode, number: 1, settings: stageSettings }];
-        const group = [{ id: 1, stage_id: 1, number: 1 }];
-
-        const roundNums = [...new Set(jjMatches.map(m => m.jiu_jitsu_match_round_num).filter(n => n != null))].sort((a, b) => a - b);
-        const roundNumToId = new Map();
-        roundNums.forEach((rn, idx) => { roundNumToId.set(rn, idx + 1); });
-        const effectiveRoundCount = roundNums.length;
-
-        const roundData = [];
-        for (let r = 1; r <= effectiveRoundCount; r++) {
-            const rn = roundNums[r - 1];
-            let roundName;
-            const rnStr = jjMatches.find(m => m.jiu_jitsu_match_round_num === rn)?.jiu_jitsu_match_round_name || '';
-            if (rnStr) {
-                roundName = rnStr;
-            } else if (compMode === 'double_elimination') {
-                const winnersRounds = Math.ceil(Math.log2(n || 2));
-                roundName = `Round ${r}`;
-            } else {
-                roundName = `Round ${r}`;
-            }
-            roundData.push({ id: r, stage_id: 1, group_id: 1, number: r, name: roundName });
-        }
-
-        const matchData = [];
-        const matchGames = [];
-        jjMatches.forEach((m, idx) => {
+        const buildOpponents = (m) => {
             const redId = m.jiu_jitsu_red_athlete_name ? getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team) : null;
             const blueId = m.jiu_jitsu_blue_athlete_name ? getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team) : null;
 
@@ -491,21 +474,125 @@ const JJBracketRenderer = {
                 if (m.jiu_jitsu_winner === '青方' && opponent2) opponent2.result = 'win';
             }
 
-            const rid = roundNumToId.get(m.jiu_jitsu_match_round_num) || 1;
-            matchData.push({
-                id: m.id || (idx + 1), stage_id: 1, group_id: 1,
-                round_id: rid, number: idx + 1,
-                child_count: 1, opponent1, opponent2, status
-            });
-            matchGames.push({
-                id: idx + 1, stage_id: 1, parent_id: m.id || (idx + 1),
-                number: 1, status,
-                opponent1: opponent1 ? { ...opponent1 } : null,
-                opponent2: opponent2 ? { ...opponent2 } : null
-            });
-        });
+            return { opponent1, opponent2, status };
+        };
 
-        const bracketData = { stages: stage, groups: group, rounds: roundData, matches: matchData, matchGames, participants };
+        let bracketData;
+
+        if (compMode === 'double_elimination') {
+            const winnerMatches = jjMatches.filter(m => !isBronzeMatch(m));
+            const loserMatches = jjMatches.filter(m => isBronzeMatch(m));
+
+            const winnerRoundNums = [...new Set(winnerMatches.map(m => m.jiu_jitsu_match_round_num).filter(n => n != null))].sort((a, b) => a - b);
+            const winnerRoundsCount = winnerRoundNums.length || 1;
+
+            const stages = [];
+            const groups = [];
+            const rounds = [];
+            const matchData = [];
+            const matchGames = [];
+
+            let sid = 0, gid = 0, rid = 0, mid = 0;
+
+            sid++;
+            const wSid = sid;
+            gid++;
+            const wGid = gid;
+            stages.push({ id: wSid, tournament_id: Number(currentEventId), name: weightClass + '_胜者组', type: 'single_elimination', number: wSid, settings: { size: bSize, manualOrdering: [generateJJSeedOrder(bSize)] } });
+            groups.push({ id: wGid, stage_id: wSid, number: 1 });
+
+            const winnerRoundNumToId = new Map();
+            const winnerRoundNames = [];
+            winnerRoundNums.forEach((rn, idx) => {
+                rid++;
+                winnerRoundNumToId.set(rn, rid);
+                const rnStr = winnerMatches.find(m => m.jiu_jitsu_match_round_num === rn)?.jiu_jitsu_match_round_name || `Round ${idx + 1}`;
+                winnerRoundNames.push(rnStr);
+                rounds.push({ id: rid, stage_id: wSid, group_id: wGid, number: idx + 1, name: rnStr });
+            });
+
+            winnerMatches.forEach((m) => {
+                mid++;
+                const { opponent1, opponent2, status } = buildOpponents(m);
+                const rrid = winnerRoundNumToId.get(m.jiu_jitsu_match_round_num) || 1;
+                matchData.push({
+                    id: m.id || mid, stage_id: wSid, group_id: wGid,
+                    round_id: rrid, number: mid,
+                    child_count: 1, opponent1, opponent2, status
+                });
+                matchGames.push({
+                    id: mid, stage_id: wSid, parent_id: m.id || mid,
+                    number: 1, status,
+                    opponent1: opponent1 ? { ...opponent1 } : null,
+                    opponent2: opponent2 ? { ...opponent2 } : null
+                });
+            });
+
+            if (loserMatches.length > 0) {
+                sid++;
+                const lSid = sid;
+                gid++;
+                const lGid = gid;
+                const bronzeSize = Math.max(4, Math.pow(2, Math.ceil(Math.log2(loserMatches.length * 2))));
+                stages.push({ id: lSid, tournament_id: Number(currentEventId), name: weightClass + '_铜牌赛', type: 'single_elimination', number: lSid, settings: { size: bronzeSize } });
+                groups.push({ id: lGid, stage_id: lSid, number: 1 });
+
+                rid++;
+                const bronzeRid = rid;
+                rounds.push({ id: bronzeRid, stage_id: lSid, group_id: lGid, number: 1, name: 'Bro.m' });
+
+                loserMatches.forEach((m) => {
+                    mid++;
+                    const { opponent1, opponent2, status } = buildOpponents(m);
+                    matchData.push({
+                        id: m.id || mid, stage_id: lSid, group_id: lGid,
+                        round_id: bronzeRid, number: mid,
+                        child_count: 1, opponent1, opponent2, status
+                    });
+                    matchGames.push({
+                        id: mid, stage_id: lSid, parent_id: m.id || mid,
+                        number: 1, status,
+                        opponent1: opponent1 ? { ...opponent1 } : null,
+                        opponent2: opponent2 ? { ...opponent2 } : null
+                    });
+                });
+            }
+
+            bracketData = { stages, groups, rounds, matches: matchData, matchGames, participants };
+        } else {
+            const roundNums = [...new Set(jjMatches.map(m => m.jiu_jitsu_match_round_num).filter(n => n != null))].sort((a, b) => a - b);
+            const roundNumToId = new Map();
+            roundNums.forEach((rn, idx) => { roundNumToId.set(rn, idx + 1); });
+
+            const stages = [{ id: 1, tournament_id: Number(currentEventId), name: weightClass, type: compMode, number: 1, settings: { size: bSize, manualOrdering: [generateJJSeedOrder(bSize)] } }];
+            const groups = [{ id: 1, stage_id: 1, number: 1 }];
+
+            const roundData = [];
+            roundNums.forEach((rn, idx) => {
+                const rnStr = jjMatches.find(m => m.jiu_jitsu_match_round_num === rn)?.jiu_jitsu_match_round_name || `Round ${idx + 1}`;
+                roundData.push({ id: idx + 1, stage_id: 1, group_id: 1, number: idx + 1, name: rnStr });
+            });
+
+            const matchData = [];
+            const matchGames = [];
+            jjMatches.forEach((m, idx) => {
+                const { opponent1, opponent2, status } = buildOpponents(m);
+                const rid = roundNumToId.get(m.jiu_jitsu_match_round_num) || 1;
+                matchData.push({
+                    id: m.id || (idx + 1), stage_id: 1, group_id: 1,
+                    round_id: rid, number: idx + 1,
+                    child_count: 1, opponent1, opponent2, status
+                });
+                matchGames.push({
+                    id: idx + 1, stage_id: 1, parent_id: m.id || (idx + 1),
+                    number: 1, status,
+                    opponent1: opponent1 ? { ...opponent1 } : null,
+                    opponent2: opponent2 ? { ...opponent2 } : null
+                });
+            });
+
+            bracketData = { stages, groups, rounds: roundData, matches: matchData, matchGames, participants };
+        }
 
         document.getElementById('bracketDisplay').innerHTML = `
             <h3 style="margin-bottom:16px;">${weightClass}${getStageTypeName(compMode)}对阵图</h3>
@@ -522,25 +609,13 @@ const JJBracketRenderer = {
                     showRankingTable: false,
                     participantOriginPlacement: 'none',
                     customRoundName: (info) => {
-                        if (compMode === 'double_elimination') {
-                            const isLosers = info.groupType === 'loser-bracket';
-                            if (!isLosers) {
-                                if (info.roundNumber && info.roundCount) {
-                                    const d = Math.pow(2, info.roundCount - info.roundNumber);
-                                    if (d === 1) return 'D.Final';
-                                    return `1/${d}`;
-                                }
-                            } else {
-                                const totalLosersRounds = effectiveRoundCount - Math.ceil(Math.log2(n || 2));
-                                const losersRound = info.roundNumber;
-                                if (losersRound >= totalLosersRounds) return 'D.Final';
-                                if (losersRound === totalLosersRounds - 1) return 'Bro.m';
-                                return `Rep.${losersRound}`;
-                            }
-                            return undefined;
+                        const sn = info.stageName || '';
+                        if (sn.includes('铜牌赛')) return 'Bro.m';
+                        if (compMode !== 'double_elimination') {
+                            const round = bracketData.rounds.find(r => r.id === info.roundNumber || r.number === info.roundNumber);
+                            return round ? round.name : `Round ${info.roundNumber}`;
                         }
-                        const round = roundData.find(r => r.id === info.roundNumber || r.number === info.roundNumber);
-                        return round ? round.name : `Round ${info.roundNumber}`;
+                        return undefined;
                     }
                 });
                 requestAnimationFrame(() => { replaceByeText(document.getElementById('bracket-viewer-container')); });
@@ -631,6 +706,7 @@ const JJBracketRenderer = {
     /**
      * 分区循环赛 Section 列表渲染（嵌入模式）
      * 与 renderPoolElimination 逻辑相同，但渲染到指定的容器元素
+     * 创建1个stage（2个group）+ 决赛stage
      */
     _renderPoolEliminationInSection: async function(container, weightClass, jjMatches) {
         if (!window.bracketsViewer) return;
@@ -653,8 +729,7 @@ const JJBracketRenderer = {
             if (m.jiu_jitsu_blue_athlete_name) getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team);
             if (m.jiu_jitsu_red_athlete_name) getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team);
         });
-        const participants = Array.from(participantMap.values());
-        if (participants.length === 0) return;
+        if (participantMap.size === 0) return;
 
         const upperMatches = jjMatches.filter(m => m.jiu_jitsu_match_zone === 'upper');
         const lowerMatches = jjMatches.filter(m => m.jiu_jitsu_match_zone === 'lower');
@@ -665,6 +740,8 @@ const JJBracketRenderer = {
         const lowerFirstPid = pid++;
         participantMap.set('下区第一|', { id: lowerFirstPid, name: '下区第一' });
 
+        const participants = Array.from(participantMap.values());
+
         const stages = [];
         const groups = [];
         const rounds = [];
@@ -672,31 +749,40 @@ const JJBracketRenderer = {
         const matchGames = [];
         let stageId = 0, groupId = 0, roundId = 0, matchId = 0;
 
-        const addZone = (zoneMatches, zoneName, zoneLabel) => {
+        const divisionalSid = ++stageId;
+
+        const upperPids = new Set();
+        upperMatches.forEach(m => {
+            const rId = m.jiu_jitsu_red_athlete_name ? getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team) : null;
+            const bId = m.jiu_jitsu_blue_athlete_name ? getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team) : null;
+            if (rId) upperPids.add(rId);
+            if (bId) upperPids.add(bId);
+        });
+        const lowerPids = new Set();
+        lowerMatches.forEach(m => {
+            const rId = m.jiu_jitsu_red_athlete_name ? getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team) : null;
+            const bId = m.jiu_jitsu_blue_athlete_name ? getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team) : null;
+            if (rId) lowerPids.add(rId);
+            if (bId) lowerPids.add(bId);
+        });
+
+        stages.push({ id: divisionalSid, tournament_id: Number(currentEventId), name: `${weightClass}_分区循环赛`, type: 'round_robin', number: divisionalSid, settings: { size: upperPids.size + lowerPids.size, groupCount: 2 } });
+
+        const addZoneGroup = (zoneMatches, zoneLabel) => {
             if (zoneMatches.length === 0) return;
-            stageId++; groupId++;
-            const sid = stageId, gid = groupId;
+            groupId++;
+            const gid = groupId;
             const zRoundNums = [...new Set(zoneMatches.map(m => m.jiu_jitsu_match_round_num).filter(n => n && n < 999))].sort((a, b) => a - b);
             const zMaxRound = zRoundNums.length;
 
-            const zonePids = new Set();
-            zoneMatches.forEach(m => {
-                const rId = m.jiu_jitsu_red_athlete_name ? getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team) : null;
-                const bId = m.jiu_jitsu_blue_athlete_name ? getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team) : null;
-                if (rId) zonePids.add(rId);
-                if (bId) zonePids.add(bId);
-            });
-            const zoneSize = zonePids.size || 2;
-
-            stages.push({ id: sid, tournament_id: Number(currentEventId), name: `${weightClass}_${zoneName}`, type: 'round_robin', number: sid, settings: { size: zoneSize, groupCount: 1 } });
-            groups.push({ id: gid, stage_id: sid, number: 1, name: zoneLabel });
+            groups.push({ id: gid, stage_id: divisionalSid, number: gid, name: zoneLabel });
 
             const roundNumToRid = new Map();
             const firstRoundId = roundId + 1;
             for (let r = 1; r <= zMaxRound; r++) {
                 roundId++;
                 roundNumToRid.set(zRoundNums[r - 1], roundId);
-                rounds.push({ id: roundId, stage_id: sid, group_id: gid, number: r, name: `R${r}` });
+                rounds.push({ id: roundId, stage_id: divisionalSid, group_id: gid, number: r, name: `R${r}` });
             }
 
             zoneMatches.forEach(m => {
@@ -709,18 +795,18 @@ const JJBracketRenderer = {
                 const opponent2 = blueId ? { id: blueId, score: 0 } : null;
                 matchId++;
                 const rid = roundNumToRid.get(m.jiu_jitsu_match_round_num) || firstRoundId;
-                matches.push({ id: m.id || matchId, stage_id: sid, group_id: gid, round_id: rid, number: matchId, child_count: 1, opponent1, opponent2, status });
-                matchGames.push({ id: matchId, stage_id: sid, parent_id: m.id || matchId, number: 1, status, opponent1: opponent1 ? { ...opponent1 } : null, opponent2: opponent2 ? { ...opponent2 } : null });
+                matches.push({ id: m.id || matchId, stage_id: divisionalSid, group_id: gid, round_id: rid, number: matchId, child_count: 1, opponent1, opponent2, status });
+                matchGames.push({ id: matchId, stage_id: divisionalSid, parent_id: m.id || matchId, number: 1, status, opponent1: opponent1 ? { ...opponent1 } : null, opponent2: opponent2 ? { ...opponent2 } : null });
             });
         };
 
-        addZone(upperMatches, '上区', '上半区');
-        addZone(lowerMatches, '下区', '下半区');
+        addZoneGroup(upperMatches, '上半区');
+        addZoneGroup(lowerMatches, '下半区');
 
         if (finalMatches.length > 0) {
             stageId++; groupId++; roundId++;
             const sid = stageId, gid = groupId, rid = roundId;
-            stages.push({ id: sid, tournament_id: Number(currentEventId), name: `${weightClass}_决赛`, type: 'single_elimination', number: sid, settings: { size: 2 } });
+            stages.push({ id: sid, tournament_id: Number(currentEventId), name: `${weightClass}_决赛`, type: 'round_robin', number: sid, settings: { groupCount: 1 } });
             groups.push({ id: gid, stage_id: sid, number: 1, name: 'R.Final' });
             rounds.push({ id: rid, stage_id: sid, group_id: gid, number: 1, name: 'R.Final' });
 
@@ -793,22 +879,15 @@ const JJBracketRenderer = {
         const participants = Array.from(participantMap.values());
         if (participants.length === 0) return;
 
-        const roundNums = [...new Set(jjMatches.map(m => m.jiu_jitsu_match_round_num).filter(n => n != null))].sort((a, b) => a - b);
-        const roundNumToId = new Map();
-        roundNums.forEach((rn, idx) => { roundNumToId.set(rn, idx + 1); });
-        const effectiveRoundCount = roundNums.length;
+        const n = participants.length;
+        const bSize = Math.pow(2, Math.ceil(Math.log2(n || 2)));
 
-        const stages = [{ id: 1, tournament_id: Number(currentEventId), name: weightClass, type: compMode, number: 1, settings: { size: participants.length } }];
-        const groups = [{ id: 1, stage_id: 1, number: 1 }];
-        const rounds = [];
-        for (let r = 1; r <= effectiveRoundCount; r++) {
-            const rn = roundNums[r - 1];
-            const rnStr = jjMatches.find(m => m.jiu_jitsu_match_round_num === rn)?.jiu_jitsu_match_round_name || `Round ${r}`;
-            rounds.push({ id: r, stage_id: 1, group_id: 1, number: r, name: rnStr });
-        }
-        const matches = [];
-        const matchGames = [];
-        jjMatches.forEach((m, idx) => {
+        const isBronzeMatch = (m) => {
+            const rn = (m.jiu_jitsu_match_round_name || '').trim();
+            return rn === 'Bro.m' || rn.includes('铜牌');
+        };
+
+        const buildOpponents = (m) => {
             const redId = m.jiu_jitsu_red_athlete_name ? getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team) : null;
             const blueId = m.jiu_jitsu_blue_athlete_name ? getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team) : null;
             let status = 2;
@@ -816,39 +895,117 @@ const JJBracketRenderer = {
             if (m.jiu_jitsu_match_status === '进行中') status = 3;
             const opponent1 = redId ? { id: redId, score: 0 } : null;
             const opponent2 = blueId ? { id: blueId, score: 0 } : null;
-            const rid = roundNumToId.get(m.jiu_jitsu_match_round_num) || 1;
-            matches.push({ id: m.id || (idx + 1), stage_id: 1, group_id: 1, round_id: rid, number: idx + 1, child_count: 1, opponent1, opponent2, status });
-            matchGames.push({ id: idx + 1, stage_id: 1, parent_id: m.id || (idx + 1), number: 1, status, opponent1: opponent1 ? { ...opponent1 } : null, opponent2: opponent2 ? { ...opponent2 } : null });
-        });
+            if (m.jiu_jitsu_match_status === '已结束') {
+                if (m.jiu_jitsu_winner === '红方' && opponent1) opponent1.result = 'win';
+                if (m.jiu_jitsu_winner === '青方' && opponent2) opponent2.result = 'win';
+            }
+            return { opponent1, opponent2, status };
+        };
 
-        try {
-            await window.bracketsViewer.render({ stages, groups, rounds, matches, matchGames, participants }, {
-                selector: '#' + sectionId, clear: true,
-                showRankingTable: false, participantOriginPlacement: 'none',
-                customRoundName: (info) => {
-                    if (compMode === 'double_elimination') {
-                        const isLosers = info.groupType === 'loser-bracket';
-                        if (!isLosers) {
-                            if (info.roundNumber && info.roundCount) {
-                                const d = Math.pow(2, info.roundCount - info.roundNumber);
-                                if (d === 1) return 'D.Final';
-                                return `1/${d}`;
-                            }
-                        } else {
-                            const totalLosersRounds = effectiveRoundCount - Math.ceil(Math.log2(participants.length || 2));
-                            const losersRound = info.roundNumber;
-                            if (losersRound >= totalLosersRounds) return 'D.Final';
-                            if (losersRound === totalLosersRounds - 1) return 'Bro.m';
-                            return `Rep.${losersRound}`;
-                        }
+        if (compMode === 'double_elimination') {
+            const winnerMatches = jjMatches.filter(m => !isBronzeMatch(m));
+            const loserMatches = jjMatches.filter(m => isBronzeMatch(m));
+
+            let sid = 0, gid = 0, rid = 0, mid = 0;
+            const stages = [];
+            const groups = [];
+            const rounds = [];
+            const matches = [];
+            const matchGames = [];
+
+            sid++;
+            const wSid = sid;
+            gid++;
+            const wGid = gid;
+            stages.push({ id: wSid, tournament_id: Number(currentEventId), name: weightClass + '_胜者组', type: 'single_elimination', number: wSid, settings: { size: bSize, manualOrdering: [generateJJSeedOrder(bSize)] } });
+            groups.push({ id: wGid, stage_id: wSid, number: 1 });
+
+            const winnerRoundNums = [...new Set(winnerMatches.map(m => m.jiu_jitsu_match_round_num).filter(n => n != null))].sort((a, b) => a - b);
+            const winnerRoundNumToId = new Map();
+            winnerRoundNums.forEach((rn, idx) => {
+                rid++;
+                winnerRoundNumToId.set(rn, rid);
+                const rnStr = winnerMatches.find(m => m.jiu_jitsu_match_round_num === rn)?.jiu_jitsu_match_round_name || `Round ${idx + 1}`;
+                rounds.push({ id: rid, stage_id: wSid, group_id: wGid, number: idx + 1, name: rnStr });
+            });
+
+            winnerMatches.forEach((m) => {
+                mid++;
+                const { opponent1, opponent2, status } = buildOpponents(m);
+                const rrid = winnerRoundNumToId.get(m.jiu_jitsu_match_round_num) || 1;
+                matches.push({ id: m.id || mid, stage_id: wSid, group_id: wGid, round_id: rrid, number: mid, child_count: 1, opponent1, opponent2, status });
+                matchGames.push({ id: mid, stage_id: wSid, parent_id: m.id || mid, number: 1, status, opponent1: opponent1 ? { ...opponent1 } : null, opponent2: opponent2 ? { ...opponent2 } : null });
+            });
+
+            if (loserMatches.length > 0) {
+                sid++;
+                const lSid = sid;
+                gid++;
+                const lGid = gid;
+                const bronzeSize = Math.max(4, Math.pow(2, Math.ceil(Math.log2(loserMatches.length * 2))));
+                stages.push({ id: lSid, tournament_id: Number(currentEventId), name: weightClass + '_铜牌赛', type: 'single_elimination', number: lSid, settings: { size: bronzeSize } });
+                groups.push({ id: lGid, stage_id: lSid, number: 1 });
+
+                rid++;
+                const bronzeRid = rid;
+                rounds.push({ id: bronzeRid, stage_id: lSid, group_id: lGid, number: 1, name: 'Bro.m' });
+
+                loserMatches.forEach((m) => {
+                    mid++;
+                    const { opponent1, opponent2, status } = buildOpponents(m);
+                    matches.push({ id: m.id || mid, stage_id: lSid, group_id: lGid, round_id: bronzeRid, number: mid, child_count: 1, opponent1, opponent2, status });
+                    matchGames.push({ id: mid, stage_id: lSid, parent_id: m.id || mid, number: 1, status, opponent1: opponent1 ? { ...opponent1 } : null, opponent2: opponent2 ? { ...opponent2 } : null });
+                });
+            }
+
+            try {
+                await window.bracketsViewer.render({ stages, groups, rounds, matches, matchGames, participants }, {
+                    selector: '#' + sectionId, clear: true,
+                    showRankingTable: false, participantOriginPlacement: 'none',
+                    customRoundName: (info) => {
+                        const sn = info.stageName || '';
+                        if (sn.includes('铜牌赛')) return 'Bro.m';
                         return undefined;
                     }
-                    const rd = rounds.find(r => r.id === info.roundNumber || r.number === info.roundNumber);
-                    return rd ? rd.name : `Round ${info.roundNumber}`;
-                }
+                });
+            } catch (e) {
+                console.warn(`渲染对阵图 ${weightClass} 失败:`, e);
+            }
+        } else {
+            const stages = [{ id: 1, tournament_id: Number(currentEventId), name: weightClass, type: compMode, number: 1, settings: { size: bSize, manualOrdering: [generateJJSeedOrder(bSize)] } }];
+            const groups = [{ id: 1, stage_id: 1, number: 1 }];
+
+            const roundNums = [...new Set(jjMatches.map(m => m.jiu_jitsu_match_round_num).filter(n => n != null))].sort((a, b) => a - b);
+            const roundNumToId = new Map();
+            roundNums.forEach((rn, idx) => { roundNumToId.set(rn, idx + 1); });
+
+            const rounds = [];
+            roundNums.forEach((rn, idx) => {
+                const rnStr = jjMatches.find(m => m.jiu_jitsu_match_round_num === rn)?.jiu_jitsu_match_round_name || `Round ${idx + 1}`;
+                rounds.push({ id: idx + 1, stage_id: 1, group_id: 1, number: idx + 1, name: rnStr });
             });
-        } catch (e) {
-            console.warn(`渲染对阵图 ${weightClass} 失败:`, e);
+
+            const matches = [];
+            const matchGames = [];
+            jjMatches.forEach((m, idx) => {
+                const { opponent1, opponent2, status } = buildOpponents(m);
+                const rid = roundNumToId.get(m.jiu_jitsu_match_round_num) || 1;
+                matches.push({ id: m.id || (idx + 1), stage_id: 1, group_id: 1, round_id: rid, number: idx + 1, child_count: 1, opponent1, opponent2, status });
+                matchGames.push({ id: idx + 1, stage_id: 1, parent_id: m.id || (idx + 1), number: 1, status, opponent1: opponent1 ? { ...opponent1 } : null, opponent2: opponent2 ? { ...opponent2 } : null });
+            });
+
+            try {
+                await window.bracketsViewer.render({ stages, groups, rounds, matches, matchGames, participants }, {
+                    selector: '#' + sectionId, clear: true,
+                    showRankingTable: false, participantOriginPlacement: 'none',
+                    customRoundName: (info) => {
+                        const rd = rounds.find(r => r.id === info.roundNumber || r.number === info.roundNumber);
+                        return rd ? rd.name : `Round ${info.roundNumber}`;
+                    }
+                });
+            } catch (e) {
+                console.warn(`渲染对阵图 ${weightClass} 失败:`, e);
+            }
         }
     }
 };

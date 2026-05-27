@@ -299,7 +299,6 @@ async function generateJJBracketForClass(db, manager, weightClass, athletes, eve
             seeding: cleanSeeding,
             settings: {
                 manualOrdering: [seedOrder],
-                grandFinal: 'simple',
             },
         });
 
@@ -453,104 +452,88 @@ async function generateJJBracketForClass(db, manager, weightClass, athletes, eve
         const upperSeeding = cleanSeeding.slice(0, upperSize).filter(s => s !== null);
         const lowerSeeding = cleanSeeding.slice(upperSize, upperSize + lowerSize).filter(s => s !== null);
 
-        let matchCount = 0;
-        const poolStages = [];
+        const upperNum = upperSeeding.map((_, idx) => idx + 1);
+        const lowerNum = lowerSeeding.map((_, idx) => upperSize + idx + 1);
+        const combinedSeeding = [...upperSeeding, ...lowerSeeding];
 
-        if (upperSeeding.length >= 2) {
-            const upperStage = await manager.create.stage({
-                tournamentId: Number(event_id),
-                name: `${weightClass}_上区`,
-                type: 'round_robin',
-                seeding: upperSeeding,
-                settings: { size: upperSeeding.length, groupCount: 1 },
-            });
+        const divisionalStage = await manager.create.stage({
+            tournamentId: Number(event_id),
+            name: `${weightClass}_分区循环赛`,
+            type: 'round_robin',
+            seeding: combinedSeeding,
+            settings: {
+                groupCount: 2,
+                manualOrdering: [upperNum, lowerNum],
+            },
+        });
 
-            await db.run(
-                'UPDATE bracket_stage SET event_id = ?, category_id = ?, mode_category_id = ? WHERE id = ?',
-                [event_id, weightClass, categoryId ? Number(categoryId) : null, upperStage.id]
-            );
+        await db.run(
+            'UPDATE bracket_stage SET event_id = ?, category_id = ?, mode_category_id = ? WHERE id = ?',
+            [event_id, weightClass, categoryId ? Number(categoryId) : null, divisionalStage.id]
+        );
 
-            const participantList = await db.all(
-                'SELECT id, name FROM bracket_participant WHERE tournament_id = ?',
-                [Number(event_id)]
-            );
+        const participantList = await db.all(
+            'SELECT id, name FROM bracket_participant WHERE tournament_id = ?',
+            [Number(event_id)]
+        );
 
-            await createJJRoundRobinBracketMatches(db, upperStage.id, upperSeeding, participantList);
+        for (let i = 0; i < cleanSeeding.length; i++) {
+            if (cleanSeeding[i] === null) continue;
+            const p = participantList.find(pp => pp.name === cleanSeeding[i]);
+            if (p) {
+                const athlete = sortedAthletes[i] || {};
+                await db.run(
+                    'UPDATE bracket_participant SET custom_data = ? WHERE id = ?',
+                    [JSON.stringify({
+                        id: athlete.id != null ? athlete.id : null,
+                        athlete_draw_num: athlete.athlete_draw_num != null ? athlete.athlete_draw_num : (i + 1),
+                        zone: i < upperSize ? 'upper' : 'lower'
+                    }), p.id]
+                );
+            }
+        }
 
-            for (let i = 0; i < upperSeeding.length; i++) {
-                const p = participantList.find(pp => pp.name === upperSeeding[i]);
-                if (p) {
-                    const origIdx = i;
-                    const athlete = sortedAthletes[origIdx] || {};
-                    await db.run(
-                        'UPDATE bracket_participant SET custom_data = ? WHERE id = ?',
-                        [JSON.stringify({
-                            id: athlete.id != null ? athlete.id : null,
-                            athlete_draw_num: athlete.athlete_draw_num != null ? athlete.athlete_draw_num : (origIdx + 1),
-                            zone: 'upper'
-                        }), p.id]
-                    );
+        const poolMatches = await db.all(
+            'SELECT id FROM bracket_match WHERE stage_id = ?',
+            [divisionalStage.id]
+        );
+        let matchCount = poolMatches.length;
+
+        const finalStage = await manager.create.stage({
+            tournamentId: Number(event_id),
+            name: `${weightClass}_决赛`,
+            type: 'round_robin',
+            settings: { groupCount: 1 },
+            seeding: ['上区第一', '下区第一'],
+        });
+
+        await db.run(
+            'UPDATE bracket_stage SET event_id = ?, category_id = ?, mode_category_id = ? WHERE id = ?',
+            [event_id, weightClass, categoryId ? Number(categoryId) : null, finalStage.id]
+        );
+
+        const finalMatches = await db.all('SELECT id FROM bracket_match WHERE stage_id = ?', [finalStage.id]);
+        if (finalMatches && finalMatches.length > 0) {
+            for (const match of finalMatches) {
+                const existing = await db.get('SELECT id FROM bracket_match_game WHERE parent_id = ?', [match.id]);
+                if (!existing) {
+                    await db.run('INSERT INTO bracket_match_game (stage_id, parent_id, number) VALUES (?, ?, ?)', [finalStage.id, match.id, 1]);
+                    await db.run('UPDATE bracket_match SET child_count = 1 WHERE id = ?', [match.id]);
                 }
             }
-
-            poolStages.push(upperStage.id);
+            matchCount += finalMatches.length;
         }
 
-        if (lowerSeeding.length >= 2) {
-            const lowerStage = await manager.create.stage({
-                tournamentId: Number(event_id),
-                name: `${weightClass}_下区`,
-                type: 'round_robin',
-                seeding: lowerSeeding,
-                settings: { size: lowerSeeding.length, groupCount: 1 },
-            });
-
-            await db.run(
-                'UPDATE bracket_stage SET event_id = ?, category_id = ?, mode_category_id = ? WHERE id = ?',
-                [event_id, weightClass, categoryId ? Number(categoryId) : null, lowerStage.id]
-            );
-
-            const participantList = await db.all(
-                'SELECT id, name FROM bracket_participant WHERE tournament_id = ?',
-                [Number(event_id)]
-            );
-
-            await createJJRoundRobinBracketMatches(db, lowerStage.id, lowerSeeding, participantList);
-
-            for (let i = 0; i < lowerSeeding.length; i++) {
-                const p = participantList.find(pp => pp.name === lowerSeeding[i]);
-                if (p) {
-                    const origIdx = upperSize + i;
-                    const athlete = sortedAthletes[origIdx] || {};
-                    await db.run(
-                        'UPDATE bracket_participant SET custom_data = ? WHERE id = ?',
-                        [JSON.stringify({
-                            id: athlete.id != null ? athlete.id : null,
-                            athlete_draw_num: athlete.athlete_draw_num != null ? athlete.athlete_draw_num : (origIdx + 1),
-                            zone: 'lower'
-                        }), p.id]
-                    );
+        const finalStageData = await manager.get.stageData(finalStage.id);
+        if (finalStageData?.round?.length > 0) {
+            for (const round of finalStageData.round) {
+                if (round.name !== 'R.Final') {
+                    await db.run('UPDATE bracket_round SET name = ? WHERE id = ?', ['R.Final', round.id]);
                 }
             }
-
-            poolStages.push(lowerStage.id);
         }
 
-        if (poolStages.length > 0) {
-            const poolMatches = await db.all(
-                'SELECT id FROM bracket_match WHERE stage_id IN (' + poolStages.map(() => '?').join(',') + ')',
-                poolStages
-            );
-            matchCount = poolMatches.length;
-
-            if (upperSeeding.length >= 2 && lowerSeeding.length >= 2) {
-                matchCount++;
-            }
-        } else {
-            matchCount = 0;
-        }
-
-        stageId = poolStages.join(',');
+        stageId = `${divisionalStage.id},${finalStage.id}`;
 
     } else {
         const targetSize = Math.pow(2, Math.ceil(Math.log2(n)));
@@ -915,6 +898,21 @@ async function syncJJMatchesFromBracket(db, event_id, weightClass, compMode) {
     const stageNameMap = new Map();
     stageMapRows.forEach(r => { stageNameMap.set(String(r.stage_id), r.stage_name || ''); });
 
+    const stageGroupMap = new Map();
+    for (const sid of stageIds) {
+        const numSid = Number(sid);
+        if (isNaN(numSid)) continue;
+        const groupRows = await db.all(
+            'SELECT id, number, name FROM bracket_group WHERE stage_id = ?',
+            [numSid]
+        );
+        if (groupRows) {
+            for (const g of groupRows) {
+                stageGroupMap.set(g.id, { number: g.number, name: g.name || '' });
+            }
+        }
+    }
+
     const stageFirstRoundMap = new Map();
     for (const sid of stageIds) {
         const numSid = Number(sid);
@@ -933,7 +931,7 @@ async function syncJJMatchesFromBracket(db, event_id, weightClass, compMode) {
         if (isNaN(numSid)) continue;
 
         const bracketMatches = await db.all(
-            `SELECT bm.id, bm.number, bm.opponent1, bm.opponent2, bm.status,
+            `SELECT bm.id, bm.number, bm.opponent1, bm.opponent2, bm.status, bm.group_id,
                     br.number AS round_number, br.name AS round_name
              FROM bracket_match bm
              LEFT JOIN bracket_round br ON bm.round_id = br.id
@@ -947,6 +945,11 @@ async function syncJJMatchesFromBracket(db, event_id, weightClass, compMode) {
             for (const bm of bracketMatches) {
                 bm._stageName = stageName;
                 bm._stageId = numSid;
+                const groupInfo = bm.group_id ? stageGroupMap.get(bm.group_id) : null;
+                if (groupInfo) {
+                    bm._groupNumber = groupInfo.number;
+                    bm._groupName = groupInfo.name;
+                }
                 if (bm.round_number && bm.round_number > maxRoundNumber) {
                     maxRoundNumber = bm.round_number;
                 }
@@ -1005,6 +1008,65 @@ async function syncJJMatchesFromBracket(db, event_id, weightClass, compMode) {
         return null;
     }
 
+    function findPoolWinnerPrevMatchId(currentBmId, side) {
+        const bm = allBracketMatches.find(b => b.id === currentBmId);
+        if (!bm) return null;
+        const oppStr = side === 'red' ? bm.opponent1 : bm.opponent2;
+        if (!oppStr) return null;
+        try {
+            const opp = typeof oppStr === 'string' ? JSON.parse(oppStr) : oppStr;
+            const oppName = opp?.name || '';
+            if (!oppName) return null;
+
+            const currentStageName = stageNameMap.get(String(bm._stageId)) || '';
+            const isFinalStage = currentStageName.includes('决赛');
+
+            let targetZone = '';
+            if (oppName.includes('上区') || oppName.includes('Upper')) targetZone = 'upper';
+            else if (oppName.includes('下区') || oppName.includes('Lower')) targetZone = 'lower';
+            if (!targetZone && isFinalStage) return null;
+
+            const divisionalStage = stageMapRows.find(r => {
+                const sn = r.stage_name || '';
+                return sn.includes('分区循环赛') || sn.includes('循环赛');
+            });
+            if (!divisionalStage) return null;
+
+            const divisionalMatches = allBracketMatches.filter(b => b._stageId === divisionalStage.stage_id);
+            if (divisionalMatches.length === 0) return null;
+
+            let zoneMatches;
+            if (targetZone === 'upper') {
+                zoneMatches = divisionalMatches.filter(b => {
+                    const gn = b._groupNumber;
+                    if (gn === 1) return true;
+                    const sn = b._stageName || '';
+                    return sn.includes('上区');
+                });
+            } else {
+                zoneMatches = divisionalMatches.filter(b => {
+                    const gn = b._groupNumber;
+                    if (gn === 2) return true;
+                    const sn = b._stageName || '';
+                    return sn.includes('下区');
+                });
+            }
+
+            if (zoneMatches.length === 0) return null;
+
+            let maxRound = 0;
+            for (const zm of zoneMatches) {
+                if (zm.round_number > maxRound) maxRound = zm.round_number;
+            }
+            const lastRoundMatches = zoneMatches.filter(zm => zm.round_number === maxRound);
+            if (lastRoundMatches.length > 0) {
+                return lastRoundMatches[0].id;
+            }
+            return null;
+        } catch (e) {}
+        return null;
+    }
+
     let matchCount = 0;
 
     for (const bm of allBracketMatches) {
@@ -1043,9 +1105,16 @@ async function syncJJMatchesFromBracket(db, event_id, weightClass, compMode) {
             }
         } catch (e) {}
 
+        if (!zone && bm._groupNumber) {
+            if (bm._groupNumber === 1) zone = 'upper';
+            else if (bm._groupNumber === 2) zone = 'lower';
+        }
         if (!zone && bm._stageName) {
             if (bm._stageName.includes('上区')) zone = 'upper';
             else if (bm._stageName.includes('下区')) zone = 'lower';
+        }
+        if (bm._stageName && bm._stageName.includes('决赛')) {
+            zone = 'final';
         }
 
         const bracketStatus = bm.status;
@@ -1061,7 +1130,12 @@ async function syncJJMatchesFromBracket(db, event_id, weightClass, compMode) {
         } else if (isElimination && !isFirstRound && (!redName || !blueName)) {
             matchStatus = '未开始';
         } else if (!redName || !blueName) {
-            matchStatus = 'bye';
+            const currentStageName = stageNameMap.get(String(bm._stageId)) || '';
+            if (currentStageName.includes('决赛') && (redName.includes('第一') || blueName.includes('第一'))) {
+                matchStatus = '未开始';
+            } else {
+                matchStatus = 'bye';
+            }
         } else {
             matchStatus = '未开始';
         }
@@ -1086,6 +1160,24 @@ async function syncJJMatchesFromBracket(db, event_id, weightClass, compMode) {
                 bluePrevBracketMatchId = findPrevBracketMatchIdForSync(bm.id, 'blue');
                 if (!bluePrevBracketMatchId) {
                     bluePrevBracketMatchId = findPrevFromBracketDataForSync(bm.id, 'blue');
+                }
+            }
+        }
+
+        if (!isElimination) {
+            const currentStageName = stageNameMap.get(String(bm._stageId)) || '';
+            if (currentStageName.includes('决赛')) {
+                if (!redName || redName.includes('第一')) {
+                    redPrevBracketMatchId = findPoolWinnerPrevMatchId(bm.id, 'red');
+                    if (!redPrevBracketMatchId) {
+                        redPrevBracketMatchId = findPrevFromBracketDataForSync(bm.id, 'red');
+                    }
+                }
+                if (!blueName || blueName.includes('第一')) {
+                    bluePrevBracketMatchId = findPoolWinnerPrevMatchId(bm.id, 'blue');
+                    if (!bluePrevBracketMatchId) {
+                        bluePrevBracketMatchId = findPrevFromBracketDataForSync(bm.id, 'blue');
+                    }
                 }
             }
         }
