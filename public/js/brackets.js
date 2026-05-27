@@ -2928,7 +2928,14 @@ let _matchResultCollapsed = false;
 function formatRoundNameForMatch(name) {
     if (!name) return '';
     if (name === '决赛' || name === 'Final') return '决赛';
+    if (name === 'D.Final') return 'D.Final';
+    if (name === 'R.Final') return 'R.Final';
     if (name === '半决赛' || name === '1/2') return '半决赛';
+    if (name === 'Bro.m') return 'Bro.m';
+    const repMatch = name.match(/^Rep\.(\d+)$/);
+    if (repMatch) return name;
+    const rrMatch = name.match(/^循环赛(\d+)$/);
+    if (rrMatch) return name;
     const m = name.match(/1\/(\d+)/);
     if (m) return `1/${m[1]}`;
     return name;

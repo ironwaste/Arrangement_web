@@ -287,14 +287,16 @@ class MySQLDatabase {
           jiu_jitsu_match_round_name VARCHAR(100) DEFAULT NULL,
           jiu_jitsu_match_category_total_rounds INT DEFAULT 1,
           jiu_jitsu_bracket_match_id INT DEFAULT NULL,
-          jiu_jitsu_blue_athlete_id VARCHAR(100) DEFAULT NULL,
-          jiu_jitsu_blue_athlete_name VARCHAR(255) DEFAULT NULL,
-          jiu_jitsu_blue_athlete_team VARCHAR(255) DEFAULT NULL,
-          jiu_jitsu_blue_prev_winner VARCHAR(255) DEFAULT NULL,
           jiu_jitsu_red_athlete_id VARCHAR(100) DEFAULT NULL,
           jiu_jitsu_red_athlete_name VARCHAR(255) DEFAULT NULL,
           jiu_jitsu_red_athlete_team VARCHAR(255) DEFAULT NULL,
           jiu_jitsu_red_prev_winner_id VARCHAR(255) DEFAULT NULL,
+          jiu_jitsu_blue_athlete_id VARCHAR(100) DEFAULT NULL,
+          jiu_jitsu_blue_athlete_name VARCHAR(255) DEFAULT NULL,
+          jiu_jitsu_blue_athlete_team VARCHAR(255) DEFAULT NULL,
+          jiu_jitsu_blue_prev_winner VARCHAR(255) DEFAULT NULL,
+          jiu_jitsu_match_comp_mode VARCHAR(50) DEFAULT NULL,
+          jiu_jitsu_match_zone VARCHAR(20) DEFAULT NULL,
           jiu_jitsu_match_status VARCHAR(20) DEFAULT '未开始',
           jiu_jitsu_match_scores VARCHAR(50) DEFAULT NULL,
           jiu_jitsu_match_scores_detail JSON DEFAULT NULL,
@@ -311,6 +313,34 @@ class MySQLDatabase {
       await this._createIndex(conn, 'idx_jj_match_venue', 'jiu_jitsu_matchs', 'jiu_jitsu_match_venue');
       await this._createIndex(conn, 'idx_jj_match_status', 'jiu_jitsu_matchs', 'jiu_jitsu_match_status');
       await this._createIndex(conn, 'idx_jj_match_event_id', 'jiu_jitsu_matchs', 'event_id');
+
+      const jjAlterColumns = [
+        'ALTER TABLE jiu_jitsu_matchs ADD COLUMN jiu_jitsu_match_comp_mode VARCHAR(50) DEFAULT NULL',
+        'ALTER TABLE jiu_jitsu_matchs ADD COLUMN jiu_jitsu_match_zone VARCHAR(20) DEFAULT NULL',
+        'ALTER TABLE jiu_jitsu_matchs ADD COLUMN jiu_jitsu_blue_prev_bracket_match_id INT DEFAULT NULL',
+        'ALTER TABLE jiu_jitsu_matchs ADD COLUMN jiu_jitsu_red_prev_bracket_match_id INT DEFAULT NULL'
+      ];
+      for (const sql of jjAlterColumns) {
+        try { await conn.execute(sql); } catch (e) {
+          const msg = e.message.toLowerCase();
+          if (!msg.includes('duplicate') && !msg.includes('already exists')) {
+            console.error('添加柔术比赛表列失败:', e.message);
+          }
+        }
+      }
+
+      const jjDropColumns = [
+        'ALTER TABLE jiu_jitsu_matchs DROP COLUMN jiu_jitsu_blue_athlete_draw_num',
+        'ALTER TABLE jiu_jitsu_matchs DROP COLUMN jiu_jitsu_red_athlete_draw_num'
+      ];
+      for (const sql of jjDropColumns) {
+        try { await conn.execute(sql); } catch (e) {
+          const msg = e.message.toLowerCase();
+          if (!msg.includes('check that column') && !msg.includes('can\'t drop')) {
+            console.log('删除柔术签号列:', e.message);
+          }
+        }
+      }
 
       /* --- 对阵图相关表（brackets-manager 适配） --- */
       await conn.execute(`
@@ -336,8 +366,7 @@ class MySQLDatabase {
           number INT NOT NULL,
           settings TEXT DEFAULT NULL,
           seeding TEXT DEFAULT NULL,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          UNIQUE KEY uk_event_category (event_id, category_id)
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
 
@@ -348,8 +377,20 @@ class MySQLDatabase {
           'ALTER TABLE bracket_stage ADD COLUMN mode_category_id INT DEFAULT NULL'
         );
       } catch (e) {
-        if (!e.message.includes('duplicate') && !e.message.includes('already exists')) {
-          console.log('添加 bracket_stage.mode_category_id 列失败（可能已存在）:', e.message);
+        const msg = e.message.toLowerCase();
+        if (!msg.includes('duplicate') && !msg.includes('already exists')) {
+          console.error('添加 bracket_stage.mode_category_id 列失败:', e.message);
+        }
+      }
+
+      try {
+        await conn.execute(
+          'ALTER TABLE bracket_stage DROP INDEX uk_event_category'
+        );
+      } catch (e) {
+        const msg = e.message.toLowerCase();
+        if (!msg.includes('can\'t drop') && !msg.includes('not found') && !msg.includes('doesn\'t exist')) {
+          console.error('删除 bracket_stage 唯一键失败:', e.message);
         }
       }
 
@@ -358,8 +399,9 @@ class MySQLDatabase {
           'ALTER TABLE bracket_stage ADD CONSTRAINT fk_bracket_stage_category_mode FOREIGN KEY (mode_category_id) REFERENCES category_mode(category_id) ON DELETE SET NULL'
         );
       } catch (e) {
-        if (!e.message.includes('already exists') && !e.message.includes('duplicate')) {
-          console.log('添加 bracket_stage 外键约束失败（可能已存在或类型不兼容）:', e.message);
+        const msg = e.message.toLowerCase();
+        if (!msg.includes('already exists') && !msg.includes('duplicate')) {
+          console.error('添加 bracket_stage 外键约束失败:', e.message);
         }
       }
 
@@ -414,6 +456,18 @@ class MySQLDatabase {
       await this._createIndex(conn, 'idx_match_round', 'bracket_match', 'round_id');
       await this._createIndex(conn, 'idx_match_group', 'bracket_match', 'group_id');
       await this._createIndex(conn, 'idx_match_next', 'bracket_match', 'next_match_id');
+
+      const bracketMatchAlterColumns = [
+        'ALTER TABLE bracket_match ADD COLUMN match_display_label VARCHAR(50) DEFAULT NULL'
+      ];
+      for (const sql of bracketMatchAlterColumns) {
+        try { await conn.execute(sql); } catch (e) {
+          const msg = e.message.toLowerCase();
+          if (!msg.includes('duplicate') && !msg.includes('already exists')) {
+            console.error('添加bracket_match列失败:', e.message);
+          }
+        }
+      }
 
       await conn.execute(`
         CREATE TABLE IF NOT EXISTS bracket_match_game (

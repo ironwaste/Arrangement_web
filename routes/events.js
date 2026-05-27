@@ -13,7 +13,8 @@ const {
   generateBracketForClass
 } = require('./autoScheduler');
 const {
-  generateJJBracketForEvent
+  generateJJBracketForEvent,
+  syncJJMatchesFromBracket
 } = require('./Jiu-Jitsu/jiu-jitsu-bracket-helpers');
 const {
   insertKyougiMatch,
@@ -608,6 +609,17 @@ module.exports = (db, bracketsManager) => {
       }
 
       await updateKyougiMatchPrevWinners(db, m.id, bluePrevWinner, redPrevWinner);
+    }
+
+    for (const [bmId, displayLabel] of bracketMatchIdToDisplayLabel) {
+      try {
+        await db.run(
+          'UPDATE bracket_match SET match_display_label = ? WHERE id = ?',
+          [displayLabel, bmId]
+        );
+      } catch (e) {
+        console.warn('更新bracket_match场次标签失败:', e.message);
+      }
     }
   }
 
@@ -1900,7 +1912,42 @@ module.exports = (db, bracketsManager) => {
 
       const eventRowForGenMatches = await db.get('SELECT event_type FROM events WHERE event_id = ?', [eventIdNum]);
       const genMatchesEventType = eventRowForGenMatches ? eventRowForGenMatches.event_type : 'taekwondo_kyougi';
-      const genMatchesAthleteType = genMatchesEventType === 'jiu_jitsu' ? 'jiu_jitsu' : genMatchesEventType === 'taekwondo_poomsae' ? 'poomsae' : genMatchesEventType === 'chinese_wrestle' ? 'chinese_wrestle' : 'taekwondo_kyougi';
+
+      if (genMatchesEventType === 'jiu_jitsu') {
+        try {
+          await db.run('DELETE FROM jiu_jitsu_matchs WHERE event_id = ?', [eventIdNum]);
+        } catch (e) {
+          console.warn('清除旧柔术对阵表数据失败:', e.message);
+        }
+
+        const jjStageRows = await db.all(
+          'SELECT category_id AS class_name FROM bracket_stage WHERE event_id = ?',
+          [eventIdNum]
+        );
+        const jjBracketClasses = new Set(jjStageRows.map(s => s.class_name).filter(Boolean));
+
+        const jjResults = [];
+        const jjErrors = [];
+        let jjGenerated = 0;
+
+        for (const wc of jjBracketClasses) {
+          try {
+            await syncJJMatchesFromBracket(db, eventIdNum, wc);
+            jjGenerated++;
+            jjResults.push(`${wc}: 对阵表已生成`);
+          } catch (err) {
+            jjErrors.push(`${wc}: ${err.message}`);
+          }
+        }
+
+        res.json({
+          success: true,
+          data: { generated: jjGenerated, errors: jjErrors, results: jjResults }
+        });
+        return;
+      }
+
+      const genMatchesAthleteType = genMatchesEventType === 'taekwondo_poomsae' ? 'poomsae' : genMatchesEventType === 'chinese_wrestle' ? 'chinese_wrestle' : 'taekwondo_kyougi';
 
       const athletes = await db.all(
         'SELECT DISTINCT athlete_category FROM athletes WHERE event_id = ? AND athlete_type = ?',
@@ -1987,10 +2034,18 @@ module.exports = (db, bracketsManager) => {
       if (!weight_class || !event_id) {
         return res.status(400).json({ success: false, error: '缺少参数' });
       }
-      await deleteKyougiMatchsByClass(db, weight_class, event_id);
-      await syncMatchesFromBracket(weight_class, event_id);
+      const rbEventRow = await db.get('SELECT event_type FROM events WHERE event_id = ?', [Number(event_id)]);
+      const rbEventType = rbEventRow ? rbEventRow.event_type : 'taekwondo_kyougi';
+      if (rbEventType === 'jiu_jitsu') {
+        await db.run('DELETE FROM jiu_jitsu_matchs WHERE event_id = ? AND jiu_jitsu_match_categroy = ?', [Number(event_id), weight_class]);
+        await syncJJMatchesFromBracket(db, Number(event_id), weight_class);
+      } else {
+        await deleteKyougiMatchsByClass(db, weight_class, event_id);
+        await syncMatchesFromBracket(weight_class, event_id);
+      }
       res.json({ success: true, data: true });
     } catch (err) {
+      console.error('rebuild-match-ids错误:', err);
       res.status(500).json({ success: false, error: err.message });
     }
   });

@@ -425,7 +425,16 @@ let currentAthleteType = '';
 function formatRoundName(name) {
     if (!name) return '';
     if (name === '决赛' || name === 'Final') return 'Final';
+    if (name === 'D.Final') return 'D.Final';
+    if (name === 'R.Final') return 'R.Final';
     if (name === '半决赛') return '1/2';
+    if (name === 'Bro.m') return 'Bro.m';
+    const repMatch = name.match(/^Rep\.(\d+)$/);
+    if (repMatch) return name;
+    const rrMatch = name.match(/^R(\d+)$/);
+    if (rrMatch) return name;
+    const rrMatch2 = name.match(/^循环赛(\d+)$/);
+    if (rrMatch2) return `R${rrMatch2[1]}`;
     const m = name.match(/(\d+)\/(\d+)决赛?/);
     if (m) return m[1] + '/' + m[2];
     return name;

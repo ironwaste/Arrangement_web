@@ -1,4 +1,31 @@
+/**
+ * 柔术编排控制器 (JiuJitsuBrackets)
+ *
+ * 职责：柔术赛事编排页面的前端UI控制层，管理编排表格的交互、
+ *       竞赛方式配置、对阵图生成、对阵表生成等核心操作。
+ *
+ * 依赖：
+ *   - currentEventId（全局变量，当前赛事ID）
+ *   - API_BASE（全局变量，API基础路径）
+ *   - getEventParam() / getEventParamObj()（全局工具函数）
+ *   - loadAutoArrangeData()（全局函数，刷新编排数据）
+ *   - ExcelFilter（可选，Excel风格筛选组件）
+ *   - refreshBracketDisplay()（bracket-detail.js中定义，刷新对阵图）
+ *
+ * 核心业务流程：
+ *   1. 抽签 → athletes表写入 athlete_draw_num
+ *   2. 生成对阵图 → 调用 /jj-brackets/generate → 生成 bracket_* 表（不含对阵表记录）
+ *   3. 设置编排 → category_mode 表设置场地/单元/顺序
+ *   4. 生成对阵表 → 调用 /jj-brackets/generate-matches → 同步+排序+分配场次号
+ *
+ * 主要功能模块：
+ *   - 编排表格：列显隐、右键菜单、排序、Excel筛选
+ *   - 竞赛方式配置：为每个级别选择赛制（单败/双败/循环/分区循环）
+ *   - 对阵图生成：调用后端API生成 bracket_* 数据
+ *   - 对阵表生成：检查编排完整性后分配场地号和场次号
+ */
 const JiuJitsuBrackets = {
+
     JJ_COLUMNS: [
         { key: 'index', label: '序号' },
         { key: 'rounds', label: '轮次' },
@@ -29,7 +56,6 @@ const JiuJitsuBrackets = {
     selectedColumns: [],
     activeContextMenu: null,
     sortState: { colIndex: -1, direction: '' },
-    compModeConfig: {},
 
     COMP_MODES: [
         { value: 'single_elimination', label: '单败淘汰赛' },
@@ -38,6 +64,10 @@ const JiuJitsuBrackets = {
         { value: 'pool_elimination', label: '分区循环赛' }
     ],
 
+    /**
+     * 从 localStorage 加载列可见性配置
+     * @returns {Object} 列key到布尔值的映射
+     */
     getColumnVisibility() {
         const saved = localStorage.getItem('jj_brackets_column_visibility');
         if (saved) {
@@ -489,7 +519,7 @@ const JiuJitsuBrackets = {
             const countCell = tr.querySelector('td[data-col="count"]');
             if (!wcCell) return;
             const weightClass = wcCell.textContent.trim();
-            const count = countCell ? parseInt(countCell.textContent) || 0 : 0;
+            const count = countCell ? parseInt(countCell.textContent || '0') : 0;
             classList.push({ weightClass, count });
         });
 
@@ -622,11 +652,19 @@ const JiuJitsuBrackets = {
         }
     },
 
+    /**
+     * 生成对阵图（仅生成 bracket_* 数据，不生成对阵表记录）
+     *
+     * 流程：检查已有数据确认 → 调用 POST /jj-brackets/generate → 刷新编排数据
+     *
+     * 注意：此操作不检查场地/单元/顺序编排状态，
+     *       只需要完成抽签即可执行。
+     */
     async generateJJBrackets() {
         if (!currentEventId) { alert('请先选择赛事'); return; }
 
         try {
-            const checkRes = await fetch(`${API_BASE}/matches?${getEventParam()}`);
+            const checkRes = await fetch(`${API_BASE}/jj-brackets/matches?${getEventParam()}`);
             const checkData = await checkRes.json();
             if (checkData.success && checkData.data && checkData.data.length > 0) {
                 if (!confirm('当前赛事已有对阵图数据，生成新对阵图将清除原有数据，是否继续？')) return;
@@ -646,7 +684,11 @@ const JiuJitsuBrackets = {
                 if (result.errors && result.errors.length > 0) {
                     msg += '\n\n警告:\n' + result.errors.join('\n');
                 }
+                if (result.results && result.results.length > 0) {
+                    msg += '\n\n详情:\n' + result.results.join('\n');
+                }
                 alert(msg);
+
                 if (typeof loadAutoArrangeData === 'function') {
                     loadAutoArrangeData();
                 }
@@ -658,6 +700,21 @@ const JiuJitsuBrackets = {
         }
     },
 
+    /**
+     * 生成对阵表（同步bracket数据 + 排序 + 分配场地号和场次号）
+     *
+     * 前置条件检查：
+     *   1. 必须已完成抽签（有运动员数据）
+     *   2. 所有级别必须已设置场地、单元、顺序（category_mode表）
+     *
+     * 后端完整流程（仿写跆拳道 reorderMatches）：
+     *   1. 同步 bracket_match → jiu_jitsu_matchs（syncJJMatchesFromBracket）
+     *   2. 排序（单元→场地→决赛优先→赛制类型→轮次→区域→级别顺序）
+     *   3. 过滤空位比赛（BYE）
+     *   4. 分配场地号和场次号（unitNum*1000+cnt 格式如 "1001", "2003"）
+     *   5. 更新前序胜者标签（findPrevBracketMatchId → "XX胜者"/"XX负者"）
+     *   6. 回写场次标签到 bracket_match.match_display_label
+     */
     async assignMatchIds() {
         if (!currentEventId) { alert('请先选择赛事'); return; }
 
@@ -687,12 +744,12 @@ const JiuJitsuBrackets = {
         });
 
         if (unassigned.length > 0) {
-            alert('⚠️ 以下级别未完成场地分配：\n\n' + unassigned.join('\n'));
+            alert('⚠️ 以下级别未完成场地分配，请先完成编排设置：\n\n' + unassigned.join('\n'));
             return;
         }
 
         try {
-            const res = await fetch(`${API_BASE}/jj-brackets/assign-match-ids`, {
+            const res = await fetch(`${API_BASE}/jj-brackets/generate-matches`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ event_id: currentEventId })
@@ -700,7 +757,7 @@ const JiuJitsuBrackets = {
             const data = await res.json();
             if (data.success) {
                 const result = data.data;
-                alert(`✅ 对阵表生成完成！\n\n已分配 ${result.assigned} 场比赛的场次号和场地号`);
+                alert(`✅ 对阵表生成完成！\n\n已同步 ${result.syncCount} 个级别，分配 ${result.assigned} 场比赛的场次号和场地号`);
                 if (typeof loadAutoArrangeData === 'function') {
                     loadAutoArrangeData();
                 }

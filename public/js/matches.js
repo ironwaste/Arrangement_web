@@ -1,6 +1,7 @@
 let _allMatchRows = [];
 let _filterState = { left: { col: -1, val: '' }, right: { col: -1, val: '' } };
 let _matchScheduleData = [];
+let _jjAthletesByClass = {};
 
 function parseJJScores(scoresStr) {
     if (!scoresStr) return { blue_score: 0, red_score: 0 };
@@ -53,19 +54,21 @@ async function loadMatches() {
                         total_rounds: m.jiu_jitsu_match_category_total_rounds,
                         bracket_match_id: m.jiu_jitsu_bracket_match_id,
                         match_id: m.jiu_jitsu_match_id,
-                        blue_athlete_id: m.jiu_jitsu_blue_athlete_id,
-                        blue_name: m.jiu_jitsu_blue_athlete_name,
-                        blue_unit: m.jiu_jitsu_blue_athlete_team,
-                        blue_prev_winner: m.jiu_jitsu_blue_prev_winner,
-                        blue_score: scores.blue_score,
                         red_athlete_id: m.jiu_jitsu_red_athlete_id,
                         red_name: m.jiu_jitsu_red_athlete_name,
                         red_unit: m.jiu_jitsu_red_athlete_team,
                         red_prev_winner: m.jiu_jitsu_red_prev_winner_id,
                         red_score: scores.red_score,
+                        blue_athlete_id: m.jiu_jitsu_blue_athlete_id,
+                        blue_name: m.jiu_jitsu_blue_athlete_name,
+                        blue_unit: m.jiu_jitsu_blue_athlete_team,
+                        blue_prev_winner: m.jiu_jitsu_blue_prev_winner,
+                        blue_score: scores.blue_score,
                         match_status: m.jiu_jitsu_match_status,
                         win_method: m.jiu_jitsu_win_method,
                         winner: m.jiu_jitsu_winner,
+                        comp_mode: m.jiu_jitsu_match_comp_mode || '',
+                        zone: m.jiu_jitsu_match_zone || '',
                         venue_no: (m.jiu_jitsu_match_venue !== null && m.jiu_jitsu_match_id !== null)
                             ? (String(m.jiu_jitsu_match_venue) + String(m.jiu_jitsu_match_id))
                             : '',
@@ -74,6 +77,37 @@ async function loadMatches() {
                 });
             }
         } catch (e) { console.error('加载jj-brackets/matches失败:', e); }
+
+        const rFinalClasses = new Set();
+        matchesData.forEach(m => {
+            if (m.round_name === 'R.Final' || m.zone === 'final') {
+                rFinalClasses.add(m.weight_class);
+            }
+        });
+        if (rFinalClasses.size > 0) {
+            try {
+                const athResp = await apiGet('/athletes?event_id=' + currentEventId + '&athlete_type=jiu_jitsu');
+                if (athResp.success && athResp.data) {
+                    _jjAthletesByClass = {};
+                    athResp.data.forEach(a => {
+                        const wc = a.athlete_category || '';
+                        if (!rFinalClasses.has(wc)) return;
+                        if (!_jjAthletesByClass[wc]) _jjAthletesByClass[wc] = [];
+                        _jjAthletesByClass[wc].push({
+                            id: a.athlete_id,
+                            name: a.athlete_name || '',
+                            team: a.athlete_team || '',
+                            draw_num: a.athlete_draw_num || 0
+                        });
+                    });
+                    for (const wc of rFinalClasses) {
+                        if (_jjAthletesByClass[wc]) {
+                            _jjAthletesByClass[wc].sort((a, b) => (a.draw_num || 0) - (b.draw_num || 0));
+                        }
+                    }
+                }
+            } catch (e) { console.warn('加载运动员数据失败:', e); }
+        }
     } else {
         try {
             const resp = await apiGet('/matches?' + urlParams + '&arranged_only=true');
@@ -112,26 +146,62 @@ async function loadMatches() {
         const blueScore = m.blue_score != null ? m.blue_score : '';
         const redScore = m.red_score != null ? m.red_score : '';
 
-        const blueDisplay = m.blue_name || m.blue_prev_winner || '-';
-        const redDisplay = m.red_name || m.red_prev_winner || '-';
+        const isRFinal = m.round_name === 'R.Final' || m.zone === 'final';
         const tr = document.createElement('tr');
         tr.dataset.matchId = m.id;
         tr.dataset.matchType = 'match';
-        tr.innerHTML = `
-            <td data-col="venueLetter">${venueLetter}</td>
-            <td data-col="matchNo">${matchNo}</td>
-            <td data-col="roundName">${formatRoundName(m.round_name || '')}</td>
-            <td data-col="blueName" style="color:#409EFF;">${blueDisplay}</td>
-            <td data-col="blueUnit" style="color:#409EFF;">${m.blue_unit || '-'}</td>
-            <td data-col="vs" style="color:#909399;font-weight:bold;">VS</td>
-            <td data-col="redName" style="color:#F56C6C;">${redDisplay}</td>
-            <td data-col="redUnit" style="color:#F56C6C;">${m.red_unit || '-'}</td>
-            <td data-col="weightClass">${m.weight_class || ''}</td>
-            <td data-col="status" ondblclick="openScoreModal(this)"><span class="status-badge ${statusClass}">${m.match_status || ''}</span></td>
-            <td data-col="score">${blueScore !== '' && redScore !== '' ? (blueScore + ':' + redScore) : ''}</td>
-            <td data-col="winMethod">${m.win_method || ''}</td>
-            <td data-col="winner" style="${m.winner === '青方' ? 'color:#409EFF;' : (m.winner === '红方' ? 'color:#F56C6C;' : '')}">${m.winner || ''}</td>
-        `;
+
+        if (isRFinal && currentEventType === 'jiu_jitsu') {
+            const athletes = _jjAthletesByClass[m.weight_class] || [];
+            const upperAthletes = [];
+            const lowerAthletes = [];
+            athletes.forEach(a => {
+                upperAthletes.push(a);
+                lowerAthletes.push(a);
+            });
+            const redOptions = upperAthletes.map(a =>
+                `<option value="${a.name}|${a.team}" ${m.red_name === a.name ? 'selected' : ''}>#${a.draw_num} ${a.name}</option>`
+            ).join('');
+            const blueOptions = lowerAthletes.map(a =>
+                `<option value="${a.name}|${a.team}" ${m.blue_name === a.name ? 'selected' : ''}>#${a.draw_num} ${a.name}</option>`
+            ).join('');
+            const redSelected = m.red_name && m.red_name !== '上区第一';
+            const blueSelected = m.blue_name && m.blue_name !== '下区第一';
+
+            tr.innerHTML = `
+                <td data-col="venueLetter">${venueLetter}</td>
+                <td data-col="matchNo">${matchNo}</td>
+                <td data-col="roundName">${formatRoundName(m.round_name || '')}</td>
+                <td data-col="redName" style="color:#F56C6C;"><select onchange="onJJFinalSelect(this, 'red', ${m.id})" style="width:100%;padding:2px;border:1px solid #dcdfe6;border-radius:3px;font-size:12px;color:#F56C6C;"><option value="" ${!redSelected ? 'selected' : ''}>上区第一</option>${redOptions}</select></td>
+                <td data-col="redUnit" style="color:#F56C6C;font-size:12px;" id="jj_red_team_${m.id}">${redSelected ? (m.red_unit || '') : ''}</td>
+                <td data-col="vs" style="color:#909399;font-weight:bold;">VS</td>
+                <td data-col="blueName" style="color:#409EFF;"><select onchange="onJJFinalSelect(this, 'blue', ${m.id})" style="width:100%;padding:2px;border:1px solid #dcdfe6;border-radius:3px;font-size:12px;color:#409EFF;"><option value="" ${!blueSelected ? 'selected' : ''}>下区第一</option>${blueOptions}</select></td>
+                <td data-col="blueUnit" style="color:#409EFF;font-size:12px;" id="jj_blue_team_${m.id}">${blueSelected ? (m.blue_unit || '') : ''}</td>
+                <td data-col="weightClass">${m.weight_class || ''}</td>
+                <td data-col="status" ondblclick="openScoreModal(this)"><span class="status-badge ${statusClass}">${m.match_status || ''}</span></td>
+                <td data-col="score">${blueScore !== '' && redScore !== '' ? (blueScore + ':' + redScore) : ''}</td>
+                <td data-col="winMethod">${m.win_method || ''}</td>
+                <td data-col="winner" style="${m.winner === '青方' ? 'color:#409EFF;' : (m.winner === '红方' ? 'color:#F56C6C;' : '')}">${m.winner || ''}</td>
+            `;
+        } else {
+            const blueDisplay = m.blue_name || m.blue_prev_winner || '-';
+            const redDisplay = m.red_name || m.red_prev_winner || '-';
+            tr.innerHTML = `
+                <td data-col="venueLetter">${venueLetter}</td>
+                <td data-col="matchNo">${matchNo}</td>
+                <td data-col="roundName">${formatRoundName(m.round_name || '')}</td>
+                <td data-col="redName" style="color:#F56C6C;">${redDisplay}</td>
+                <td data-col="redUnit" style="color:#F56C6C;">${m.red_unit || '-'}</td>
+                <td data-col="vs" style="color:#909399;font-weight:bold;">VS</td>
+                <td data-col="blueName" style="color:#409EFF;">${blueDisplay}</td>
+                <td data-col="blueUnit" style="color:#409EFF;">${m.blue_unit || '-'}</td>
+                <td data-col="weightClass">${m.weight_class || ''}</td>
+                <td data-col="status" ondblclick="openScoreModal(this)"><span class="status-badge ${statusClass}">${m.match_status || ''}</span></td>
+                <td data-col="score">${blueScore !== '' && redScore !== '' ? (blueScore + ':' + redScore) : ''}</td>
+                <td data-col="winMethod">${m.win_method || ''}</td>
+                <td data-col="winner" style="${m.winner === '青方' ? 'color:#409EFF;' : (m.winner === '红方' ? 'color:#F56C6C;' : '')}">${m.winner || ''}</td>
+            `;
+        }
         _allMatchRows.push(tr);
         if (m.match_status === '进行中') active++;
         if (m.match_status === '未开始') pending++;
@@ -149,10 +219,10 @@ async function loadMatches() {
         tr.dataset.matchType = 'schedule';
 
         if (s.roundName === '循环赛决赛' && s.upperAthletes && s.lowerAthletes) {
-            const blueOptions = s.upperAthletes.map(a =>
+            const redOptions = s.upperAthletes.map(a =>
                 `<option value="${a.draw_no}|${a.name}|${a.team}">#${a.draw_no} ${a.name}</option>`
             ).join('');
-            const redOptions = s.lowerAthletes.map(a =>
+            const blueOptions = s.lowerAthletes.map(a =>
                 `<option value="${a.draw_no}|${a.name}|${a.team}">#${a.draw_no} ${a.name}</option>`
             ).join('');
 
@@ -160,11 +230,11 @@ async function loadMatches() {
                 <td data-col="venueLetter">${venueLetter}</td>
                 <td data-col="matchNo">${matchNo}</td>
                 <td data-col="roundName">${roundName}</td>
-                <td data-col="blueName" style="color:#409EFF;"><select onchange="onScheduleFinalSelect(this, 'blue', '${s.displayNum}')" style="width:100%;padding:2px;border:1px solid #dcdfe6;border-radius:3px;font-size:12px;color:#409EFF;"><option value="">上区第一</option>${blueOptions}</select></td>
-                <td data-col="blueUnit" style="color:#409EFF;font-size:12px;" id="sched_blue_team_${s.displayNum}">${s.blueTeam || ''}</td>
-                <td data-col="vs" style="color:#909399;font-weight:bold;">VS</td>
-                <td data-col="redName" style="color:#F56C6C;"><select onchange="onScheduleFinalSelect(this, 'red', '${s.displayNum}')" style="width:100%;padding:2px;border:1px solid #dcdfe6;border-radius:3px;font-size:12px;color:#F56C6C;"><option value="">下区第一</option>${redOptions}</select></td>
+                <td data-col="redName" style="color:#F56C6C;"><select onchange="onScheduleFinalSelect(this, 'red', '${s.displayNum}')" style="width:100%;padding:2px;border:1px solid #dcdfe6;border-radius:3px;font-size:12px;color:#F56C6C;"><option value="">上区第一</option>${redOptions}</select></td>
                 <td data-col="redUnit" style="color:#F56C6C;font-size:12px;" id="sched_red_team_${s.displayNum}">${s.redTeam || ''}</td>
+                <td data-col="vs" style="color:#909399;font-weight:bold;">VS</td>
+                <td data-col="blueName" style="color:#409EFF;"><select onchange="onScheduleFinalSelect(this, 'blue', '${s.displayNum}')" style="width:100%;padding:2px;border:1px solid #dcdfe6;border-radius:3px;font-size:12px;color:#409EFF;"><option value="">下区第一</option>${blueOptions}</select></td>
+                <td data-col="blueUnit" style="color:#409EFF;font-size:12px;" id="sched_blue_team_${s.displayNum}">${s.blueTeam || ''}</td>
                 <td data-col="weightClass">${s.level || ''}</td>
                 <td data-col="status" ondblclick="openScoreModal(this)"><span class="status-badge ${statusClass}">${s.status || ''}</span></td>
                 <td data-col="score"></td>
@@ -178,11 +248,11 @@ async function loadMatches() {
                 <td data-col="venueLetter">${venueLetter}</td>
                 <td data-col="matchNo">${matchNo}</td>
                 <td data-col="roundName">${roundName}</td>
-                <td data-col="blueName" style="color:#409EFF;">${blueDisplay}</td>
-                <td data-col="blueUnit" style="color:#409EFF;">${s.blueTeam || '-'}</td>
-                <td data-col="vs" style="color:#909399;font-weight:bold;">VS</td>
                 <td data-col="redName" style="color:#F56C6C;">${redDisplay}</td>
                 <td data-col="redUnit" style="color:#F56C6C;">${s.redTeam || '-'}</td>
+                <td data-col="vs" style="color:#909399;font-weight:bold;">VS</td>
+                <td data-col="blueName" style="color:#409EFF;">${blueDisplay}</td>
+                <td data-col="blueUnit" style="color:#409EFF;">${s.blueTeam || '-'}</td>
                 <td data-col="weightClass">${s.level || ''}</td>
                 <td data-col="status" ondblclick="openScoreModal(this)"><span class="status-badge ${statusClass}">${s.status || ''}</span></td>
                 <td data-col="score"></td>
@@ -275,6 +345,50 @@ function onScheduleFinalSelect(select, side, displayNum) {
             });
         }
     }
+}
+
+function onJJFinalSelect(select, side, matchId) {
+    const value = select.value;
+    const teamCell = document.getElementById(`jj_${side}_team_${matchId}`);
+    if (!value) {
+        if (teamCell) teamCell.textContent = '';
+        const updateData = {};
+        if (side === 'blue') {
+            updateData.blue_athlete_name = '上区第一';
+            updateData.blue_athlete_team = '';
+        } else {
+            updateData.red_athlete_name = '下区第一';
+            updateData.red_athlete_team = '';
+        }
+        fetch(API_BASE + '/jj-brackets/matches/' + matchId, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updateData)
+        }).then(() => {
+            if (typeof refreshBracketDisplay === 'function') refreshBracketDisplay();
+        }).catch(e => console.error('更新决赛选手失败:', e));
+        return;
+    }
+    const parts = value.split('|');
+    const name = parts[0] || '';
+    const team = parts[1] || '';
+    if (teamCell) teamCell.textContent = team;
+
+    const updateData = {};
+    if (side === 'blue') {
+        updateData.blue_athlete_name = name;
+        updateData.blue_athlete_team = team;
+    } else {
+        updateData.red_athlete_name = name;
+        updateData.red_athlete_team = team;
+    }
+    fetch(API_BASE + '/jj-brackets/matches/' + matchId, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData)
+    }).then(() => {
+        if (typeof refreshBracketDisplay === 'function') refreshBracketDisplay();
+    }).catch(e => console.error('更新决赛选手失败:', e));
 }
 
 function renderFilteredRows() {
@@ -454,12 +568,14 @@ async function printMatchSchedule() {
                     weight_class: m.jiu_jitsu_match_categroy,
                     round_name: m.jiu_jitsu_match_round_name,
                     match_id: m.jiu_jitsu_match_id,
-                    blue_name: m.jiu_jitsu_blue_athlete_name,
-                    blue_prev_winner: m.jiu_jitsu_blue_prev_winner,
-                    blue_unit: m.jiu_jitsu_blue_athlete_team,
                     red_name: m.jiu_jitsu_red_athlete_name,
                     red_prev_winner: m.jiu_jitsu_red_prev_winner_id,
                     red_unit: m.jiu_jitsu_red_athlete_team,
+                    blue_name: m.jiu_jitsu_blue_athlete_name,
+                    blue_prev_winner: m.jiu_jitsu_blue_prev_winner,
+                    blue_unit: m.jiu_jitsu_blue_athlete_team,
+                    comp_mode: m.jiu_jitsu_match_comp_mode || '',
+                    zone: m.jiu_jitsu_match_zone || '',
                     venue_no: (m.jiu_jitsu_match_venue !== null && m.jiu_jitsu_match_id !== null)
                         ? (String(m.jiu_jitsu_match_venue) + String(m.jiu_jitsu_match_id))
                         : '',
@@ -482,8 +598,15 @@ async function printMatchSchedule() {
     matches.forEach(m => {
         const venueLetter = m.venue || (m.venue_no || '').charAt(0) || '';
         const matchNo = m.match_id || '';
-        const blueDisplay = m.blue_name || m.blue_prev_winner || '';
-        const redDisplay = m.red_name || m.red_prev_winner || '';
+        const isRFinal = m.round_name === 'R.Final' || m.zone === 'final';
+        let blueDisplay, redDisplay;
+        if (isRFinal) {
+            redDisplay = (m.red_name && m.red_name !== '上区第一') ? m.red_name : '上区第一';
+            blueDisplay = (m.blue_name && m.blue_name !== '下区第一') ? m.blue_name : '下区第一';
+        } else {
+            redDisplay = m.red_name || m.red_prev_winner || '';
+            blueDisplay = m.blue_name || m.blue_prev_winner || '';
+        }
 
         const key = venueLetter;
         if (!venueGroups.has(key)) venueGroups.set(key, []);
@@ -492,10 +615,10 @@ async function printMatchSchedule() {
             venueLetter,
             matchNo,
             round: formatRoundName(m.round_name || ''),
-            blue: blueDisplay,
-            blueUnit: m.blue_unit || '',
             red: redDisplay,
             redUnit: m.red_unit || '',
+            blue: blueDisplay,
+            blueUnit: m.blue_unit || '',
             weightClass: m.weight_class || ''
         });
     });
@@ -532,17 +655,17 @@ async function printMatchSchedule() {
         d.write('<div class="print-header"><h1>' + eventName + '</h1><h2>对阵表</h2></div>');
         d.write('<div class="venue-title"><img class="venue-logo" src="' + window.location.origin + '/images/logo.png">' + venue + '场地</div>');
         d.write('<table>');
-        d.write('<thead><tr><th>场次</th><th>轮次</th><th class="blue-col">青方</th><th>代表队</th><th>VS</th><th class="red-col">红方</th><th>代表队</th><th>级别</th></tr></thead>');
+        d.write('<thead><tr><th>场次</th><th>轮次</th><th class="red-col">红方</th><th>代表队</th><th>VS</th><th class="blue-col">青方</th><th>代表队</th><th>级别</th></tr></thead>');
         d.write('<tbody>');
         items.forEach(item => {
             d.write('<tr>');
             d.write('<td>' + item.matchNo + '</td>');
             d.write('<td>' + item.round + '</td>');
-            d.write('<td class="blue-col name-col">' + item.blue + '</td>');
-            d.write('<td>' + item.blueUnit + '</td>');
-            d.write('<td class="vs-col">VS</td>');
             d.write('<td class="red-col name-col">' + item.red + '</td>');
             d.write('<td>' + item.redUnit + '</td>');
+            d.write('<td class="vs-col">VS</td>');
+            d.write('<td class="blue-col name-col">' + item.blue + '</td>');
+            d.write('<td>' + item.blueUnit + '</td>');
             d.write('<td>' + item.weightClass + '</td>');
             d.write('</tr>');
         });
@@ -571,11 +694,11 @@ const MATCHES_COLUMNS = [
     { key: 'venueLetter', label: '场地' },
     { key: 'matchNo', label: '场次' },
     { key: 'roundName', label: '轮次' },
-    { key: 'blueName', label: '青方姓名' },
-    { key: 'blueUnit', label: '青方代表队' },
-    { key: 'vs', label: 'VS' },
     { key: 'redName', label: '红方姓名' },
     { key: 'redUnit', label: '红方代表队' },
+    { key: 'vs', label: 'VS' },
+    { key: 'blueName', label: '青方姓名' },
+    { key: 'blueUnit', label: '青方代表队' },
     { key: 'weightClass', label: '级别' },
     { key: 'status', label: '状态' },
     { key: 'score', label: '比分' },
@@ -1197,8 +1320,15 @@ function printMatchScheduleWithData(matches) {
     matches.forEach(m => {
         const venueLetter = m.venue || (m.venue_no || '').charAt(0) || '';
         const matchNo = m.match_id || '';
-        const blueDisplay = m.blue_name || m.blue_prev_winner || '';
-        const redDisplay = m.red_name || m.red_prev_winner || '';
+        const isRFinal = m.round_name === 'R.Final' || m.zone === 'final';
+        let blueDisplay, redDisplay;
+        if (isRFinal) {
+            redDisplay = (m.red_name && m.red_name !== '上区第一') ? m.red_name : '上区第一';
+            blueDisplay = (m.blue_name && m.blue_name !== '下区第一') ? m.blue_name : '下区第一';
+        } else {
+            redDisplay = m.red_name || m.red_prev_winner || '';
+            blueDisplay = m.blue_name || m.blue_prev_winner || '';
+        }
 
         const key = venueLetter;
         if (!venueGroups.has(key)) venueGroups.set(key, []);
@@ -1207,10 +1337,10 @@ function printMatchScheduleWithData(matches) {
             venueLetter,
             matchNo,
             round: formatRoundName(m.round_name || ''),
-            blue: blueDisplay,
-            blueUnit: m.blue_unit || '',
             red: redDisplay,
             redUnit: m.red_unit || '',
+            blue: blueDisplay,
+            blueUnit: m.blue_unit || '',
             weightClass: m.weight_class || ''
         });
     });
@@ -1251,17 +1381,17 @@ function printMatchScheduleWithData(matches) {
         d.write('<div class="print-header"><h1>' + eventName + '</h1><h2>对阵表</h2></div>');
         d.write('<div class="venue-title"><img class="venue-logo" src="' + window.location.origin + '/images/logo.png">' + venue + '场地</div>');
         d.write('<table>');
-        d.write('<thead><tr><th>场次</th><th>轮次</th><th class="blue-col">青方</th><th>代表队</th><th>VS</th><th class="red-col">红方</th><th>代表队</th><th>级别</th></tr></thead>');
+        d.write('<thead><tr><th>场次</th><th>轮次</th><th class="red-col">红方</th><th>代表队</th><th>VS</th><th class="blue-col">青方</th><th>代表队</th><th>级别</th></tr></thead>');
         d.write('<tbody>');
         items.forEach(item => {
             d.write('<tr>');
             d.write('<td>' + item.matchNo + '</td>');
             d.write('<td>' + item.round + '</td>');
-            d.write('<td class="blue-col name-col">' + item.blue + '</td>');
-            d.write('<td>' + item.blueUnit + '</td>');
-            d.write('<td class="vs-col">VS</td>');
             d.write('<td class="red-col name-col">' + item.red + '</td>');
             d.write('<td>' + item.redUnit + '</td>');
+            d.write('<td class="vs-col">VS</td>');
+            d.write('<td class="blue-col name-col">' + item.blue + '</td>');
+            d.write('<td>' + item.blueUnit + '</td>');
             d.write('<td>' + item.weightClass + '</td>');
             d.write('</tr>');
         });

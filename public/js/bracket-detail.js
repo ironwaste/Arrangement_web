@@ -240,7 +240,7 @@ async function printAllBrackets() {
             const { drawn } = await checkAthletesDrawn();
             if (drawn && !_autoGenerateAttempted) {
                 try {
-                    const resp = await apiPost('/auto-arrange/generate-bracket', { event_id: currentEventId });
+                    const resp = await apiPost('/jj-brackets/generate', { event_id: currentEventId });
                     if (resp.success && resp.data && resp.data.generated > 0) {
                         _autoGenerateAttempted = true;
                         clearBracketCache();
@@ -297,7 +297,8 @@ async function printAllBrackets() {
         const { drawn: drawnCheck } = await checkAthletesDrawn();
         if (drawnCheck && !_autoGenerateAttempted) {
             try {
-                const resp = await apiPost('/auto-arrange/generate-bracket', { event_id: currentEventId });
+                const refreshUrl = isJJEvent() ? '/jj-brackets/generate' : '/auto-arrange/generate-bracket';
+                const resp = await apiPost(refreshUrl, { event_id: currentEventId });
                 if (resp.success && resp.data && resp.data.generated > 0) {
                     _autoGenerateAttempted = true;
                     clearBracketCache();
@@ -385,12 +386,15 @@ async function printAllBrackets() {
                 participantOriginPlacement: 'none',
                 customRoundName: (info) => {
                     if (isPrintDoubleElim) {
-                        const stageName = info.stageName || '';
-                        const isLosers = stageName.includes('败者') || stageName.includes('Loser');
+                        const isLosers = info.groupType === 'loser-bracket';
                         if (info.roundNumber && info.roundCount) {
                             const d = Math.pow(2, info.roundCount - info.roundNumber);
-                            if (d === 1) return isLosers ? '败者组决赛' : '决赛';
-                            return isLosers ? `败者组1/${d}` : `1/${d}`;
+                            if (d === 1) return isLosers ? 'D.Final' : '决赛';
+                            if (isLosers) {
+                                if (info.roundNumber === info.roundCount - 1) return 'Bro.m';
+                                return `Rep.${info.roundNumber}`;
+                            }
+                            return `1/${d}`;
                         }
                         return undefined;
                     }
@@ -738,12 +742,15 @@ async function viewAllBrackets() {
                 participantOriginPlacement: 'none',
                 customRoundName: (info2) => {
                     if (isDoubleElim) {
-                        const stageName = info2.stageName || '';
-                        const isLosers = stageName.includes('败者') || stageName.includes('Loser');
+                        const isLosers = info2.groupType === 'loser-bracket';
                         if (info2.roundNumber && info2.roundCount) {
                             const d = Math.pow(2, info2.roundCount - info2.roundNumber);
-                            if (d === 1) return isLosers ? '败者组决赛' : '决赛';
-                            return isLosers ? `败者组1/${d}` : `1/${d}`;
+                            if (d === 1) return isLosers ? 'D.Final' : '决赛';
+                            if (isLosers) {
+                                if (info2.roundNumber === info2.roundCount - 1) return 'Bro.m';
+                                return `Rep.${info2.roundNumber}`;
+                            }
+                            return `1/${d}`;
                         }
                         return undefined;
                     }
@@ -943,7 +950,7 @@ async function viewBracketTree() {
             }
             console.log(`[自动生成] 级别「${weightClass}」尚未生成对阵图，开始自动生成...`);
             try {
-                const resp = await apiPost('/auto-arrange/generate-bracket', { event_id: currentEventId, weight_class: weightClass });
+                const resp = await apiPost('/jj-brackets/generate-single', { event_id: currentEventId, weight_class: weightClass });
                 if (resp.success && resp.data && resp.data.generated > 0) {
                     console.log(`[自动生成] 级别「${weightClass}」对阵表生成成功`);
                     _autoGenerateAttempted = true;
@@ -1058,6 +1065,23 @@ async function renderBracketViewer(data, weightClass) {
                     const stageType = info.stageType || (data.stages[0] && data.stages[0].type);
                     if (stageType === 'round_robin') {
                         return `R${info.roundNumber}`;
+                    }
+                    if (stageType === 'double_elimination') {
+                        const isLosers = info.groupType === 'loser-bracket';
+                        if (!isLosers) {
+                            if (info.roundNumber && info.roundCount) {
+                                const d = Math.pow(2, info.roundCount - info.roundNumber);
+                                if (d === 1) return 'D.Final';
+                                return `1/${d}`;
+                            }
+                        } else {
+                            const totalLosersRounds = info.roundCount;
+                            const losersRound = info.roundNumber;
+                            if (losersRound >= totalLosersRounds) return 'D.Final';
+                            if (losersRound === totalLosersRounds - 1) return 'Bro.m';
+                            return `Rep.${losersRound}`;
+                        }
+                        return undefined;
                     }
                     if (info.roundNumber && info.roundCount) {
                         const denominator = Math.pow(2, info.roundCount - info.roundNumber);
@@ -1582,12 +1606,15 @@ async function renderDoubleEliminationFromStages(weightClass, stageIds) {
                 showRankingTable: false,
                 participantOriginPlacement: 'none',
                 customRoundName: (info) => {
-                    const stageName = info.stageName || '';
-                    const isLosers = stageName.includes('败者') || stageName.includes('Loser');
+                    const isLosers = info.groupType === 'loser-bracket';
                     if (info.roundNumber && info.roundCount) {
                         const d = Math.pow(2, info.roundCount - info.roundNumber);
-                        if (d === 1) return isLosers ? '败者组决赛' : '决赛';
-                        return isLosers ? `败者组1/${d}` : `1/${d}`;
+                        if (d === 1) return isLosers ? 'D.Final' : '决赛';
+                        if (isLosers) {
+                            if (info.roundNumber === info.roundCount - 1) return 'Bro.m';
+                            return `Rep.${info.roundNumber}`;
+                        }
+                        return `1/${d}`;
                     }
                     return undefined;
                 }
@@ -1729,12 +1756,15 @@ async function renderDoubleEliminationFromMatches(weightClass, matches) {
                     showRankingTable: false,
                     participantOriginPlacement: 'none',
                     customRoundName: (info) => {
-                        const stageName = info.stageName || '';
-                        const isLosers = stageName.includes('败者') || stageName.includes('Loser');
+                        const isLosers = info.groupType === 'loser-bracket';
                         if (info.roundNumber && info.roundCount) {
                             const d = Math.pow(2, info.roundCount - info.roundNumber);
-                            if (d === 1) return isLosers ? '败者组决赛' : '决赛';
-                            return isLosers ? `败者组1/${d}` : `1/${d}`;
+                            if (d === 1) return isLosers ? 'D.Final' : '决赛';
+                            if (isLosers) {
+                                if (info.roundNumber === info.roundCount - 1) return 'Bro.m';
+                                return `Rep.${info.roundNumber}`;
+                            }
+                            return `1/${d}`;
                         }
                         return undefined;
                     }
@@ -1800,16 +1830,21 @@ async function renderJJBracketFromMatches(weightClass, jjMatches) {
 
     let currentCompMode = getCompModeForClass(weightClass);
 
-    if (currentCompMode === 'round_robin') {
-        if (typeof JJBracketRenderer !== 'undefined') {
+    if (typeof JJBracketRenderer !== 'undefined') {
+        if (currentCompMode === 'round_robin') {
             await JJBracketRenderer.renderRoundRobin(weightClass, jjMatches);
             return;
         }
-    }
-
-    if (currentCompMode === 'single_elimination') {
-        if (typeof JJBracketRenderer !== 'undefined') {
+        if (currentCompMode === 'pool_elimination') {
+            await JJBracketRenderer.renderPoolElimination(weightClass, jjMatches);
+            return;
+        }
+        if (currentCompMode === 'single_elimination') {
             await JJBracketRenderer.renderSingleElimination(weightClass, jjMatches);
+            return;
+        }
+        if (currentCompMode === 'double_elimination') {
+            await JJBracketRenderer.renderDoubleElimination(weightClass, jjMatches);
             return;
         }
     }
@@ -1817,9 +1852,9 @@ async function renderJJBracketFromMatches(weightClass, jjMatches) {
     const participantMap = new Map();
     let pid = 1;
     const getParticipantId = (name, team, isBlue) => {
+        if (!name || name === '上区第一' || name === '下区第一') return null;
         const key = name + '|' + (team || '');
         if (!participantMap.has(key)) {
-            
             const nameWithUnit = team ? `${name || '待定'} (${team})` : (name || '待定');
             const displayName = `${nameWithUnit}`;
             participantMap.set(key, { id: pid++, name: displayName });
@@ -1830,9 +1865,25 @@ async function renderJJBracketFromMatches(weightClass, jjMatches) {
     jjMatches.forEach(m => {
         if (m.jiu_jitsu_blue_athlete_name) getParticipantId(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, true);
         if (m.jiu_jitsu_red_athlete_name) getParticipantId(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, false);
+        if (m.jiu_jitsu_blue_prev_winner) {
+            const prevName = m.jiu_jitsu_blue_prev_winner.replace(/胜者$/, '').replace(/负者$/, '');
+            if (!participantMap.has(prevName + '|')) {
+                participantMap.set(prevName + '|', { id: pid++, name: prevName });
+            }
+        }
+        if (m.jiu_jitsu_red_prev_winner_id) {
+            const prevName = m.jiu_jitsu_red_prev_winner_id.replace(/胜者$/, '').replace(/负者$/, '');
+            if (!participantMap.has(prevName + '|')) {
+                participantMap.set(prevName + '|', { id: pid++, name: prevName });
+            }
+        }
     });
 
     const participants = Array.from(participantMap.values());
+    if (participants.length === 0) {
+        document.getElementById('bracketDisplay').innerHTML = '<p style="text-align: center; color: #909399; padding: 40px 0;">该级别暂无参赛者数据</p>';
+        return;
+    }
     const totalRounds = jjMatches[0].jiu_jitsu_match_category_total_rounds || 1;
     const sampleMatch = jjMatches.find(m => m.jiu_jitsu_match_round_name) || null;
 
@@ -1861,11 +1912,13 @@ async function renderJJBracketFromMatches(weightClass, jjMatches) {
     for (let r = 1; r <= maxRound; r++) {
         let roundName;
         if (currentCompMode === 'round_robin') {
-            roundName = `R${r}`;
+            const matchCount = jjMatches.filter(m => m.jiu_jitsu_match_round_num === r).length;
+            if (jjMatches.length === 1 && matchCount === 1) roundName = 'Final';
+            else roundName = `R${r}`;
         } else if (currentCompMode === 'double_elimination') {
             const winnersRounds = Math.ceil(Math.log2(participants.length || 2));
             if (r <= winnersRounds) {
-                if (r === winnersRounds) roundName = 'Final';
+                if (r === winnersRounds) roundName = 'D.Final';
                 else {
                     const d = Math.pow(2, winnersRounds - r);
                     roundName = `1/${d}`;
@@ -1874,8 +1927,12 @@ async function renderJJBracketFromMatches(weightClass, jjMatches) {
                 const losersRound = r - winnersRounds;
                 const totalLosersRounds = maxRound - winnersRounds;
                 if (losersRound === totalLosersRounds) roundName = 'Bro.m';
-                else roundName = `rep.${losersRound}`;
+                else roundName = `Rep.${losersRound}`;
             }
+        } else if (currentCompMode === 'pool_elimination') {
+            const matchInRound = jjMatches.find(m => m.jiu_jitsu_match_round_num === r);
+            if (matchInRound && matchInRound.jiu_jitsu_match_round_name === 'R.Final') roundName = 'R.Final';
+            else roundName = `R${r}`;
         } else {
             const totalRounds = Math.ceil(Math.log2(participants.length || 2));
             if (r === totalRounds) roundName = 'Final';
@@ -1898,12 +1955,12 @@ async function renderJJBracketFromMatches(weightClass, jjMatches) {
         if (m.jiu_jitsu_match_status === '进行中') status = 'running';
         if (m.jiu_jitsu_match_status === '已结束') status = 'completed';
 
-        const opponent1 = blueId ? { id: blueId, score: 0 } : null;
-        const opponent2 = redId ? { id: redId, score: 0 } : null;
+        const opponent1 = redId ? { id: redId, score: 0 } : null;
+        const opponent2 = blueId ? { id: blueId, score: 0 } : null;
 
         if (m.jiu_jitsu_match_status === '已结束') {
-            if (m.jiu_jitsu_winner === '青方' && opponent1) opponent1.result = 'win';
-            if (m.jiu_jitsu_winner === '红方' && opponent2) opponent2.result = 'win';
+            if (m.jiu_jitsu_winner === '红方' && opponent1) opponent1.result = 'win';
+            if (m.jiu_jitsu_winner === '青方' && opponent2) opponent2.result = 'win';
         }
 
         const venueLabel = m.jiu_jitsu_match_venue || m.jiu_jitsu_match_id || `${idx + 1}`;
@@ -1943,6 +2000,7 @@ async function renderJJBracketFromMatches(weightClass, jjMatches) {
                 participantOriginPlacement: 'none',
                 customRoundName: (info) => {
                     if (currentCompMode === 'round_robin') {
+                        if (jjMatches.length === 1) return 'Final';
                         return `R${info.roundNumber}`;
                     }
                     if (currentCompMode === 'double_elimination') {
@@ -1950,16 +2008,21 @@ async function renderJJBracketFromMatches(weightClass, jjMatches) {
                         if (info.roundNumber <= winnersRounds) {
                             if (info.roundNumber && info.roundCount) {
                                 const d = Math.pow(2, info.roundCount - info.roundNumber);
-                                if (d === 1) return 'Final';
+                                if (d === 1) return 'D.Final';
                                 return `1/${d}`;
                             }
                         } else {
                             const losersRound = info.roundNumber - winnersRounds;
                             const totalLosersRounds = maxRound - winnersRounds;
                             if (losersRound === totalLosersRounds) return 'Bro.m';
-                            return `rep.${losersRound}`;
+                            return `Rep.${losersRound}`;
                         }
                         return undefined;
+                    }
+                    if (currentCompMode === 'pool_elimination') {
+                        const matchInRound = jjMatches.find(m => m.jiu_jitsu_match_round_num === info.roundNumber);
+                        if (matchInRound && matchInRound.jiu_jitsu_match_round_name === 'R.Final') return 'R.Final';
+                        return `R${info.roundNumber}`;
                     }
                     if (info.roundNumber && info.roundCount) {
                         const d = Math.pow(2, info.roundCount - info.roundNumber);
@@ -1983,7 +2046,7 @@ async function renderJJBracketInSection(selector, weightClass, jjMatches) {
 
     let currentCompMode = getCompModeForClass(weightClass);
 
-    if ((currentCompMode === 'round_robin' || currentCompMode === 'single_elimination') && typeof JJBracketRenderer !== 'undefined') {
+    if (typeof JJBracketRenderer !== 'undefined') {
         await JJBracketRenderer.renderInSection(selector, weightClass, jjMatches, currentCompMode);
         return;
     }
@@ -2032,11 +2095,13 @@ async function renderJJBracketInSection(selector, weightClass, jjMatches) {
     for (let r = 1; r <= maxRound; r++) {
         let roundName;
         if (currentCompMode === 'round_robin') {
-            roundName = `R${r}`;
+            const matchCount = jjMatches.filter(m => m.jiu_jitsu_match_round_num === r).length;
+            if (jjMatches.length === 1 && matchCount === 1) roundName = 'Final';
+            else roundName = `R${r}`;
         } else if (currentCompMode === 'double_elimination') {
             const winnersRounds = Math.ceil(Math.log2(participants.length || 2));
             if (r <= winnersRounds) {
-                if (r === winnersRounds) roundName = 'Final';
+                if (r === winnersRounds) roundName = 'D.Final';
                 else {
                     const d = Math.pow(2, winnersRounds - r);
                     roundName = `1/${d}`;
@@ -2045,8 +2110,12 @@ async function renderJJBracketInSection(selector, weightClass, jjMatches) {
                 const losersRound = r - winnersRounds;
                 const totalLosersRounds = maxRound - winnersRounds;
                 if (losersRound === totalLosersRounds) roundName = 'Bro.m';
-                else roundName = `rep.${losersRound}`;
+                else roundName = `Rep.${losersRound}`;
             }
+        } else if (currentCompMode === 'pool_elimination') {
+            const matchInRound = jjMatches.find(m => m.jiu_jitsu_match_round_num === r);
+            if (matchInRound && matchInRound.jiu_jitsu_match_round_name === 'R.Final') roundName = 'R.Final';
+            else roundName = `R${r}`;
         } else {
             const totalRounds = Math.ceil(Math.log2(participants.length || 2));
             if (r === totalRounds) roundName = 'Final';
@@ -2069,12 +2138,12 @@ async function renderJJBracketInSection(selector, weightClass, jjMatches) {
         if (m.jiu_jitsu_match_status === '进行中') status = 'running';
         if (m.jiu_jitsu_match_status === '已结束') status = 'completed';
 
-        const opponent1 = blueId ? { id: blueId, score: 0 } : null;
-        const opponent2 = redId ? { id: redId, score: 0 } : null;
+        const opponent1 = redId ? { id: redId, score: 0 } : null;
+        const opponent2 = blueId ? { id: blueId, score: 0 } : null;
 
         if (m.jiu_jitsu_match_status === '已结束') {
-            if (m.jiu_jitsu_winner === '青方' && opponent1) opponent1.result = 'win';
-            if (m.jiu_jitsu_winner === '红方' && opponent2) opponent2.result = 'win';
+            if (m.jiu_jitsu_winner === '红方' && opponent1) opponent1.result = 'win';
+            if (m.jiu_jitsu_winner === '青方' && opponent2) opponent2.result = 'win';
         }
 
         const venueLabel = m.jiu_jitsu_match_venue || m.jiu_jitsu_match_id || `${idx + 1}`;
@@ -2107,6 +2176,7 @@ async function renderJJBracketInSection(selector, weightClass, jjMatches) {
                 participantOriginPlacement: 'none',
                 customRoundName: (info) => {
                     if (currentCompMode === 'round_robin') {
+                        if (jjMatches.length === 1) return 'Final';
                         return `R${info.roundNumber}`;
                     }
                     if (currentCompMode === 'double_elimination') {
@@ -2114,16 +2184,21 @@ async function renderJJBracketInSection(selector, weightClass, jjMatches) {
                         if (info.roundNumber <= winnersRounds) {
                             if (info.roundNumber && info.roundCount) {
                                 const d = Math.pow(2, info.roundCount - info.roundNumber);
-                                if (d === 1) return 'Final';
+                                if (d === 1) return 'D.Final';
                                 return `1/${d}`;
                             }
                         } else {
                             const losersRound = info.roundNumber - winnersRounds;
                             const totalLosersRounds = maxRound - winnersRounds;
                             if (losersRound === totalLosersRounds) return 'Bro.m';
-                            return `rep.${losersRound}`;
+                            return `Rep.${losersRound}`;
                         }
                         return undefined;
+                    }
+                    if (currentCompMode === 'pool_elimination') {
+                        const matchInRound = jjMatches.find(m => m.jiu_jitsu_match_round_num === info.roundNumber);
+                        if (matchInRound && matchInRound.jiu_jitsu_match_round_name === 'R.Final') return 'R.Final';
+                        return `R${info.roundNumber}`;
                     }
                     if (info.roundNumber && info.roundCount) {
                         const d = Math.pow(2, info.roundCount - info.roundNumber);
@@ -2199,6 +2274,15 @@ function clearBracketCache() {
     try {
         sessionStorage.removeItem(_bracketCacheKey());
     } catch (e) {}
+}
+
+async function refreshBracketDisplay() {
+    try {
+        clearBracketCache();
+        await viewBracketTree();
+    } catch (e) {
+        console.warn('刷新对阵图失败:', e);
+    }
 }
 
 function parseWeightFromClass(cls) {
@@ -2426,8 +2510,11 @@ async function generateSelectedBracket() {
     if (!confirm(`确定要生成「${selectedBracketClass}」的对阵图吗？`)) return;
 
     try {
-        const resp = await apiPost('/auto-arrange/generate-bracket', { event_id: currentEventId, weight_class: selectedBracketClass });
+        const generateUrl = isJJEvent() ? '/jj-brackets/generate-single' : '/auto-arrange/generate-bracket';
+        const resp = await apiPost(generateUrl, { event_id: currentEventId, weight_class: selectedBracketClass });
         if (resp.success) {
+            if (isJJEvent()) {
+            }
             alert(`「${selectedBracketClass}」对阵图生成成功`);
             clearBracketCache();
             await loadBracketClassList();
@@ -2450,9 +2537,12 @@ async function generateAllBrackets() {
     if (!confirm('确定要生成全部级别的对阵图吗？')) return;
 
     try {
-        const resp = await apiPost('/auto-arrange/generate-bracket', { event_id: currentEventId });
+        const generateUrl = isJJEvent() ? '/jj-brackets/generate' : '/auto-arrange/generate-bracket';
+        const resp = await apiPost(generateUrl, { event_id: currentEventId });
         if (resp.success) {
             const data = resp.data || {};
+            if (isJJEvent()) {
+            }
             clearBracketCache();
             alert(`全部对阵图生成完成！成功: ${data.generated || 0}个级别${data.errors && data.errors.length > 0 ? '，失败: ' + data.errors.length + '个' : ''}`);
             await loadBracketClassList();
@@ -2654,7 +2744,16 @@ function showBracketClassInfo(cls, allAthletes) {
 function formatRoundName(name) {
     if (!name) return '';
     if (name === '决赛' || name === 'Final') return 'Final';
+    if (name === 'D.Final') return 'D.Final';
+    if (name === 'R.Final') return 'R.Final';
     if (name === '半决赛') return '1/2';
+    if (name === 'Bro.m') return 'Bro.m';
+    const repMatch = name.match(/^Rep\.(\d+)$/);
+    if (repMatch) return name;
+    const rrMatch = name.match(/^R(\d+)$/);
+    if (rrMatch) return name;
+    const oldRrMatch = name.match(/^循环赛(\d+)$/);
+    if (oldRrMatch) return `R${oldRrMatch[1]}`;
     const m = name.match(/(\d+)\/(\d+)决赛?/);
     if (m) return m[1] + '/' + m[2];
     return name;
@@ -2731,7 +2830,8 @@ async function resetBracketScore() {
     if (!confirm('确定要重置该比赛数据吗？比分、胜方、获胜方式、场地号和场次号将全部清空。')) return;
 
     try {
-        const resp = await fetch(API_BASE + '/matches/' + matchId + '/reset', {
+        const resetUrl = isJJEvent() ? `${API_BASE}/jj-brackets/matches/${matchId}/reset` : `${API_BASE}/matches/${matchId}/reset`;
+        const resp = await fetch(resetUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         });
@@ -2836,7 +2936,8 @@ async function saveBracketScore() {
     if (!winner) { alert('请选择获胜方'); return; }
 
     try {
-        const resp = await fetch(API_BASE + '/matches/' + matchId, {
+        const scoreUrl = isJJEvent() ? `${API_BASE}/jj-brackets/matches/${matchId}` : `${API_BASE}/matches/${matchId}`;
+        const resp = await fetch(scoreUrl, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
