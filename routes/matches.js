@@ -92,22 +92,23 @@ module.exports = (db) => {
       }
 
       matches.sort((a, b) => {
-        const vnA = a.venue_no || '';
-        const vnB = b.venue_no || '';
+        const vnA = (a.kyougi_match_venue !== null && a.kyougi_match_id !== null) ? (String(a.kyougi_match_venue) + String(a.kyougi_match_id)) : '';
+        const vnB = (b.kyougi_match_venue !== null && b.kyougi_match_id !== null) ? (String(b.kyougi_match_venue) + String(b.kyougi_match_id)) : '';
         const numA = parseInt(vnA.replace(/^[A-Za-z]+/, '')) || 0;
         const numB = parseInt(vnB.replace(/^[A-Za-z]+/, '')) || 0;
         const letterA = vnA.replace(/[0-9]+$/, '');
         const letterB = vnB.replace(/[0-9]+$/, '');
         if (letterA !== letterB) return letterA.localeCompare(letterB);
         if (numA !== numB) return numA - numB;
-        return (a.round || 0) - (b.round || 0);
+        return (a.kyougi_match_round_num || 0) - (b.kyougi_match_round_num || 0);
       });
 
       const venueGroups = {};
       for (const m of matches) {
-        const letter = m.venue || 'A';
+        const letter = (m.kyougi_match_venue || '').charAt(0) || 'A';
         if (!venueGroups[letter]) venueGroups[letter] = { min: null, max: null };
-        const num = parseInt(String(m.venue_no).replace(/^[A-Za-z]+/, '')) || 0;
+        const venueNo = (m.kyougi_match_venue !== null && m.kyougi_match_id !== null) ? (String(m.kyougi_match_venue) + String(m.kyougi_match_id)) : '';
+        const num = parseInt(String(venueNo).replace(/^[A-Za-z]+/, '')) || 0;
         if (!venueGroups[letter].min || num < venueGroups[letter].min) venueGroups[letter].min = num;
         if (!venueGroups[letter].max || num > venueGroups[letter].max) venueGroups[letter].max = num;
       }
@@ -205,13 +206,13 @@ module.exports = (db) => {
         const row = ws.getRow(rowNum);
         row.height = 12.3;
 
-        const venueNo = m.venue_no || '';
-        const roundName = formatRoundNameForTemplate(m.round_name || '', m.round, m.total_rounds);
-        const blueName = m.blue_name || m.blue_prev_winner || '-';
-        const blueUnit = m.blue_unit || '';
-        const redName = m.red_name || m.red_prev_winner || '-';
-        const redUnit = m.red_unit || '';
-        const wc = m.weight_class || '';
+        const venueNo = (m.kyougi_match_venue !== null && m.kyougi_match_id !== null) ? (String(m.kyougi_match_venue) + String(m.kyougi_match_id)) : '';
+        const roundName = formatRoundNameForTemplate(m.kyougi_match_round_name || '', m.kyougi_match_round_num, m.kyougi_match_category_total_rounds);
+        const blueName = m.kyougi_blue_athlete_name || m.kyougi_blue_prev_winner || '-';
+        const blueUnit = m.kyougi_blue_athlete_team || '';
+        const redName = m.kyougi_red_athlete_name || m.kyougi_red_prev_winner_id || '-';
+        const redUnit = m.kyougi_red_athlete_team || '';
+        const wc = m.kyougi_match_categroy || '';
         const isFinal = roundName === 'Final' || roundName === '决赛';
 
         const dataCells = [
@@ -532,9 +533,9 @@ module.exports = (db) => {
   return router;
 };
 
-function formatRoundNameForTemplate(roundName, round, totalRounds) {
-  if (roundName && roundName.trim()) {
-    const rn = roundName.trim();
+function formatRoundNameForTemplate(kyougi_match_round_name, kyougi_match_round_num, kyougi_match_category_total_rounds) {
+  if (kyougi_match_round_name && kyougi_match_round_name.trim()) {
+    const rn = kyougi_match_round_name.trim();
     if (rn === '决赛' || rn === 'Final') return 'Final';
     if (rn === '半决赛' || rn === '1/2') return '1/2';
     const m = rn.match(/1\/(\d+)/);
@@ -544,9 +545,9 @@ function formatRoundNameForTemplate(roundName, round, totalRounds) {
     }
     return rn;
   }
-  if (round && totalRounds) {
-    if (round === totalRounds) return 'Final';
-    const d = Math.pow(2, totalRounds - round);
+  if (kyougi_match_round_num && kyougi_match_category_total_rounds) {
+    if (kyougi_match_round_num === kyougi_match_category_total_rounds) return 'Final';
+    const d = Math.pow(2, kyougi_match_category_total_rounds - kyougi_match_round_num);
     if (d === 2) return '1/2';
     return `1/${d}`;
   }

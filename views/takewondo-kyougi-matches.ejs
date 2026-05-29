@@ -136,7 +136,7 @@
             <label>获胜方</label>
             <input type="hidden" id="scoreWinner" value="">
             <div style="display:flex;gap:12px;">
-                <div id="winnerBlue" onclick="selectWinner('青方')" style="flex:1;text-align:center;padding:12px 0;border:2px solid #dcdfe6;border-radius:8px;cursor:pointer;font-size:16px;font-weight:bold;color:#409EFF;transition:all 0.2s;">青方</div>
+                <div id="winnerBlue" onclick="selectWinner(currentEventType === 'jiu_jitsu' ? '蓝方' : '青方')" style="flex:1;text-align:center;padding:12px 0;border:2px solid #dcdfe6;border-radius:8px;cursor:pointer;font-size:16px;font-weight:bold;color:#409EFF;transition:all 0.2s;">青方</div>
                 <div id="winnerRed" onclick="selectWinner('红方')" style="flex:1;text-align:center;padding:12px 0;border:2px solid #dcdfe6;border-radius:8px;cursor:pointer;font-size:16px;font-weight:bold;color:#F56C6C;transition:all 0.2s;">红方</div>
             </div>
         </div>
@@ -158,3 +158,17 @@
         </div>
     </div>
 </div>
+
+<script>
+(function() {
+    if (typeof currentEventType !== 'undefined' && currentEventType === 'jiu_jitsu') {
+        document.querySelectorAll('th[data-col="blueName"]').forEach(function(th) { th.textContent = '蓝方'; });
+        var scoreBlueName = document.getElementById('scoreBlueName');
+        if (scoreBlueName && scoreBlueName.textContent === '青方') scoreBlueName.textContent = '蓝方';
+        var scoreLabel = document.querySelector('label[style*="color:#409EFF"]');
+        if (scoreLabel && scoreLabel.textContent === '青方得分') scoreLabel.textContent = '蓝方得分';
+        var winnerBlue = document.getElementById('winnerBlue');
+        if (winnerBlue) winnerBlue.textContent = '蓝方';
+    }
+})();
+</script>

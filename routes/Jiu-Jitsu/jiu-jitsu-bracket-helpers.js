@@ -383,7 +383,8 @@ async function generateJJBracketForClass(db, manager, weightClass, athletes, eve
                 'UPDATE bracket_participant SET custom_data = ? WHERE name = ?',
                 [JSON.stringify({
                     id: athlete.id != null ? athlete.id : null,
-                    athlete_draw_num: athlete.athlete_draw_num != null ? athlete.athlete_draw_num : (i + 1)
+                    athlete_draw_num: athlete.athlete_draw_num != null ? athlete.athlete_draw_num : (i + 1),
+                    athlete_team: athlete.athlete_team || ''
                 }), bracketName]
             );
         }
@@ -428,7 +429,8 @@ async function generateJJBracketForClass(db, manager, weightClass, athletes, eve
                     'UPDATE bracket_participant SET custom_data = ? WHERE id = ?',
                     [JSON.stringify({
                         id: athlete.id != null ? athlete.id : null,
-                        athlete_draw_num: athlete.athlete_draw_num != null ? athlete.athlete_draw_num : (i + 1)
+                        athlete_draw_num: athlete.athlete_draw_num != null ? athlete.athlete_draw_num : (i + 1),
+                        athlete_team: athlete.athlete_team || ''
                     }), p.id]
                 );
             }
@@ -487,6 +489,7 @@ async function generateJJBracketForClass(db, manager, weightClass, athletes, eve
                     [JSON.stringify({
                         id: athlete.id != null ? athlete.id : null,
                         athlete_draw_num: athlete.athlete_draw_num != null ? athlete.athlete_draw_num : (i + 1),
+                        athlete_team: athlete.athlete_team || '',
                         zone: i < upperSize ? 'upper' : 'lower'
                     }), p.id]
                 );
@@ -594,7 +597,8 @@ async function generateJJBracketForClass(db, manager, weightClass, athletes, eve
                 'UPDATE bracket_participant SET custom_data = ? WHERE name = ?',
                 [JSON.stringify({
                     id: athlete.id != null ? athlete.id : null,
-                    athlete_draw_num: athlete.athlete_draw_num != null ? athlete.athlete_draw_num : (i + 1)
+                    athlete_draw_num: athlete.athlete_draw_num != null ? athlete.athlete_draw_num : (i + 1),
+                    athlete_team: athlete.athlete_team || ''
                 }), bracketName]
             );
         }
@@ -856,15 +860,19 @@ async function syncJJMatchesFromBracket(db, event_id, weightClass, compMode) {
 
     let effectiveCompMode = compMode;
     if (!effectiveCompMode && stageMapRows.length > 0) {
-        effectiveCompMode = stageMapRows[0].stage_type || 'single_elimination';
+        if (stageMapRows.length >= 2 && stageMapRows.some(r => r.stage_name && r.stage_name.includes('决赛'))) {
+            effectiveCompMode = 'pool_elimination';
+        } else {
+            effectiveCompMode = stageMapRows[0].stage_type || 'single_elimination';
+        }
     }
 
     const stageIds = stageMapRows.map(r => String(r.stage_id)).filter(Boolean);
 
     const nameUnitMap = new Map();
     const unitRows = await db.all(
-        'SELECT id, athlete_name, athlete_team FROM athletes WHERE event_id = ? AND athlete_category = ?',
-        [event_id, weightClass]
+        'SELECT id, athlete_name, athlete_team FROM athletes WHERE event_id = ? AND athlete_category = ? AND athlete_type = ?',
+        [event_id, weightClass, 'jiu_jitsu']
     );
     unitRows.forEach(r => { nameUnitMap.set(r.id, r.athlete_team || ''); });
 
@@ -881,7 +889,7 @@ async function syncJJMatchesFromBracket(db, event_id, weightClass, compMode) {
                 const custom = JSON.parse(p.custom_data);
                 info.id = custom.id;
                 info.athlete_draw_num = custom.athlete_draw_num;
-                info.unit = nameUnitMap.get(custom.id) || '';
+                info.unit = custom.athlete_team || nameUnitMap.get(custom.id) || '';
                 info.zone = custom.zone || '';
             }
         } catch (e) {}
@@ -1074,6 +1082,7 @@ async function syncJJMatchesFromBracket(db, event_id, weightClass, compMode) {
         let blueAthleteId = null, redAthleteId = null;
         let blueUnit = '', redUnit = '';
         let zone = '';
+        let redOppName = '', blueOppName = '';
 
         try {
             if (bm.opponent1) {
@@ -1086,6 +1095,10 @@ async function syncJJMatchesFromBracket(db, event_id, weightClass, compMode) {
                         redUnit = info.unit || '';
                         zone = info.zone || '';
                     }
+                }
+                if (opp1 && opp1.id === null && opp1.name) {
+                    redName = opp1.name;
+                    redOppName = opp1.name;
                 }
             }
         } catch (e) {}
@@ -1101,6 +1114,10 @@ async function syncJJMatchesFromBracket(db, event_id, weightClass, compMode) {
                         blueUnit = info.unit || '';
                         if (!zone) zone = info.zone || '';
                     }
+                }
+                if (opp2 && opp2.id === null && opp2.name) {
+                    blueName = opp2.name;
+                    blueOppName = opp2.name;
                 }
             }
         } catch (e) {}
@@ -1131,7 +1148,11 @@ async function syncJJMatchesFromBracket(db, event_id, weightClass, compMode) {
             matchStatus = '未开始';
         } else if (!redName || !blueName) {
             const currentStageName = stageNameMap.get(String(bm._stageId)) || '';
-            if (currentStageName.includes('决赛') && (redName.includes('第一') || blueName.includes('第一'))) {
+            const isFinalStage = currentStageName.includes('决赛') || zone === 'final';
+            const isPlaceholder = redOppName.includes('第一') || blueOppName.includes('第一');
+            if (isFinalStage && isPlaceholder) {
+                matchStatus = '未开始';
+            } else if (isFinalStage) {
                 matchStatus = '未开始';
             } else {
                 matchStatus = 'bye';

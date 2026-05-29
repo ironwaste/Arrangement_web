@@ -25,8 +25,7 @@ const {
   getFinishedKyougiMatchs,
   updateKyougiMatchVenue,
   clearKyougiMatchVenue,
-  updateKyougiMatchPrevWinners,
-  toLegacyFormat
+  updateKyougiMatchPrevWinners
 } = require('./kyougiMatchHelpers');
 
 module.exports = (db, bracketsManager) => {
@@ -365,21 +364,21 @@ module.exports = (db, bracketsManager) => {
 
       await insertKyougiMatch(db, {
         event_id: event_id ?? null,
-        weight_class: weightClass,
-        round: bm.round_number ?? 1,
-        total_rounds: maxRoundNumber,
-        venue_no: venueNo,
+        kyougi_match_categroy: weightClass,
+        kyougi_match_round_num: bm.round_number ?? 1,
+        kyougi_match_category_total_rounds: maxRoundNumber,
+        kyougi_match_venue: venueNo,
         kyougi_match_id: null,
-        blue_athlete_id: blueAthleteId ?? null,
-        blue_name: blueName,
-        blue_unit: blueUnit,
-        red_athlete_id: redAthleteId ?? null,
-        red_name: redName,
-        red_unit: redUnit,
-        winner: winner,
-        match_status: matchStatus,
-        round_name: bm.round_name ?? '',
-        bracket_match_id: bm.id
+        kyougi_blue_athlete_id: blueAthleteId ?? null,
+        kyougi_blue_athlete_name: blueName,
+        kyougi_blue_athlete_team: blueUnit,
+        kyougi_red_athlete_id: redAthleteId ?? null,
+        kyougi_red_athlete_name: redName,
+        kyougi_red_athlete_team: redUnit,
+        kyougi_winner: winner,
+        kyougi_match_status: matchStatus,
+        kyougi_match_round_name: bm.round_name ?? '',
+        kyougi_bracket_match_id: bm.id
       });
     }
 
@@ -388,7 +387,7 @@ module.exports = (db, bracketsManager) => {
   /* ==================== 对阵表重排 ==================== */
   async function reorderMatches(event_id) {
     const allMatchesRaw = await queryKyougiMatchs(db, { event_id });
-    const allMatches = allMatchesRaw.map(toLegacyFormat);
+    const allMatches = allMatchesRaw;
 
     if (!allMatches || allMatches.length === 0) return;
 
@@ -426,25 +425,25 @@ module.exports = (db, bracketsManager) => {
     }
 
     function getMinDrawNum(match) {
-      const blueDraw = drawNumMap.get(String(match.blue_athlete_id)) || 0;
-      const redDraw = drawNumMap.get(String(match.red_athlete_id)) || 0;
+      const blueDraw = drawNumMap.get(String(match.kyougi_blue_athlete_id)) || 0;
+      const redDraw = drawNumMap.get(String(match.kyougi_red_athlete_id)) || 0;
       if (blueDraw && redDraw) return Math.min(blueDraw, redDraw);
       return blueDraw || redDraw || 0;
     }
 
     const firstRoundMap = new Map();
     for (const m of allMatches) {
-      if (!firstRoundMap.has(m.weight_class) || m.round < firstRoundMap.get(m.weight_class)) {
-        firstRoundMap.set(m.weight_class, m.round);
+      if (!firstRoundMap.has(m.kyougi_match_categroy) || m.kyougi_match_round_num < firstRoundMap.get(m.kyougi_match_categroy)) {
+        firstRoundMap.set(m.kyougi_match_categroy, m.kyougi_match_round_num);
       }
     }
 
     const byeIds = new Set();
     const matches = allMatches.filter(m => {
-      const firstRound = firstRoundMap.get(m.weight_class);
-      if (m.round === firstRound) {
-        const blue = (m.blue_name || '').trim();
-        const red = (m.red_name || '').trim();
+      const firstRound = firstRoundMap.get(m.kyougi_match_categroy);
+      if (m.kyougi_match_round_num === firstRound) {
+        const blue = (m.kyougi_blue_athlete_name || '').trim();
+        const red = (m.kyougi_red_athlete_name || '').trim();
         if (!blue || !red) {
           byeIds.add(m.id);
           return false;
@@ -454,8 +453,8 @@ module.exports = (db, bracketsManager) => {
     });
 
     matches.sort((a, b) => {
-      const sa = schemeMap.get(a.weight_class) || { category_venue: '', category_date_num: '', category_order: '' };
-      const sb = schemeMap.get(b.weight_class) || { category_venue: '', category_date_num: '', category_order: '' };
+      const sa = schemeMap.get(a.kyougi_match_categroy) || { category_venue: '', category_date_num: '', category_order: '' };
+      const sb = schemeMap.get(b.kyougi_match_categroy) || { category_venue: '', category_date_num: '', category_order: '' };
 
       const unitA = parseFloat(sa.category_date_num) || 0;
       const unitB = parseFloat(sb.category_date_num) || 0;
@@ -464,8 +463,8 @@ module.exports = (db, bracketsManager) => {
       const venueCmp = sa.category_venue.localeCompare(sb.category_venue);
       if (venueCmp !== 0) return venueCmp;
 
-      const denomA = parseRoundDenominator(a.round_name);
-      const denomB = parseRoundDenominator(b.round_name);
+      const denomA = parseRoundDenominator(a.kyougi_match_round_name);
+      const denomB = parseRoundDenominator(b.kyougi_match_round_name);
       if (denomA !== denomB) return denomB - denomA;
 
       const orderA = parseFloat(sa.category_order) || 0;
@@ -476,7 +475,7 @@ module.exports = (db, bracketsManager) => {
       const minDrawB = getMinDrawNum(b);
       if (minDrawA !== minDrawB) return minDrawA - minDrawB;
 
-      return a.round - b.round;
+      return a.kyougi_match_round_num - b.kyougi_match_round_num;
     });
 
     const venueUnitMatchCounters = new Map();
@@ -487,7 +486,7 @@ module.exports = (db, bracketsManager) => {
     );
 
     for (const m of matches) {
-      const sc = schemeMap.get(m.weight_class) || { category_venue: '', category_date_num: '1' };
+      const sc = schemeMap.get(m.kyougi_match_categroy) || { category_venue: '', category_date_num: '1' };
       const venue = sc.category_venue;
       const unitNum = parseInt(sc.category_date_num) || 1;
       const key = `${venue}|${unitNum}`;
@@ -511,20 +510,20 @@ module.exports = (db, bracketsManager) => {
       'SELECT * FROM taekwondo_kyougi_matchs WHERE event_id = ? AND kyougi_match_id IS NOT NULL',
       [event_id]
     );
-    const updatedMatches = updatedMatchesRaw.map(toLegacyFormat);
+    const updatedMatches = updatedMatchesRaw;
 
     const classFirstRound = new Map();
     for (const m of updatedMatches) {
-      if (!classFirstRound.has(m.weight_class) || m.round < classFirstRound.get(m.weight_class)) {
-        classFirstRound.set(m.weight_class, m.round);
+      if (!classFirstRound.has(m.kyougi_match_categroy) || m.kyougi_match_round_num < classFirstRound.get(m.kyougi_match_categroy)) {
+        classFirstRound.set(m.kyougi_match_categroy, m.kyougi_match_round_num);
       }
     }
 
     const bracketMatchIdToDisplayLabel = new Map();
     for (const m of updatedMatches) {
-      if (m.bracket_match_id && m.kyougi_match_id) {
+      if (m.kyougi_bracket_match_id && m.kyougi_match_id) {
         const displayLabel = (m.kyougi_match_venue || '') + String(m.kyougi_match_id);
-        bracketMatchIdToDisplayLabel.set(m.bracket_match_id, displayLabel);
+        bracketMatchIdToDisplayLabel.set(m.kyougi_bracket_match_id, displayLabel);
       }
     }
 
@@ -563,14 +562,14 @@ module.exports = (db, bracketsManager) => {
     }
 
     for (const m of updatedMatches) {
-      const firstRound = classFirstRound.get(m.weight_class) || 1;
-      if (m.round <= firstRound) continue;
+      const firstRound = classFirstRound.get(m.kyougi_match_categroy) || 1;
+      if (m.kyougi_match_round_num <= firstRound) continue;
 
-      let bluePrevWinner = m.blue_prev_winner || '';
-      let redPrevWinner = m.red_prev_winner || '';
+      let bluePrevWinner = m.kyougi_blue_prev_winner || '';
+      let redPrevWinner = m.kyougi_red_prev_winner_id || '';
 
-      if (!m.blue_name || !m.blue_name.trim()) {
-        const prevBmId = findPrevBracketMatchId(m.bracket_match_id, 'blue');
+      if (!m.kyougi_blue_athlete_name || !m.kyougi_blue_athlete_name.trim()) {
+        const prevBmId = findPrevBracketMatchId(m.kyougi_bracket_match_id, 'blue');
         if (prevBmId) {
           const prevLabel = bracketMatchIdToDisplayLabel.get(prevBmId);
           if (prevLabel) {
@@ -581,8 +580,8 @@ module.exports = (db, bracketsManager) => {
         bluePrevWinner = '';
       }
 
-      if (!m.red_name || !m.red_name.trim()) {
-        const prevBmId = findPrevBracketMatchId(m.bracket_match_id, 'red');
+      if (!m.kyougi_red_athlete_name || !m.kyougi_red_athlete_name.trim()) {
+        const prevBmId = findPrevBracketMatchId(m.kyougi_bracket_match_id, 'red');
         if (prevBmId) {
           const prevLabel = bracketMatchIdToDisplayLabel.get(prevBmId);
           if (prevLabel) {
@@ -653,23 +652,19 @@ module.exports = (db, bracketsManager) => {
 
         matches.push({
           event_id: eventId,
-          weight_class: weightClass,
-          round: roundNumber,
-          total_rounds: totalRounds,
-          round_name: roundName,
-          blue_athlete_id: blueAthlete ? blueAthlete.event_id : null,
-          blue_athlete_no: blueAthlete ? blueAthlete.athlete_no : null,
-          blue_name: blueAthlete ? blueAthlete.name : null,
-          blue_unit: blueAthlete ? (blueAthlete.unit || blueAthlete.team || blueAthlete.origin_unit) : null,
-          blue_draw_no: blueAthlete ? blueAthlete.draw_no : null,
-          red_athlete_id: redAthlete ? redAthlete.event_id : null,
-          red_athlete_no: redAthlete ? redAthlete.athlete_no : null,
-          red_name: redAthlete ? redAthlete.name : null,
-          red_unit: redAthlete ? (redAthlete.unit || redAthlete.team || redAthlete.origin_unit) : null,
-          red_draw_no: redAthlete ? redAthlete.draw_no : null,
-          venue: '',
-          venue_no: matches.length,
-          match_status: roundIdx === 0 ? '待开始' : '未开始'
+          kyougi_match_categroy: weightClass,
+          kyougi_match_round_num: roundNumber,
+          kyougi_match_category_total_rounds: totalRounds,
+          kyougi_match_round_name: roundName,
+          kyougi_blue_athlete_id: blueAthlete ? blueAthlete.event_id : null,
+          kyougi_blue_athlete_name: blueAthlete ? blueAthlete.name : null,
+          kyougi_blue_athlete_team: blueAthlete ? (blueAthlete.unit || blueAthlete.team || blueAthlete.origin_unit) : null,
+          kyougi_red_athlete_id: redAthlete ? redAthlete.event_id : null,
+          kyougi_red_athlete_name: redAthlete ? redAthlete.name : null,
+          kyougi_red_athlete_team: redAthlete ? (redAthlete.unit || redAthlete.team || redAthlete.origin_unit) : null,
+          kyougi_match_venue: null,
+          kyougi_match_id: null,
+          kyougi_match_status: roundIdx === 0 ? '待开始' : '未开始'
         });
       }
     }
@@ -695,23 +690,19 @@ module.exports = (db, bracketsManager) => {
 
         matches.push({
           event_id: eventId,
-          weight_class: weightClass,
-          round: roundNumber,
-          total_rounds: rrData.length,
-          round_name: roundName,
-          blue_athlete_id: ath1 ? ath1.id : null,
-          blue_athlete_no: ath1 ? ath1.athlete_no : null,
-          blue_name: ath1 ? ath1.name : null,
-          blue_unit: ath1 ? (ath1.unit || ath1.team || ath1.origin_unit) : null,
-          blue_draw_no: ath1 ? ath1.draw_no : null,
-          red_athlete_id: ath2 ? ath2.id : null,
-          red_athlete_no: ath2 ? ath2.athlete_no : null,
-          red_name: ath2 ? ath2.name : null,
-          red_unit: ath2 ? (ath2.unit || ath2.team || ath2.origin_unit) : null,
-          red_draw_no: ath2 ? ath2.draw_no : null,
-          venue: '',
-          venue_no: matches.length,
-          match_status: '待开始'
+          kyougi_match_categroy: weightClass,
+          kyougi_match_round_num: roundNumber,
+          kyougi_match_category_total_rounds: rrData.length,
+          kyougi_match_round_name: roundName,
+          kyougi_blue_athlete_id: ath1 ? ath1.id : null,
+          kyougi_blue_athlete_name: ath1 ? ath1.name : null,
+          kyougi_blue_athlete_team: ath1 ? (ath1.unit || ath1.team || ath1.origin_unit) : null,
+          kyougi_red_athlete_id: ath2 ? ath2.id : null,
+          kyougi_red_athlete_name: ath2 ? ath2.name : null,
+          kyougi_red_athlete_team: ath2 ? (ath2.unit || ath2.team || ath2.origin_unit) : null,
+          kyougi_match_venue: null,
+          kyougi_match_id: null,
+          kyougi_match_status: '待开始'
         });
       }
     }
@@ -738,23 +729,19 @@ module.exports = (db, bracketsManager) => {
 
         matches.push({
           event_id: eventId,
-          weight_class: weightClass,
-          round: roundNumber,
-          total_rounds: upperMatches.length + lowerMatches.length + (hasFinal ? 1 : 0),
-          round_name: roundName,
-          blue_athlete_id: ath1 ? ath1.id : null,
-          blue_athlete_no: ath1 ? ath1.athlete_no : null,
-          blue_name: ath1 ? ath1.name : null,
-          blue_unit: ath1 ? (ath1.unit || ath1.team || ath1.origin_unit) : null,
-          blue_draw_no: ath1 ? ath1.draw_no : null,
-          red_athlete_id: ath2 ? ath2.id : null,
-          red_athlete_no: ath2 ? ath2.athlete_no : null,
-          red_name: ath2 ? ath2.name : null,
-          red_unit: ath2 ? (ath2.unit || ath2.team || ath2.origin_unit) : null,
-          red_draw_no: ath2 ? ath2.draw_no : null,
-          venue: '',
-          venue_no: matches.length,
-          match_status: '待开始'
+          kyougi_match_categroy: weightClass,
+          kyougi_match_round_num: roundNumber,
+          kyougi_match_category_total_rounds: upperMatches.length + lowerMatches.length + (hasFinal ? 1 : 0),
+          kyougi_match_round_name: roundName,
+          kyougi_blue_athlete_id: ath1 ? ath1.id : null,
+          kyougi_blue_athlete_name: ath1 ? ath1.name : null,
+          kyougi_blue_athlete_team: ath1 ? (ath1.unit || ath1.team || ath1.origin_unit) : null,
+          kyougi_red_athlete_id: ath2 ? ath2.id : null,
+          kyougi_red_athlete_name: ath2 ? ath2.name : null,
+          kyougi_red_athlete_team: ath2 ? (ath2.unit || ath2.team || ath2.origin_unit) : null,
+          kyougi_match_venue: null,
+          kyougi_match_id: null,
+          kyougi_match_status: '待开始'
         });
       }
     }
@@ -771,23 +758,19 @@ module.exports = (db, bracketsManager) => {
 
         matches.push({
           event_id: eventId,
-          weight_class: weightClass,
-          round: roundNumber,
-          total_rounds: upperRounds + lowerMatches.length + (hasFinal ? 1 : 0),
-          round_name: roundName,
-          blue_athlete_id: ath1 ? ath1.id : null,
-          blue_athlete_no: ath1 ? ath1.athlete_no : null,
-          blue_name: ath1 ? ath1.name : null,
-          blue_unit: ath1 ? (ath1.unit || ath1.team || ath1.origin_unit) : null,
-          blue_draw_no: ath1 ? ath1.draw_no : null,
-          red_athlete_id: ath2 ? ath2.id : null,
-          red_athlete_no: ath2 ? ath2.athlete_no : null,
-          red_name: ath2 ? ath2.name : null,
-          red_unit: ath2 ? (ath2.unit || ath2.team || ath2.origin_unit) : null,
-          red_draw_no: ath2 ? ath2.draw_no : null,
-          venue: '',
-          venue_no: matches.length,
-          match_status: '待开始'
+          kyougi_match_categroy: weightClass,
+          kyougi_match_round_num: roundNumber,
+          kyougi_match_category_total_rounds: upperRounds + lowerMatches.length + (hasFinal ? 1 : 0),
+          kyougi_match_round_name: roundName,
+          kyougi_blue_athlete_id: ath1 ? ath1.id : null,
+          kyougi_blue_athlete_name: ath1 ? ath1.name : null,
+          kyougi_blue_athlete_team: ath1 ? (ath1.unit || ath1.team || ath1.origin_unit) : null,
+          kyougi_red_athlete_id: ath2 ? ath2.id : null,
+          kyougi_red_athlete_name: ath2 ? ath2.name : null,
+          kyougi_red_athlete_team: ath2 ? (ath2.unit || ath2.team || ath2.origin_unit) : null,
+          kyougi_match_venue: null,
+          kyougi_match_id: null,
+          kyougi_match_status: '待开始'
         });
       }
     }
@@ -795,23 +778,19 @@ module.exports = (db, bracketsManager) => {
     if (hasFinal) {
       matches.push({
         event_id: eventId,
-        weight_class: weightClass,
-        round: 999,
-        total_rounds: upperRounds + lowerMatches.length + 1,
-        round_name: '循环赛决赛',
-        blue_athlete_id: null,
-        blue_athlete_no: null,
-        blue_name: null,
-        blue_unit: null,
-        blue_draw_no: null,
-        red_athlete_id: null,
-        red_athlete_no: null,
-        red_name: null,
-        red_unit: null,
-        red_draw_no: null,
-        venue: '',
-        venue_no: matches.length,
-        match_status: '未开始'
+        kyougi_match_categroy: weightClass,
+        kyougi_match_round_num: 999,
+        kyougi_match_category_total_rounds: upperRounds + lowerMatches.length + 1,
+        kyougi_match_round_name: '循环赛决赛',
+        kyougi_blue_athlete_id: null,
+        kyougi_blue_athlete_name: null,
+        kyougi_blue_athlete_team: null,
+        kyougi_red_athlete_id: null,
+        kyougi_red_athlete_name: null,
+        kyougi_red_athlete_team: null,
+        kyougi_match_venue: null,
+        kyougi_match_id: null,
+        kyougi_match_status: '未开始'
       });
     }
 
@@ -832,11 +811,11 @@ module.exports = (db, bracketsManager) => {
       const eventTitle = eventName ? eventName.name : '比赛';
 
       const matchesRaw = await getFinishedKyougiMatchs(db);
-      const matches = matchesRaw.map(toLegacyFormat);
+      const matches = matchesRaw;
       const matchesByClass = {};
       for (const m of matches) {
-        if (!matchesByClass[m.weight_class]) matchesByClass[m.weight_class] = [];
-        matchesByClass[m.weight_class].push(m);
+        if (!matchesByClass[m.kyougi_match_categroy]) matchesByClass[m.kyougi_match_categroy] = [];
+        matchesByClass[m.kyougi_match_categroy].push(m);
       }
 
       const units = await db.all('SELECT DISTINCT athlete_team FROM athletes');
@@ -851,31 +830,31 @@ module.exports = (db, bracketsManager) => {
 
       for (const wc in matchesByClass) {
         const classMatches = matchesByClass[wc];
-        const totalRounds = classMatches[0] ? classMatches[0].total_rounds : 1;
-        const finalMatch = classMatches.find(m => m.round === totalRounds);
+        const totalRounds = classMatches[0] ? classMatches[0].kyougi_match_category_total_rounds : 1;
+        const finalMatch = classMatches.find(m => m.kyougi_match_round_num === totalRounds);
         if (!finalMatch) continue;
 
-        const goldUnit = finalMatch.winner === '青方' ? finalMatch.blue_unit : finalMatch.red_unit;
+        const goldUnit = finalMatch.kyougi_winner === '青方' ? finalMatch.kyougi_blue_athlete_team : finalMatch.kyougi_red_athlete_team;
         if (goldUnit && unitScores[goldUnit]) unitScores[goldUnit].gold++;
-        const silverUnit = finalMatch.winner === '青方' ? finalMatch.red_unit : finalMatch.blue_unit;
+        const silverUnit = finalMatch.kyougi_winner === '青方' ? finalMatch.kyougi_red_athlete_team : finalMatch.kyougi_blue_athlete_team;
         if (silverUnit && unitScores[silverUnit]) unitScores[silverUnit].silver++;
 
-        const semiMatches = classMatches.filter(m => m.round === totalRounds - 1);
+        const semiMatches = classMatches.filter(m => m.kyougi_match_round_num === totalRounds - 1);
         for (const semi of semiMatches) {
-          const loserUnit = semi.winner === '青方' ? semi.red_unit : semi.blue_unit;
+          const loserUnit = semi.kyougi_winner === '青方' ? semi.kyougi_red_athlete_team : semi.kyougi_blue_athlete_team;
           if (loserUnit && unitScores[loserUnit]) unitScores[loserUnit].bronze++;
         }
         if (totalRounds >= 3) {
-          const quarterMatches = classMatches.filter(m => m.round === totalRounds - 2);
+          const quarterMatches = classMatches.filter(m => m.kyougi_match_round_num === totalRounds - 2);
           for (const q of quarterMatches) {
-            const loserUnit = q.winner === '青方' ? q.red_unit : q.blue_unit;
+            const loserUnit = q.kyougi_winner === '青方' ? q.kyougi_red_athlete_team : q.kyougi_blue_athlete_team;
             if (loserUnit && unitScores[loserUnit]) unitScores[loserUnit].fourth++;
           }
         }
         if (totalRounds >= 4) {
-          const eighthMatches = classMatches.filter(m => m.round === totalRounds - 3);
+          const eighthMatches = classMatches.filter(m => m.kyougi_match_round_num === totalRounds - 3);
           for (const e of eighthMatches) {
-            const loserUnit = e.winner === '青方' ? e.red_unit : e.blue_unit;
+            const loserUnit = e.kyougi_winner === '青方' ? e.kyougi_red_athlete_team : e.kyougi_blue_athlete_team;
             if (loserUnit && unitScores[loserUnit]) unitScores[loserUnit].fifth++;
           }
         }
@@ -1148,24 +1127,24 @@ module.exports = (db, bracketsManager) => {
       for (let idx = 0; idx < sortedClasses.length; idx++) {
         const wc = sortedClasses[idx];
         const classMatches = matchesByClass[wc];
-        const totalRounds = classMatches[0] ? classMatches[0].total_rounds : 1;
-        const finalMatch = classMatches.find(m => m.round === totalRounds);
+        const totalRounds = classMatches[0] ? classMatches[0].kyougi_match_category_total_rounds : 1;
+        const finalMatch = classMatches.find(m => m.kyougi_match_round_num === totalRounds);
         if (!finalMatch) continue;
 
-        const goldName = finalMatch.winner === '青方' ? finalMatch.blue_name : finalMatch.red_name;
-        const goldUnit = finalMatch.winner === '青方' ? finalMatch.blue_unit : finalMatch.red_unit;
-        const silverName = finalMatch.winner === '青方' ? finalMatch.red_name : finalMatch.blue_name;
-        const silverUnit = finalMatch.winner === '青方' ? finalMatch.red_unit : finalMatch.blue_unit;
+        const goldName = finalMatch.kyougi_winner === '青方' ? finalMatch.kyougi_blue_athlete_name : finalMatch.kyougi_red_athlete_name;
+        const goldUnit = finalMatch.kyougi_winner === '青方' ? finalMatch.kyougi_blue_athlete_team : finalMatch.kyougi_red_athlete_team;
+        const silverName = finalMatch.kyougi_winner === '青方' ? finalMatch.kyougi_red_athlete_name : finalMatch.kyougi_blue_athlete_name;
+        const silverUnit = finalMatch.kyougi_winner === '青方' ? finalMatch.kyougi_red_athlete_team : finalMatch.kyougi_blue_athlete_team;
 
-        const semiMatches = classMatches.filter(m => m.round === totalRounds - 1);
-        const bronzeNames = semiMatches.map(m => m.winner === '青方' ? m.red_name : m.blue_name);
-        const bronzeUnits = semiMatches.map(m => m.winner === '青方' ? m.red_unit : m.blue_unit);
+        const semiMatches = classMatches.filter(m => m.kyougi_match_round_num === totalRounds - 1);
+        const bronzeNames = semiMatches.map(m => m.kyougi_winner === '青方' ? m.kyougi_red_athlete_name : m.kyougi_blue_athlete_name);
+        const bronzeUnits = semiMatches.map(m => m.kyougi_winner === '青方' ? m.kyougi_red_athlete_team : m.kyougi_blue_athlete_team);
 
         let fifthNames = [], fifthUnits = [];
         if (totalRounds >= 3) {
-          const quarterMatches = classMatches.filter(m => m.round === totalRounds - 2);
-          fifthNames = quarterMatches.map(m => m.winner === '青方' ? m.red_name : m.blue_name);
-          fifthUnits = quarterMatches.map(m => m.winner === '青方' ? m.red_unit : m.blue_unit);
+          const quarterMatches = classMatches.filter(m => m.kyougi_match_round_num === totalRounds - 2);
+          fifthNames = quarterMatches.map(m => m.kyougi_winner === '青方' ? m.kyougi_red_athlete_name : m.kyougi_blue_athlete_name);
+          fifthUnits = quarterMatches.map(m => m.kyougi_winner === '青方' ? m.kyougi_red_athlete_team : m.kyougi_blue_athlete_team);
         }
 
         ws2.mergeCells(currentRow, 1, currentRow + 1, 1);

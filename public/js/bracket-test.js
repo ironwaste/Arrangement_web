@@ -1254,7 +1254,7 @@ function showMatchScheduleDetail(weightClass, athletes, mode) {
         const rowStyle = m.is_final_placeholder ? 'background:#fdf6ec;' : (idx % 2 === 0 ? 'background:#fafafa;' : '');
         html += `<tr style="${rowStyle}">`;
         html += `<td style="padding:8px;border:1px solid #dcdfe6;text-align:center;font-weight:bold;">${idx + 1}</td>`;
-        html += `<td style="padding:8px;border:1px solid #dcdfe6;text-align:center;"><span style="background:#e6a23c;color:#fff;padding:2px 8px;border-radius:3px;font-size:11px;">${m.round_name}</span></td>`;
+        html += `<td style="padding:8px;border:1px solid #dcdfe6;text-align:center;"><span style="background:#e6a23c;color:#fff;padding:2px 8px;border-radius:3px;font-size:11px;">${m.kyougi_match_round_name}</span></td>`;
         
         if (m.is_final_placeholder) {
             html += `<td style="padding:8px;border:1px solid #dcdfe6;">`;
@@ -1281,15 +1281,15 @@ function showMatchScheduleDetail(weightClass, athletes, mode) {
             html += `</select></td>`;
             html += `<td style="padding:8px;border:1px solid #dcdfe6;" id="final_red_unit_${m.id}">下区第一</td>`;
         } else {
-            const blueName = m.blue_name ? `#${m.blue_draw_no} ${m.blue_name}` : '';
-            const blueUnit = m.blue_unit || '';
-            const redName = m.red_name ? `#${m.red_draw_no} ${m.red_name}` : '';
-            const redUnit = m.red_unit || '';
+            const blueName = m.kyougi_blue_athlete_name ? `${m.kyougi_blue_athlete_name}` : '';
+            const blueUnit = m.kyougi_blue_athlete_team || '';
+            const redName = m.kyougi_red_athlete_name ? `${m.kyougi_red_athlete_name}` : '';
+            const redUnit = m.kyougi_red_athlete_team || '';
             
-            html += `<td style="padding:8px;border:1px solid #dcdfe6;color:${m.blue_name ? '#303133' : '#909399'};">${blueName || '待定'}</td>`;
+            html += `<td style="padding:8px;border:1px solid #dcdfe6;color:${m.kyougi_blue_athlete_name ? '#303133' : '#909399'};">${blueName || '待定'}</td>`;
             html += `<td style="padding:8px;border:1px solid #dcdfe6;color:#909399;font-size:12px;">${blueUnit}</td>`;
             html += `<td style="padding:8px;border:1px solid #dcdfe6;text-align:center;font-weight:bold;color:#e6a23c;">vs</td>`;
-            html += `<td style="padding:8px;border:1px solid #dcdfe6;color:${m.red_name ? '#303133' : '#909399'};">${redName || '待定'}</td>`;
+            html += `<td style="padding:8px;border:1px solid #dcdfe6;color:${m.kyougi_red_athlete_name ? '#303133' : '#909399'};">${redName || '待定'}</td>`;
             html += `<td style="padding:8px;border:1px solid #dcdfe6;color:#909399;font-size:12px;">${redUnit}</td>`;
         }
         

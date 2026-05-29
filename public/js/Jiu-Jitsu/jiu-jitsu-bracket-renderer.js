@@ -19,7 +19,7 @@
  *
  * 各赛制渲染方法对应关系：
  *   - round_robin         → renderRoundRobin / _renderRoundRobinInSection
- *   - pool_elimination    → renderPoolElimination / _renderPoolEliminationInSection
+ *   - pool_elimination    → _renderPoolEliminationInline
  *   - single_elimination  → renderSingleElimination → _renderElimination
  *   - double_elimination  → renderDoubleElimination → _renderElimination(compMode='double')
  *
@@ -37,6 +37,28 @@
  *   注意：不使用 brackets-viewer 的 double_elimination 类型（该类型有硬编码的完整败者组+Grand Final结构）
  */
 const JJBracketRenderer = {
+
+    _attachVenueLabels: function(container, jjMatches) {
+        if (!container || !jjMatches || jjMatches.length === 0) return;
+        const venueMap = new Map();
+        for (const m of jjMatches) {
+            const vn = (m.jiu_jitsu_match_venue !== null && m.jiu_jitsu_match_id !== null)
+                ? (String(m.jiu_jitsu_match_venue) + String(m.jiu_jitsu_match_id)) : '';
+            if (m.id && vn) venueMap.set(String(m.id), vn);
+        }
+        if (venueMap.size === 0) return;
+        container.querySelectorAll('.match').forEach(matchEl => {
+            const matchId = matchEl.getAttribute('data-match-id');
+            const vn = venueMap.get(matchId);
+            if (vn) {
+                const labelEl = matchEl.querySelector('.opponents > span:first-child');
+                if (labelEl) {
+                    labelEl.textContent = vn;
+                    if (/^[A-Z]\d{3,}$/.test(vn)) labelEl.classList.add('venue-highlight');
+                }
+            }
+        });
+    },
 
     /**
      * 渲染单循环赛对阵图（独立页面模式）
@@ -116,7 +138,7 @@ const JJBracketRenderer = {
 
             if (m.jiu_jitsu_match_status === '已结束') {
                 if (m.jiu_jitsu_winner === '红方' && opponent1) opponent1.result = 'win';
-                if (m.jiu_jitsu_winner === '青方' && opponent2) opponent2.result = 'win';
+                if (m.jiu_jitsu_winner === '蓝方' && opponent2) opponent2.result = 'win';
             }
 
             const rid = roundNumToId.get(m.jiu_jitsu_match_round_num) || 1;
@@ -156,226 +178,10 @@ const JJBracketRenderer = {
                     }
                 });
                 requestAnimationFrame(() => { replaceByeText(document.getElementById('bracket-viewer-container')); });
+                this._attachVenueLabels(document.getElementById('bracket-viewer-container'), jjMatches);
                 attachBracketDblClick();
             } catch (err) {
                 console.error('渲染循环赛对阵图失败:', err);
-            }
-        }
-    },
-
-    /**
-     * 渲染分区循环赛对阵图（独立页面模式）
-     * 创建1个stage（2个group）+ 决赛stage
-     * group1: 上区循环, group2: 下区循环
-     * 决赛中"上区第一"/"下区第一"作为虚拟participant显示。
-     *
-     * @param {string} weightClass  级别名称
-     * @param {Array} jjMatches    该级别 jiu_jitsu_matchs 记录
-     */
-    renderPoolElimination: async function(weightClass, jjMatches) {
-        if (!jjMatches || jjMatches.length === 0) return;
-
-        const participantMap = new Map();
-        let pid = 1;
-        const getPid = (name, team) => {
-            if (!name || name === '上区第一' || name === '下区第一') return null;
-            const key = name + '|' + (team || '');
-            if (!participantMap.has(key)) {
-                participantMap.set(key, { id: pid++, name: team ? `${name} (${team})` : name });
-            }
-            return participantMap.get(key).id;
-        };
-
-        jjMatches.forEach(m => {
-            if (m.jiu_jitsu_blue_athlete_name) getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team);
-            if (m.jiu_jitsu_red_athlete_name) getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team);
-        });
-
-        if (participantMap.size === 0) {
-            document.getElementById('bracketDisplay').innerHTML = '<p style="text-align:center;color:#909399;padding:40px 0;">该级别暂无参赛者数据</p>';
-            return;
-        }
-
-        const upperMatches = jjMatches.filter(m => m.jiu_jitsu_match_zone === 'upper');
-        const lowerMatches = jjMatches.filter(m => m.jiu_jitsu_match_zone === 'lower');
-        const finalMatches = jjMatches.filter(m => m.jiu_jitsu_match_zone === 'final' || m.jiu_jitsu_match_round_name === 'R.Final');
-
-        const upperFirstPid = pid++;
-        participantMap.set('上区第一|', { id: upperFirstPid, name: '上区第一' });
-        const lowerFirstPid = pid++;
-        participantMap.set('下区第一|', { id: lowerFirstPid, name: '下区第一' });
-
-        const participants = Array.from(participantMap.values());
-
-        const stages = [];
-        const groups = [];
-        const rounds = [];
-        const matches = [];
-        const matchGames = [];
-
-        let stageId = 0;
-        let groupId = 0;
-        let roundId = 0;
-        let matchId = 0;
-
-        const divisionalSid = ++stageId;
-
-        const upperPids = new Set();
-        upperMatches.forEach(m => {
-            const rId = m.jiu_jitsu_red_athlete_name ? getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team) : null;
-            const bId = m.jiu_jitsu_blue_athlete_name ? getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team) : null;
-            if (rId) upperPids.add(rId);
-            if (bId) upperPids.add(bId);
-        });
-        const lowerPids = new Set();
-        lowerMatches.forEach(m => {
-            const rId = m.jiu_jitsu_red_athlete_name ? getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team) : null;
-            const bId = m.jiu_jitsu_blue_athlete_name ? getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team) : null;
-            if (rId) lowerPids.add(rId);
-            if (bId) lowerPids.add(bId);
-        });
-
-        stages.push({
-            id: divisionalSid, tournament_id: Number(currentEventId),
-            name: `${weightClass}_分区循环赛`, type: 'round_robin', number: divisionalSid,
-            settings: { size: upperPids.size + lowerPids.size, groupCount: 2 }
-        });
-
-        const addZoneGroup = (zoneMatches, zoneLabel) => {
-            if (zoneMatches.length === 0) return;
-            groupId++;
-            const gid = groupId;
-
-            const zoneRoundNums = [...new Set(zoneMatches.map(m => m.jiu_jitsu_match_round_num).filter(n => n && n < 999))].sort((a, b) => a - b);
-            const zoneMaxRound = zoneRoundNums.length;
-
-            groups.push({ id: gid, stage_id: divisionalSid, number: gid, name: zoneLabel });
-
-            const roundNumToRid = new Map();
-            const firstRoundId = roundId + 1;
-            for (let r = 1; r <= zoneMaxRound; r++) {
-                roundId++;
-                roundNumToRid.set(zoneRoundNums[r - 1], roundId);
-                rounds.push({ id: roundId, stage_id: divisionalSid, group_id: gid, number: r, name: `R${r}` });
-            }
-
-            zoneMatches.forEach(m => {
-                const redId = m.jiu_jitsu_red_athlete_name ? getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team) : null;
-                const blueId = m.jiu_jitsu_blue_athlete_name ? getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team) : null;
-
-                let status = 2;
-                if (m.jiu_jitsu_match_status === 'bye') status = 4;
-                if (m.jiu_jitsu_match_status === '进行中') status = 3;
-                if (m.jiu_jitsu_match_status === '已结束') status = 4;
-
-                const opponent1 = redId ? { id: redId, score: 0 } : null;
-                const opponent2 = blueId ? { id: blueId, score: 0 } : null;
-
-                if (m.jiu_jitsu_match_status === '已结束') {
-                    if (m.jiu_jitsu_winner === '红方' && opponent1) opponent1.result = 'win';
-                    if (m.jiu_jitsu_winner === '青方' && opponent2) opponent2.result = 'win';
-                }
-
-                matchId++;
-                const rid = roundNumToRid.get(m.jiu_jitsu_match_round_num) || firstRoundId;
-                matches.push({
-                    id: m.id || matchId, stage_id: divisionalSid, group_id: gid,
-                    round_id: rid, number: matchId,
-                    child_count: 1, opponent1, opponent2, status
-                });
-
-                matchGames.push({
-                    id: matchId, stage_id: divisionalSid, parent_id: m.id || matchId,
-                    number: 1, status,
-                    opponent1: opponent1 ? { ...opponent1 } : null,
-                    opponent2: opponent2 ? { ...opponent2 } : null
-                });
-            });
-        };
-
-        addZoneGroup(upperMatches, '上半区');
-        addZoneGroup(lowerMatches, '下半区');
-
-        if (finalMatches.length > 0) {
-            stageId++;
-            const sid = stageId;
-            groupId++;
-            const gid = groupId;
-            roundId++;
-            const rid = roundId;
-
-            stages.push({
-                id: sid, tournament_id: Number(currentEventId),
-                name: `${weightClass}_决赛`, type: 'round_robin', number: sid,
-                settings: { groupCount: 1 }
-            });
-            groups.push({ id: gid, stage_id: sid, number: 1, name: 'R.Final' });
-            rounds.push({ id: rid, stage_id: sid, group_id: gid, number: 1, name: 'R.Final' });
-
-            finalMatches.forEach(m => {
-                let redId, blueId;
-                if (m.jiu_jitsu_red_athlete_name && m.jiu_jitsu_red_athlete_name !== '上区第一' && m.jiu_jitsu_red_athlete_name !== '下区第一') {
-                    redId = getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team);
-                } else if (m.jiu_jitsu_red_athlete_name === '上区第一') {
-                    redId = upperFirstPid;
-                } else if (m.jiu_jitsu_red_athlete_name === '下区第一') {
-                    redId = lowerFirstPid;
-                }
-                if (m.jiu_jitsu_blue_athlete_name && m.jiu_jitsu_blue_athlete_name !== '上区第一' && m.jiu_jitsu_blue_athlete_name !== '下区第一') {
-                    blueId = getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team);
-                } else if (m.jiu_jitsu_blue_athlete_name === '下区第一') {
-                    blueId = lowerFirstPid;
-                } else if (m.jiu_jitsu_blue_athlete_name === '上区第一') {
-                    blueId = upperFirstPid;
-                }
-
-                let status = 2;
-                if (m.jiu_jitsu_match_status === '已结束') status = 4;
-
-                const opponent1 = redId ? { id: redId, score: 0 } : null;
-                const opponent2 = blueId ? { id: blueId, score: 0 } : null;
-
-                matchId++;
-                matches.push({
-                    id: m.id || matchId, stage_id: sid, group_id: gid,
-                    round_id: rid, number: matchId,
-                    child_count: 1, opponent1, opponent2, status
-                });
-                matchGames.push({
-                    id: matchId, stage_id: sid, parent_id: m.id || matchId,
-                    number: 1, status,
-                    opponent1: opponent1 ? { ...opponent1 } : null,
-                    opponent2: opponent2 ? { ...opponent2 } : null
-                });
-            });
-        }
-
-        const bracketData = { stages, groups, rounds, matches, matchGames, participants };
-
-        document.getElementById('bracketDisplay').innerHTML = `
-            <h3 style="margin-bottom:16px;">${weightClass} 分区循环赛对阵图</h3>
-            <div id="bracket-viewer-container" class="brackets-viewer" style="overflow-x:auto;padding:16px;background:#fff;border-radius:8px;"></div>
-        `;
-
-        await new Promise(resolve => setTimeout(resolve, 100));
-
-        if (window.bracketsViewer) {
-            try {
-                await window.bracketsViewer.render(bracketData, {
-                    selector: '#bracket-viewer-container',
-                    clear: true,
-                    showRankingTable: true,
-                    participantOriginPlacement: 'none',
-                    customRoundName: (info) => {
-                        const stageName = info.stageName || '';
-                        if (stageName.includes('决赛')) return 'R.Final';
-                        return `R${info.roundNumber}`;
-                    }
-                });
-                requestAnimationFrame(() => { replaceByeText(document.getElementById('bracket-viewer-container')); });
-                attachBracketDblClick();
-            } catch (err) {
-                console.error('渲染分区循环赛对阵图失败:', err);
             }
         }
     },
@@ -411,7 +217,7 @@ const JJBracketRenderer = {
         if (compMode === 'round_robin') {
             await this._renderRoundRobinInSection(container, weightClass, jjMatches);
         } else if (compMode === 'pool_elimination') {
-            await this._renderPoolEliminationInSection(container, weightClass, jjMatches);
+            await this._renderPoolEliminationInline(container, weightClass, jjMatches);
         } else {
             await this._renderEliminationInSection(container, weightClass, jjMatches, compMode);
         }
@@ -471,7 +277,7 @@ const JJBracketRenderer = {
 
             if (m.jiu_jitsu_match_status === '已结束') {
                 if (m.jiu_jitsu_winner === '红方' && opponent1) opponent1.result = 'win';
-                if (m.jiu_jitsu_winner === '青方' && opponent2) opponent2.result = 'win';
+                if (m.jiu_jitsu_winner === '蓝方' && opponent2) opponent2.result = 'win';
             }
 
             return { opponent1, opponent2, status };
@@ -619,6 +425,7 @@ const JJBracketRenderer = {
                     }
                 });
                 requestAnimationFrame(() => { replaceByeText(document.getElementById('bracket-viewer-container')); });
+                this._attachVenueLabels(document.getElementById('bracket-viewer-container'), jjMatches);
                 attachBracketDblClick();
             } catch (err) {
                 console.error('渲染对阵图失败:', err);
@@ -698,17 +505,13 @@ const JJBracketRenderer = {
                 showRankingTable: !isFinal, participantOriginPlacement: 'none',
                 customRoundName: (info) => isFinal ? 'Final' : `R${info.roundNumber}`
             });
+            this._attachVenueLabels(document.getElementById(sectionId), jjMatches);
         } catch (e) {
             console.warn(`渲染循环赛 ${weightClass} 失败:`, e);
         }
     },
 
-    /**
-     * 分区循环赛 Section 列表渲染（嵌入模式）
-     * 与 renderPoolElimination 逻辑相同，但渲染到指定的容器元素
-     * 创建1个stage（2个group）+ 决赛stage
-     */
-    _renderPoolEliminationInSection: async function(container, weightClass, jjMatches) {
+    _renderPoolEliminationInline: async function(container, weightClass, jjMatches) {
         if (!window.bracketsViewer) return;
         const sectionId = 'jj-pe-' + weightClass.replace(/[^a-zA-Z0-9]/g, '');
         const div = document.createElement('div');
@@ -749,7 +552,7 @@ const JJBracketRenderer = {
         const matchGames = [];
         let stageId = 0, groupId = 0, roundId = 0, matchId = 0;
 
-        const divisionalSid = ++stageId;
+        const sid = ++stageId;
 
         const upperPids = new Set();
         upperMatches.forEach(m => {
@@ -766,7 +569,9 @@ const JJBracketRenderer = {
             if (bId) lowerPids.add(bId);
         });
 
-        stages.push({ id: divisionalSid, tournament_id: Number(currentEventId), name: `${weightClass}_分区循环赛`, type: 'round_robin', number: divisionalSid, settings: { size: upperPids.size + lowerPids.size, groupCount: 2 } });
+        const totalSize = upperPids.size + lowerPids.size;
+        const groupCount = finalMatches.length > 0 ? 3 : 2;
+        stages.push({ id: sid, tournament_id: Number(currentEventId), name: `${weightClass}_分区循环赛`, type: 'round_robin', number: sid, settings: { size: totalSize, groupCount } });
 
         const addZoneGroup = (zoneMatches, zoneLabel) => {
             if (zoneMatches.length === 0) return;
@@ -775,14 +580,14 @@ const JJBracketRenderer = {
             const zRoundNums = [...new Set(zoneMatches.map(m => m.jiu_jitsu_match_round_num).filter(n => n && n < 999))].sort((a, b) => a - b);
             const zMaxRound = zRoundNums.length;
 
-            groups.push({ id: gid, stage_id: divisionalSid, number: gid, name: zoneLabel });
+            groups.push({ id: gid, stage_id: sid, number: gid, name: zoneLabel });
 
             const roundNumToRid = new Map();
             const firstRoundId = roundId + 1;
             for (let r = 1; r <= zMaxRound; r++) {
                 roundId++;
                 roundNumToRid.set(zRoundNums[r - 1], roundId);
-                rounds.push({ id: roundId, stage_id: divisionalSid, group_id: gid, number: r, name: `R${r}` });
+                rounds.push({ id: roundId, stage_id: sid, group_id: gid, number: r, name: `R${r}` });
             }
 
             zoneMatches.forEach(m => {
@@ -793,21 +598,27 @@ const JJBracketRenderer = {
                 if (m.jiu_jitsu_match_status === '进行中') status = 3;
                 const opponent1 = redId ? { id: redId, score: 0 } : null;
                 const opponent2 = blueId ? { id: blueId, score: 0 } : null;
+                if (m.jiu_jitsu_match_status === '已结束') {
+                    if (m.jiu_jitsu_winner === '红方' && opponent1) opponent1.result = 'win';
+                    if (m.jiu_jitsu_winner === '蓝方' && opponent2) opponent2.result = 'win';
+                }
                 matchId++;
                 const rid = roundNumToRid.get(m.jiu_jitsu_match_round_num) || firstRoundId;
-                matches.push({ id: m.id || matchId, stage_id: divisionalSid, group_id: gid, round_id: rid, number: matchId, child_count: 1, opponent1, opponent2, status });
-                matchGames.push({ id: matchId, stage_id: divisionalSid, parent_id: m.id || matchId, number: 1, status, opponent1: opponent1 ? { ...opponent1 } : null, opponent2: opponent2 ? { ...opponent2 } : null });
+                matches.push({ id: m.id || matchId, stage_id: sid, group_id: gid, round_id: rid, number: matchId, child_count: 1, opponent1, opponent2, status });
+                matchGames.push({ id: matchId, stage_id: sid, parent_id: m.id || matchId, number: 1, status, opponent1: opponent1 ? { ...opponent1 } : null, opponent2: opponent2 ? { ...opponent2 } : null });
             });
         };
 
-        addZoneGroup(upperMatches, '上半区');
-        addZoneGroup(lowerMatches, '下半区');
+        addZoneGroup(upperMatches, '上区循环赛');
+        addZoneGroup(lowerMatches, '下区循环赛');
 
         if (finalMatches.length > 0) {
-            stageId++; groupId++; roundId++;
-            const sid = stageId, gid = groupId, rid = roundId;
-            stages.push({ id: sid, tournament_id: Number(currentEventId), name: `${weightClass}_决赛`, type: 'round_robin', number: sid, settings: { groupCount: 1 } });
-            groups.push({ id: gid, stage_id: sid, number: 1, name: 'R.Final' });
+            groupId++;
+            const gid = groupId;
+            roundId++;
+            const rid = roundId;
+
+            groups.push({ id: gid, stage_id: sid, number: gid, name: '分区循环赛决赛' });
             rounds.push({ id: rid, stage_id: sid, group_id: gid, number: 1, name: 'R.Final' });
 
             finalMatches.forEach(m => {
@@ -830,6 +641,10 @@ const JJBracketRenderer = {
                 if (m.jiu_jitsu_match_status === '已结束') status = 4;
                 const opponent1 = redId ? { id: redId, score: 0 } : null;
                 const opponent2 = blueId ? { id: blueId, score: 0 } : null;
+                if (m.jiu_jitsu_match_status === '已结束') {
+                    if (m.jiu_jitsu_winner === '红方' && opponent1) opponent1.result = 'win';
+                    if (m.jiu_jitsu_winner === '蓝方' && opponent2) opponent2.result = 'win';
+                }
                 matchId++;
                 matches.push({ id: m.id || matchId, stage_id: sid, group_id: gid, round_id: rid, number: matchId, child_count: 1, opponent1, opponent2, status });
                 matchGames.push({ id: matchId, stage_id: sid, parent_id: m.id || matchId, number: 1, status, opponent1: opponent1 ? { ...opponent1 } : null, opponent2: opponent2 ? { ...opponent2 } : null });
@@ -841,18 +656,17 @@ const JJBracketRenderer = {
                 selector: '#' + sectionId, clear: true,
                 showRankingTable: true, participantOriginPlacement: 'none',
                 customRoundName: (info) => {
-                    const sn = info.stageName || '';
-                    if (sn.includes('决赛')) return 'R.Final';
+                    if (info.groupName === '分区循环赛决赛') return 'R.Final';
                     return `R${info.roundNumber}`;
                 }
             });
+            this._attachVenueLabels(document.getElementById(sectionId), jjMatches);
         } catch (e) {
             console.warn(`渲染分区循环赛 ${weightClass} 失败:`, e);
         }
     },
 
     /**
-     * 淘汰赛 Section 列表渲染（嵌入模式）
      * 与 _renderElimination 逻辑相同，但渲染到指定的容器元素
      */
     _renderEliminationInSection: async function(container, weightClass, jjMatches, compMode) {
@@ -897,7 +711,7 @@ const JJBracketRenderer = {
             const opponent2 = blueId ? { id: blueId, score: 0 } : null;
             if (m.jiu_jitsu_match_status === '已结束') {
                 if (m.jiu_jitsu_winner === '红方' && opponent1) opponent1.result = 'win';
-                if (m.jiu_jitsu_winner === '青方' && opponent2) opponent2.result = 'win';
+                if (m.jiu_jitsu_winner === '蓝方' && opponent2) opponent2.result = 'win';
             }
             return { opponent1, opponent2, status };
         };
@@ -968,6 +782,7 @@ const JJBracketRenderer = {
                         return undefined;
                     }
                 });
+                this._attachVenueLabels(document.getElementById(sectionId), jjMatches);
             } catch (e) {
                 console.warn(`渲染对阵图 ${weightClass} 失败:`, e);
             }
@@ -1003,6 +818,7 @@ const JJBracketRenderer = {
                         return rd ? rd.name : `Round ${info.roundNumber}`;
                     }
                 });
+                this._attachVenueLabels(document.getElementById(sectionId), jjMatches);
             } catch (e) {
                 console.warn(`渲染对阵图 ${weightClass} 失败:`, e);
             }

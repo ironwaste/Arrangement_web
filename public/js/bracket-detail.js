@@ -149,8 +149,10 @@ function sortMatchesByVenueOrder(container, matchDataList) {
 
     const matchOrderMap = new Map();
     matchDataList.forEach((m, idx) => {
-        const key = String(m.bracket_match_id);
-        const venueLabel = m.venue_no || (m.venue ? `${m.venue}${m.venue_no || (idx + 1)}` : `A${2000 + (idx + 1)}`);
+        const key = String(m.kyougi_bracket_match_id);
+        const venueNo = (m.kyougi_match_venue !== null && m.kyougi_match_id !== null) ? (String(m.kyougi_match_venue) + String(m.kyougi_match_id)) : '';
+        const venueChar = (m.kyougi_match_venue || '').charAt(0) || '';
+        const venueLabel = venueNo || (venueChar ? `${venueChar}${venueNo || (idx + 1)}` : `A${2000 + (idx + 1)}`);
         const parsed = parseVenueLabel(venueLabel);
         matchOrderMap.set(key, { order: parsed.no, venue: parsed.venue, label: venueLabel });
     });
@@ -415,7 +417,8 @@ async function printAllBrackets() {
                 const venueNoMap = new Map();
                 let hasMapping = false;
                 for (const m of matchResp.data) {
-                    if (m.bracket_match_id && m.venue_no) { venueNoMap.set(String(m.bracket_match_id), m.venue_no); hasMapping = true; }
+                    const vn = (m.kyougi_match_venue !== null && m.kyougi_match_id !== null) ? (String(m.kyougi_match_venue) + String(m.kyougi_match_id)) : '';
+                    if (m.kyougi_bracket_match_id && vn) { venueNoMap.set(String(m.kyougi_bracket_match_id), vn); hasMapping = true; }
                 }
                 if (!hasMapping) {
                     try {
@@ -424,14 +427,14 @@ async function printAllBrackets() {
                             const freshResp = await apiGet('/matches?' + getEventParam() + '&weight_class=' + encodeURIComponent(cls));
                             if (freshResp.success && freshResp.data) {
                                 venueNoMap.clear();
-                                for (const m of freshResp.data) { if (m.bracket_match_id && m.venue_no) venueNoMap.set(String(m.bracket_match_id), m.venue_no); }
+                                for (const m of freshResp.data) { const vn2 = (m.kyougi_match_venue !== null && m.kyougi_match_id !== null) ? (String(m.kyougi_match_venue) + String(m.kyougi_match_id)) : ''; if (m.kyougi_bracket_match_id && vn2) venueNoMap.set(String(m.kyougi_bracket_match_id), vn2); }
                             }
                         }
                     } catch (e) {}
                 }
                 viewerDiv.querySelectorAll('.match').forEach(matchEl => {
                     const bmid = matchEl.getAttribute('data-match-id');
-                    const matchDataPrint = matchResp.data.find(m => String(m.bracket_match_id) === String(bmid) || String(m.id) === String(bmid));
+                    const matchDataPrint = matchResp.data.find(m => String(m.kyougi_bracket_match_id) === String(bmid) || String(m.id) === String(bmid));
                     
                     if (matchDataPrint) {
                         const hasVenue = matchDataPrint.venue && matchDataPrint.venue.trim() !== '';
@@ -771,7 +774,8 @@ async function viewAllBrackets() {
                 const venueNoMap = new Map();
                 let hasMapping = false;
                 for (const m of matchResp.data) {
-                    if (m.bracket_match_id && m.venue_no) { venueNoMap.set(String(m.bracket_match_id), m.venue_no); hasMapping = true; }
+                    const vn = (m.kyougi_match_venue !== null && m.kyougi_match_id !== null) ? (String(m.kyougi_match_venue) + String(m.kyougi_match_id)) : '';
+                    if (m.kyougi_bracket_match_id && vn) { venueNoMap.set(String(m.kyougi_bracket_match_id), vn); hasMapping = true; }
                 }
                 if (!hasMapping) {
                     try {
@@ -780,14 +784,14 @@ async function viewAllBrackets() {
                             const freshResp = await apiGet('/matches?' + getEventParam() + '&weight_class=' + encodeURIComponent(cls));
                             if (freshResp.success && freshResp.data) {
                                 venueNoMap.clear();
-                                for (const m of freshResp.data) { if (m.bracket_match_id && m.venue_no) venueNoMap.set(String(m.bracket_match_id), m.venue_no); }
+                                for (const m of freshResp.data) { const vn2 = (m.kyougi_match_venue !== null && m.kyougi_match_id !== null) ? (String(m.kyougi_match_venue) + String(m.kyougi_match_id)) : ''; if (m.kyougi_bracket_match_id && vn2) venueNoMap.set(String(m.kyougi_bracket_match_id), vn2); }
                             }
                         }
                     } catch (e) {}
                 }
                 viewerDiv.querySelectorAll('.match').forEach(matchEl => {
                     const bmid = matchEl.getAttribute('data-match-id');
-                    const matchDataAll = matchResp.data.find(m => String(m.bracket_match_id) === String(bmid) || String(m.id) === String(bmid));
+                    const matchDataAll = matchResp.data.find(m => String(m.kyougi_bracket_match_id) === String(bmid) || String(m.id) === String(bmid));
                     
                     if (matchDataAll) {
                         const hasVenue = matchDataAll.venue && matchDataAll.venue.trim() !== '';
@@ -928,6 +932,16 @@ async function viewBracketTree() {
             const stageDataResp = await apiGet('/brackets/stage/' + stageIds[0]);
             if (stageDataResp.success && stageDataResp.data && stageDataResp.data.stages && stageDataResp.data.stages.length > 0) {
                 _autoGenerateAttempted = false;
+                if (stageType === 'round_robin' && groupCount >= 2) {
+                    const poolGroupNames = ['上区循环赛', '下区循环赛', '分区循环赛决赛'];
+                    if (stageDataResp.data.groups) {
+                        stageDataResp.data.groups.forEach(g => {
+                            if (g.number >= 1 && g.number <= poolGroupNames.length) {
+                                g.name = poolGroupNames[g.number - 1];
+                            }
+                        });
+                    }
+                }
                 await renderBracketViewer(stageDataResp.data, weightClass);
                 return;
             }
@@ -1099,7 +1113,8 @@ async function renderBracketViewer(data, weightClass) {
                 const venueNoByBracketMatchId = new Map();
                 let hasBracketMatchId = false;
                 for (const m of matchResp.data) {
-                    if (m.bracket_match_id && m.venue_no) { venueNoByBracketMatchId.set(String(m.bracket_match_id), m.venue_no); hasBracketMatchId = true; }
+                    const vn = (m.kyougi_match_venue !== null && m.kyougi_match_id !== null) ? (String(m.kyougi_match_venue) + String(m.kyougi_match_id)) : '';
+                    if (m.kyougi_bracket_match_id && vn) { venueNoByBracketMatchId.set(String(m.kyougi_bracket_match_id), vn); hasBracketMatchId = true; }
                 }
 
                 if (!hasBracketMatchId) {
@@ -1109,7 +1124,7 @@ async function renderBracketViewer(data, weightClass) {
                             const freshResp = await apiGet('/matches?' + getEventParam() + '&weight_class=' + encodeURIComponent(weightClass));
                             if (freshResp.success && freshResp.data) {
                                 venueNoByBracketMatchId.clear();
-                                for (const m of freshResp.data) { if (m.bracket_match_id && m.venue_no) venueNoByBracketMatchId.set(String(m.bracket_match_id), m.venue_no); }
+                                for (const m of freshResp.data) { const vn2 = (m.kyougi_match_venue !== null && m.kyougi_match_id !== null) ? (String(m.kyougi_match_venue) + String(m.kyougi_match_id)) : ''; if (m.kyougi_bracket_match_id && vn2) venueNoByBracketMatchId.set(String(m.kyougi_bracket_match_id), vn2); }
                             }
                         }
                     } catch (e) {}
@@ -1117,11 +1132,12 @@ async function renderBracketViewer(data, weightClass) {
 
                 document.querySelectorAll('#bracket-viewer-container .match').forEach(matchEl => {
                     const bmid = matchEl.getAttribute('data-match-id');
-                    const matchData = matchResp.data.find(m => String(m.bracket_match_id) === String(bmid) || String(m.id) === String(bmid));
+                    const matchData = matchResp.data.find(m => String(m.kyougi_bracket_match_id) === String(bmid) || String(m.id) === String(bmid));
                     
                     if (matchData) {
-                        const hasVenue = matchData.venue && matchData.venue.trim() !== '';
-                        const hasVenueNo = matchData.venue_no && matchData.venue_no.toString().trim() !== '';
+                        const hasVenue = matchData.kyougi_match_venue && matchData.kyougi_match_venue.trim() !== '';
+                        const matchDataVenueNo = (matchData.kyougi_match_venue !== null && matchData.kyougi_match_id !== null) ? (String(matchData.kyougi_match_venue) + String(matchData.kyougi_match_id)) : '';
+                        const hasVenueNo = matchDataVenueNo && matchDataVenueNo.toString().trim() !== '';
                         
                         if (hasVenue && hasVenueNo) {
                             const vn = venueNoByBracketMatchId.get(bmid);
@@ -1237,8 +1253,8 @@ async function renderBracketViewer(data, weightClass) {
                     bracketMatchDataCache = matchResp.data;
                     bracketMatchIdMap.clear();
                     for (const m of matchResp.data) {
-                        if (m.bracket_match_id) {
-                            bracketMatchIdMap.set(String(m.bracket_match_id), m);
+                        if (m.kyougi_bracket_match_id) {
+                            bracketMatchIdMap.set(String(m.kyougi_bracket_match_id), m);
                         }
                     }
                 }
@@ -1260,8 +1276,8 @@ async function renderBracketFromMatches(weightClass) {
         bracketMatchDataCache = matches;
         bracketMatchIdMap.clear();
         for (const m of matches) {
-            if (m.bracket_match_id) {
-                bracketMatchIdMap.set(String(m.bracket_match_id), m);
+            if (m.kyougi_bracket_match_id) {
+                bracketMatchIdMap.set(String(m.kyougi_bracket_match_id), m);
             }
         }
 
@@ -1277,7 +1293,7 @@ async function renderBracketFromMatches(weightClass) {
             return;
         }
 
-        const totalRounds = matches[0].total_rounds || 1;
+        const totalRounds = matches[0].kyougi_match_category_total_rounds || 1;
 
         const participantMap = new Map();
         let pid = 1;
@@ -1293,8 +1309,8 @@ async function renderBracketFromMatches(weightClass) {
         };
 
         matches.forEach(m => {
-            if (m.blue_name) getParticipantId(m.blue_athlete_no, m.blue_draw_no, m.blue_name, m.blue_unit, true);
-            if (m.red_name) getParticipantId(m.red_athlete_no, m.red_draw_no, m.red_name, m.red_unit, false);
+            if (m.kyougi_blue_athlete_name) getParticipantId(null, null, m.kyougi_blue_athlete_name, m.kyougi_blue_athlete_team, true);
+            if (m.kyougi_red_athlete_name) getParticipantId(null, null, m.kyougi_red_athlete_name, m.kyougi_red_athlete_team, false);
         });
 
         const participants = Array.from(participantMap.values());
@@ -1337,26 +1353,28 @@ async function renderBracketFromMatches(weightClass) {
         const matchData = [];
         const matchGames = [];
         matches.forEach((m, idx) => {
-            const blueId = m.blue_name ? getParticipantId(m.blue_athlete_no, m.blue_draw_no, m.blue_name, m.blue_unit, true) : null;
-            const redId = m.red_name ? getParticipantId(m.red_athlete_no, m.red_draw_no, m.red_name, m.red_unit, false) : null;
+            const blueId = m.kyougi_blue_athlete_name ? getParticipantId(null, null, m.kyougi_blue_athlete_name, m.kyougi_blue_athlete_team, true) : null;
+            const redId = m.kyougi_red_athlete_name ? getParticipantId(null, null, m.kyougi_red_athlete_name, m.kyougi_red_athlete_team, false) : null;
 
             let status = 'pending';
-            if (m.match_status === '进行中') status = 'running';
-            if (m.match_status === '已结束') status = 'completed';
+            if (m.kyougi_match_status === '进行中') status = 'running';
+            if (m.kyougi_match_status === '已结束') status = 'completed';
 
             const opponent1 = blueId ? { id: blueId, score: m.blue_score || 0 } : null;
             const opponent2 = redId ? { id: redId, score: m.red_score || 0 } : null;
 
-            if (m.match_status === '已结束') {
-                if (m.winner === '青方' && opponent1) opponent1.result = 'win';
-                if (m.winner === '红方' && opponent2) opponent2.result = 'win';
+            if (m.kyougi_match_status === '已结束') {
+                if (m.kyougi_winner === '青方' && opponent1) opponent1.result = 'win';
+                if (m.kyougi_winner === '红方' && opponent2) opponent2.result = 'win';
             }
 
-            const venueLabel = m.venue_no || (m.venue ? `${m.venue}${idx + 1}` : `A${2000 + (idx + 1)}`);
+            const venueNo = (m.kyougi_match_venue !== null && m.kyougi_match_id !== null) ? (String(m.kyougi_match_venue) + String(m.kyougi_match_id)) : '';
+            const venueChar = (m.kyougi_match_venue || '').charAt(0) || '';
+            const venueLabel = venueNo || (venueChar ? `${venueChar}${idx + 1}` : `A${2000 + (idx + 1)}`);
 
             matchData.push({
                 id: m.id || (idx + 1), stage_id: 1, group_id: 1,
-                round_id: roundMap.get(m.round) || 1, number: venueLabel,
+                round_id: roundMap.get(m.kyougi_match_round_num) || 1, number: venueLabel,
                 opponent1, opponent2, status
             });
 
@@ -1391,8 +1409,8 @@ async function renderRoundRobinFromMatches(weightClass, matches, compMode) {
     };
 
     matches.forEach(m => {
-        if (m.blue_name) getParticipantId(m.blue_name, m.blue_unit);
-        if (m.red_name) getParticipantId(m.red_name, m.red_unit);
+        if (m.kyougi_blue_athlete_name) getParticipantId(m.kyougi_blue_athlete_name, m.kyougi_blue_athlete_team);
+        if (m.kyougi_red_athlete_name) getParticipantId(m.kyougi_red_athlete_name, m.kyougi_red_athlete_team);
     });
 
     const participants = Array.from(participantMap.values());
@@ -1403,11 +1421,11 @@ async function renderRoundRobinFromMatches(weightClass, matches, compMode) {
     const stage = [{ id: 1, tournament_id: Number(currentEventId), name: isPool ? `${weightClass}_分区循环赛` : weightClass, type: 'round_robin', number: 1, settings: { size: n, groupCount: isPool ? 2 : 1 } }];
 
     if (isPool) {
-        const upperMatches = matches.filter(m => m.round_name && !m.round_name.includes('决赛'));
-        const lowerMatches = matches.filter(m => m.round_name && !m.round_name.includes('决赛'));
-        const finalMatches = matches.filter(m => m.round_name && m.round_name.includes('决赛'));
+        const upperMatches = matches.filter(m => m.kyougi_match_round_name && !m.kyougi_match_round_name.includes('决赛'));
+        const lowerMatches = matches.filter(m => m.kyougi_match_round_name && !m.kyougi_match_round_name.includes('决赛'));
+        const finalMatches = matches.filter(m => m.kyougi_match_round_name && m.kyougi_match_round_name.includes('决赛'));
 
-        const allNonFinal = matches.filter(m => !(m.round_name && m.round_name.includes('决赛')));
+        const allNonFinal = matches.filter(m => !(m.kyougi_match_round_name && m.kyougi_match_round_name.includes('决赛')));
         const halfIdx = Math.ceil(allNonFinal.length / 2);
         const upperHalf = allNonFinal.slice(0, halfIdx);
         const lowerHalf = allNonFinal.slice(halfIdx);
@@ -1420,14 +1438,14 @@ async function renderRoundRobinFromMatches(weightClass, matches, compMode) {
         const roundData = [];
         let roundId = 0;
         const upperRoundSet = new Set();
-        upperHalf.forEach(m => { if (m.round) upperRoundSet.add(m.round); });
+        upperHalf.forEach(m => { if (m.kyougi_match_round_num) upperRoundSet.add(m.kyougi_match_round_num); });
         const upperMaxRound = Math.max(...upperRoundSet, 1);
         for (let r = 1; r <= upperMaxRound; r++) {
             roundId++;
             roundData.push({ id: roundId, stage_id: 1, group_id: 1, number: r, name: `R${r}` });
         }
         const lowerRoundSet = new Set();
-        lowerHalf.forEach(m => { if (m.round) lowerRoundSet.add(m.round); });
+        lowerHalf.forEach(m => { if (m.kyougi_match_round_num) lowerRoundSet.add(m.kyougi_match_round_num); });
         const lowerMaxRound = Math.max(...lowerRoundSet, 1);
         for (let r = 1; r <= lowerMaxRound; r++) {
             roundId++;
@@ -1439,34 +1457,34 @@ async function renderRoundRobinFromMatches(weightClass, matches, compMode) {
         let matchIdx = 0;
         upperHalf.forEach((m) => {
             matchIdx++;
-            const blueId = m.blue_name ? getParticipantId(m.blue_name, m.blue_unit) : null;
-            const redId = m.red_name ? getParticipantId(m.red_name, m.red_unit) : null;
+            const blueId = m.kyougi_blue_athlete_name ? getParticipantId(m.kyougi_blue_athlete_name, m.kyougi_blue_athlete_team) : null;
+            const redId = m.kyougi_red_athlete_name ? getParticipantId(m.kyougi_red_athlete_name, m.kyougi_red_athlete_team) : null;
             let status = 2;
-            if (m.match_status === '进行中') status = 3;
-            if (m.match_status === '已结束') status = 4;
+            if (m.kyougi_match_status === '进行中') status = 3;
+            if (m.kyougi_match_status === '已结束') status = 4;
             const opponent1 = blueId ? { id: blueId, score: 0 } : null;
             const opponent2 = redId ? { id: redId, score: 0 } : null;
-            if (m.match_status === '已结束') {
-                if (m.winner === '青方' && opponent1) opponent1.result = 'win';
-                if (m.winner === '红方' && opponent2) opponent2.result = 'win';
+            if (m.kyougi_match_status === '已结束') {
+                if (m.kyougi_winner === '青方' && opponent1) opponent1.result = 'win';
+                if (m.kyougi_winner === '红方' && opponent2) opponent2.result = 'win';
             }
-            matchData.push({ id: m.id || matchIdx, stage_id: 1, group_id: 1, round_id: m.round || 1, number: matchIdx, child_count: 1, opponent1, opponent2, status });
+            matchData.push({ id: m.id || matchIdx, stage_id: 1, group_id: 1, round_id: m.kyougi_match_round_num || 1, number: matchIdx, child_count: 1, opponent1, opponent2, status });
             matchGames.push({ id: matchIdx, stage_id: 1, parent_id: m.id || matchIdx, number: 1, status, opponent1: opponent1 ? { ...opponent1 } : null, opponent2: opponent2 ? { ...opponent2 } : null });
         });
         lowerHalf.forEach((m) => {
             matchIdx++;
-            const blueId = m.blue_name ? getParticipantId(m.blue_name, m.blue_unit) : null;
-            const redId = m.red_name ? getParticipantId(m.red_name, m.red_unit) : null;
+            const blueId = m.kyougi_blue_athlete_name ? getParticipantId(m.kyougi_blue_athlete_name, m.kyougi_blue_athlete_team) : null;
+            const redId = m.kyougi_red_athlete_name ? getParticipantId(m.kyougi_red_athlete_name, m.kyougi_red_athlete_team) : null;
             let status = 2;
-            if (m.match_status === '进行中') status = 3;
-            if (m.match_status === '已结束') status = 4;
+            if (m.kyougi_match_status === '进行中') status = 3;
+            if (m.kyougi_match_status === '已结束') status = 4;
             const opponent1 = blueId ? { id: blueId, score: 0 } : null;
             const opponent2 = redId ? { id: redId, score: 0 } : null;
-            if (m.match_status === '已结束') {
-                if (m.winner === '青方' && opponent1) opponent1.result = 'win';
-                if (m.winner === '红方' && opponent2) opponent2.result = 'win';
+            if (m.kyougi_match_status === '已结束') {
+                if (m.kyougi_winner === '青方' && opponent1) opponent1.result = 'win';
+                if (m.kyougi_winner === '红方' && opponent2) opponent2.result = 'win';
             }
-            matchData.push({ id: m.id || matchIdx, stage_id: 1, group_id: 2, round_id: upperMaxRound + (m.round || 1), number: matchIdx, child_count: 1, opponent1, opponent2, status });
+            matchData.push({ id: m.id || matchIdx, stage_id: 1, group_id: 2, round_id: upperMaxRound + (m.kyougi_match_round_num || 1), number: matchIdx, child_count: 1, opponent1, opponent2, status });
             matchGames.push({ id: matchIdx, stage_id: 1, parent_id: m.id || matchIdx, number: 1, status, opponent1: opponent1 ? { ...opponent1 } : null, opponent2: opponent2 ? { ...opponent2 } : null });
         });
 
@@ -1497,7 +1515,7 @@ async function renderRoundRobinFromMatches(weightClass, matches, compMode) {
     }
 
     const roundSet = new Set();
-    matches.forEach(m => { if (m.round) roundSet.add(m.round); });
+    matches.forEach(m => { if (m.kyougi_match_round_num) roundSet.add(m.kyougi_match_round_num); });
     const maxRound = Math.max(...roundSet, 1);
 
     const group = [{ id: 1, stage_id: 1, number: 1 }];
@@ -1510,26 +1528,28 @@ async function renderRoundRobinFromMatches(weightClass, matches, compMode) {
     const matchData = [];
     const matchGames = [];
     matches.forEach((m, idx) => {
-        const blueId = m.blue_name ? getParticipantId(m.blue_name, m.blue_unit) : null;
-        const redId = m.red_name ? getParticipantId(m.red_name, m.red_unit) : null;
+        const blueId = m.kyougi_blue_athlete_name ? getParticipantId(m.kyougi_blue_athlete_name, m.kyougi_blue_athlete_team) : null;
+        const redId = m.kyougi_red_athlete_name ? getParticipantId(m.kyougi_red_athlete_name, m.kyougi_red_athlete_team) : null;
 
         let status = 'pending';
-        if (m.match_status === '进行中') status = 'running';
-        if (m.match_status === '已结束') status = 'completed';
+        if (m.kyougi_match_status === '进行中') status = 'running';
+        if (m.kyougi_match_status === '已结束') status = 'completed';
 
         const opponent1 = blueId ? { id: blueId, score: m.blue_score || 0 } : null;
         const opponent2 = redId ? { id: redId, score: m.red_score || 0 } : null;
 
-        if (m.match_status === '已结束') {
-            if (m.winner === '青方' && opponent1) opponent1.result = 'win';
-            if (m.winner === '红方' && opponent2) opponent2.result = 'win';
+        if (m.kyougi_match_status === '已结束') {
+            if (m.kyougi_winner === '青方' && opponent1) opponent1.result = 'win';
+            if (m.kyougi_winner === '红方' && opponent2) opponent2.result = 'win';
         }
 
-        const venueLabel = m.venue_no || (m.venue ? `${m.venue}${idx + 1}` : `A${2000 + (idx + 1)}`);
+        const venueNo = (m.kyougi_match_venue !== null && m.kyougi_match_id !== null) ? (String(m.kyougi_match_venue) + String(m.kyougi_match_id)) : '';
+        const venueChar = (m.kyougi_match_venue || '').charAt(0) || '';
+        const venueLabel = venueNo || (venueChar ? `${venueChar}${idx + 1}` : `A${2000 + (idx + 1)}`);
 
         matchData.push({
             id: m.id || (idx + 1), stage_id: 1, group_id: 1,
-            round_id: m.round || 1, number: venueLabel,
+            round_id: m.kyougi_match_round_num || 1, number: venueLabel,
             opponent1, opponent2, status
         });
 
@@ -1611,15 +1631,26 @@ async function renderRoundRobinFromMatches(weightClass, matches, compMode) {
 }
 
 function renderRoundRobinAsTable(weightClass, matches) {
+    const isJJ = isJJEvent();
     const roundSet = new Set();
-    matches.forEach(m => { if (m.round) roundSet.add(m.round); });
+    const roundNumField = isJJ ? 'jiu_jitsu_match_round_num' : 'kyougi_match_round_num';
+    matches.forEach(m => { if (m[roundNumField]) roundSet.add(m[roundNumField]); });
     const maxRound = Math.max(...roundSet, 0);
+
+    const blueLabel = isJJ ? '蓝方' : '青方';
+    const blueNameField = isJJ ? 'jiu_jitsu_blue_athlete_name' : 'kyougi_blue_athlete_name';
+    const blueTeamField = isJJ ? 'jiu_jitsu_blue_athlete_team' : 'kyougi_blue_athlete_team';
+    const redNameField = isJJ ? 'jiu_jitsu_red_athlete_name' : 'kyougi_red_athlete_name';
+    const redTeamField = isJJ ? 'jiu_jitsu_red_athlete_team' : 'kyougi_red_athlete_team';
+    const statusField = isJJ ? 'jiu_jitsu_match_status' : 'kyougi_match_status';
+    const venueField = isJJ ? 'jiu_jitsu_match_venue' : 'kyougi_match_venue';
+    const matchIdField = isJJ ? 'jiu_jitsu_match_id' : 'kyougi_match_id';
 
     let html = `<h3 style="margin-bottom:16px;">${weightClass} 循环赛对阵表</h3>`;
     html += '<div style="overflow-x:auto;">';
 
     for (let r = 1; r <= maxRound; r++) {
-        const roundMatches = matches.filter(m => m.round === r);
+        const roundMatches = matches.filter(m => m[roundNumField] === r);
         if (roundMatches.length === 0) continue;
 
         html += `<div style="margin-bottom:20px;">`;
@@ -1627,24 +1658,25 @@ function renderRoundRobinAsTable(weightClass, matches) {
         html += `<table style="width:100%;border-collapse:collapse;font-size:13px;">`;
         html += `<thead><tr style="background:linear-gradient(to right,#8B0000,#00008B);color:#fff;">
             <th style="padding:6px 10px;">场次</th>
-            <th style="padding:6px 10px;">青方</th>
+            <th style="padding:6px 10px;">红方</th>
             <th style="padding:6px 10px;">代表队</th>
             <th style="padding:6px 10px;"></th>
-            <th style="padding:6px 10px;">红方</th>
+            <th style="padding:6px 10px;">${blueLabel}</th>
             <th style="padding:6px 10px;">代表队</th>
             <th style="padding:6px 10px;">状态</th>
         </tr></thead><tbody>`;
 
         roundMatches.forEach(m => {
-            const statusClass = m.match_status === '已结束' ? 'status-finished' : (m.match_status === '进行中' ? 'status-active' : 'status-pending');
+            const statusClass = m[statusField] === '已结束' ? 'status-finished' : (m[statusField] === '进行中' ? 'status-active' : 'status-pending');
+            const mVenueNo = (m[venueField] !== null && m[matchIdField] !== null) ? (String(m[venueField]) + String(m[matchIdField])) : '';
             html += `<tr style="background:#f0f7ed;">
-                <td style="padding:6px 10px;text-align:center;">${m.venue_no || '-'}</td>
-                <td style="padding:6px 10px;color:#409eff;font-weight:500;text-align:right;">${m.blue_name || '-'}</td>
-                <td style="padding:6px 10px;font-size:12px;color:#909399;">${m.blue_unit || ''}</td>
+                <td style="padding:6px 10px;text-align:center;">${mVenueNo || '-'}</td>
+                <td style="padding:6px 10px;color:#F56C6C;font-weight:500;text-align:right;">${m[redNameField] || '-'}</td>
+                <td style="padding:6px 10px;font-size:12px;color:#909399;">${m[redTeamField] || ''}</td>
                 <td style="padding:6px 10px;color:#909399;font-weight:bold;">VS</td>
-                <td style="padding:6px 10px;color:#F56C6C;font-weight:500;text-align:left;">${m.red_name || '-'}</td>
-                <td style="padding:6px 10px;font-size:12px;color:#909399;">${m.red_unit || ''}</td>
-                <td style="padding:6px 10px;text-align:center;"><span class="${statusClass}">${m.match_status || '未开始'}</span></td>
+                <td style="padding:6px 10px;color:#409eff;font-weight:500;text-align:left;">${m[blueNameField] || '-'}</td>
+                <td style="padding:6px 10px;font-size:12px;color:#909399;">${m[blueTeamField] || ''}</td>
+                <td style="padding:6px 10px;text-align:center;"><span class="${statusClass}">${m[statusField] || '未开始'}</span></td>
             </tr>`;
         });
 
@@ -1783,8 +1815,8 @@ async function renderDoubleEliminationFromStages(weightClass, stageIds) {
                 bracketMatchDataCache = matchResp.data;
                 bracketMatchIdMap.clear();
                 for (const m of matchResp.data) {
-                    if (m.bracket_match_id) {
-                        bracketMatchIdMap.set(String(m.bracket_match_id), m);
+                    if (m.kyougi_bracket_match_id) {
+                        bracketMatchIdMap.set(String(m.kyougi_bracket_match_id), m);
                     }
                 }
             }
@@ -1934,10 +1966,6 @@ async function renderJJBracketFromMatches(weightClass, jjMatches, overrideCompMo
             await JJBracketRenderer.renderRoundRobin(weightClass, jjMatches);
             return;
         }
-        if (currentCompMode === 'pool_elimination') {
-            await JJBracketRenderer.renderPoolElimination(weightClass, jjMatches);
-            return;
-        }
         if (currentCompMode === 'single_elimination') {
             await JJBracketRenderer.renderSingleElimination(weightClass, jjMatches);
             return;
@@ -1983,6 +2011,157 @@ async function renderJJBracketFromMatches(weightClass, jjMatches, overrideCompMo
         document.getElementById('bracketDisplay').innerHTML = '<p style="text-align: center; color: #909399; padding: 40px 0;">该级别暂无参赛者数据</p>';
         return;
     }
+
+    if (currentCompMode === 'pool_elimination') {
+        const upperMatches = jjMatches.filter(m => m.jiu_jitsu_match_zone === 'upper');
+        const lowerMatches = jjMatches.filter(m => m.jiu_jitsu_match_zone === 'lower');
+        const finalMatches = jjMatches.filter(m => m.jiu_jitsu_match_zone === 'final' || m.jiu_jitsu_match_round_name === 'R.Final');
+
+        const upperFirstPid = pid++;
+        participantMap.set('上区第一|', { id: upperFirstPid, name: '上区第一' });
+        participants.push(participantMap.get('上区第一|'));
+        const lowerFirstPid = pid++;
+        participantMap.set('下区第一|', { id: lowerFirstPid, name: '下区第一' });
+        participants.push(participantMap.get('下区第一|'));
+
+        const stages = [];
+        const groups = [];
+        const rounds = [];
+        const matchData = [];
+        const matchGames = [];
+        let stageId = 0, groupId = 0, roundId = 0, matchId = 0;
+
+        const sid = ++stageId;
+
+        const upperPids = new Set();
+        upperMatches.forEach(m => {
+            const rId = m.jiu_jitsu_red_athlete_name ? getParticipantId(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, false) : null;
+            const bId = m.jiu_jitsu_blue_athlete_name ? getParticipantId(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, true) : null;
+            if (rId) upperPids.add(rId);
+            if (bId) upperPids.add(bId);
+        });
+        const lowerPids = new Set();
+        lowerMatches.forEach(m => {
+            const rId = m.jiu_jitsu_red_athlete_name ? getParticipantId(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, false) : null;
+            const bId = m.jiu_jitsu_blue_athlete_name ? getParticipantId(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, true) : null;
+            if (rId) lowerPids.add(rId);
+            if (bId) lowerPids.add(bId);
+        });
+
+        const totalSize = upperPids.size + lowerPids.size;
+        const groupCount = finalMatches.length > 0 ? 3 : 2;
+        stages.push({ id: sid, tournament_id: Number(currentEventId), name: `${weightClass}_分区循环赛`, type: 'round_robin', number: sid, settings: { size: totalSize, groupCount } });
+
+        const addZoneGroup = (zoneMatches, zoneLabel) => {
+            if (zoneMatches.length === 0) return;
+            groupId++;
+            const gid = groupId;
+            const zRoundNums = [...new Set(zoneMatches.map(m => m.jiu_jitsu_match_round_num).filter(n => n && n < 999))].sort((a, b) => a - b);
+            const zMaxRound = zRoundNums.length;
+
+            groups.push({ id: gid, stage_id: sid, number: gid, name: zoneLabel });
+
+            const roundNumToRid = new Map();
+            const firstRoundId = roundId + 1;
+            for (let r = 1; r <= zMaxRound; r++) {
+                roundId++;
+                roundNumToRid.set(zRoundNums[r - 1], roundId);
+                rounds.push({ id: roundId, stage_id: sid, group_id: gid, number: r, name: `R${r}` });
+            }
+
+            zoneMatches.forEach(m => {
+                const redId = m.jiu_jitsu_red_athlete_name ? getParticipantId(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, false) : null;
+                const blueId = m.jiu_jitsu_blue_athlete_name ? getParticipantId(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, true) : null;
+                let status = 2;
+                if (m.jiu_jitsu_match_status === '已结束') status = 4;
+                if (m.jiu_jitsu_match_status === '进行中') status = 3;
+                const opponent1 = redId ? { id: redId, score: 0 } : null;
+                const opponent2 = blueId ? { id: blueId, score: 0 } : null;
+                if (m.jiu_jitsu_match_status === '已结束') {
+                    if (m.jiu_jitsu_winner === '红方' && opponent1) opponent1.result = 'win';
+                    if (m.jiu_jitsu_winner === '蓝方' && opponent2) opponent2.result = 'win';
+                }
+                matchId++;
+                const rid = roundNumToRid.get(m.jiu_jitsu_match_round_num) || firstRoundId;
+                matchData.push({ id: m.id || matchId, stage_id: sid, group_id: gid, round_id: rid, number: matchId, child_count: 1, opponent1, opponent2, status });
+                matchGames.push({ id: matchId, stage_id: sid, parent_id: m.id || matchId, number: 1, status, opponent1: opponent1 ? { ...opponent1 } : null, opponent2: opponent2 ? { ...opponent2 } : null });
+            });
+        };
+
+        addZoneGroup(upperMatches, '上区循环赛');
+        addZoneGroup(lowerMatches, '下区循环赛');
+
+        if (finalMatches.length > 0) {
+            groupId++;
+            const gid = groupId;
+            roundId++;
+            const rid = roundId;
+
+            groups.push({ id: gid, stage_id: sid, number: gid, name: '分区循环赛决赛' });
+            rounds.push({ id: rid, stage_id: sid, group_id: gid, number: 1, name: 'R.Final' });
+
+            finalMatches.forEach(m => {
+                let redId, blueId;
+                if (m.jiu_jitsu_red_athlete_name && m.jiu_jitsu_red_athlete_name !== '上区第一' && m.jiu_jitsu_red_athlete_name !== '下区第一') {
+                    redId = getParticipantId(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, false);
+                } else if (m.jiu_jitsu_red_athlete_name === '上区第一') {
+                    redId = upperFirstPid;
+                } else if (m.jiu_jitsu_red_athlete_name === '下区第一') {
+                    redId = lowerFirstPid;
+                }
+                if (m.jiu_jitsu_blue_athlete_name && m.jiu_jitsu_blue_athlete_name !== '上区第一' && m.jiu_jitsu_blue_athlete_name !== '下区第一') {
+                    blueId = getParticipantId(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, true);
+                } else if (m.jiu_jitsu_blue_athlete_name === '下区第一') {
+                    blueId = lowerFirstPid;
+                } else if (m.jiu_jitsu_blue_athlete_name === '上区第一') {
+                    blueId = upperFirstPid;
+                }
+                let status = 2;
+                if (m.jiu_jitsu_match_status === '已结束') status = 4;
+                const opponent1 = redId ? { id: redId, score: 0 } : null;
+                const opponent2 = blueId ? { id: blueId, score: 0 } : null;
+                if (m.jiu_jitsu_match_status === '已结束') {
+                    if (m.jiu_jitsu_winner === '红方' && opponent1) opponent1.result = 'win';
+                    if (m.jiu_jitsu_winner === '蓝方' && opponent2) opponent2.result = 'win';
+                }
+                matchId++;
+                matchData.push({ id: m.id || matchId, stage_id: sid, group_id: gid, round_id: rid, number: matchId, child_count: 1, opponent1, opponent2, status });
+                matchGames.push({ id: matchId, stage_id: sid, parent_id: m.id || matchId, number: 1, status, opponent1: opponent1 ? { ...opponent1 } : null, opponent2: opponent2 ? { ...opponent2 } : null });
+            });
+        }
+
+        const bracketData = { stages, groups, rounds, matches: matchData, matchGames, participants };
+
+        document.getElementById('bracketDisplay').innerHTML = `
+            <h3 style="margin-bottom:16px;">${weightClass}${getStageTypeName(currentCompMode)}对阵图</h3>
+            <div id="bracket-viewer-container" class="brackets-viewer" style="overflow-x:auto;padding:16px;background:#fff;border-radius:8px;"></div>
+        `;
+
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        if (window.bracketsViewer) {
+            try {
+                await window.bracketsViewer.render(bracketData, {
+                    selector: '#bracket-viewer-container',
+                    clear: true,
+                    showRankingTable: true,
+                    participantOriginPlacement: 'none',
+                    customRoundName: (info) => {
+                        if (info.groupName === '分区循环赛决赛') return 'R.Final';
+                        return `R${info.roundNumber}`;
+                    }
+                });
+                requestAnimationFrame(() => { replaceByeText(document.getElementById('bracket-viewer-container')); });
+                if (typeof JJBracketRenderer !== 'undefined') JJBracketRenderer._attachVenueLabels(document.getElementById('bracket-viewer-container'), jjMatches);
+                attachBracketDblClick();
+            } catch (err) {
+                console.error('渲染柔术对阵图失败:', err);
+            }
+        }
+        attachBracketDblClick();
+        return;
+    }
+
     const totalRounds = jjMatches[0].jiu_jitsu_match_category_total_rounds || 1;
     const sampleMatch = jjMatches.find(m => m.jiu_jitsu_match_round_name) || null;
 
@@ -2028,10 +2207,6 @@ async function renderJJBracketFromMatches(weightClass, jjMatches, overrideCompMo
                 if (losersRound === totalLosersRounds) roundName = 'Bro.m';
                 else roundName = `Rep.${losersRound}`;
             }
-        } else if (currentCompMode === 'pool_elimination') {
-            const matchInRound = jjMatches.find(m => m.jiu_jitsu_match_round_num === r);
-            if (matchInRound && matchInRound.jiu_jitsu_match_round_name === 'R.Final') roundName = 'R.Final';
-            else roundName = `R${r}`;
         } else {
             const totalRounds = Math.ceil(Math.log2(participants.length || 2));
             if (r === totalRounds) roundName = 'Final';
@@ -2059,10 +2234,10 @@ async function renderJJBracketFromMatches(weightClass, jjMatches, overrideCompMo
 
         if (m.jiu_jitsu_match_status === '已结束') {
             if (m.jiu_jitsu_winner === '红方' && opponent1) opponent1.result = 'win';
-            if (m.jiu_jitsu_winner === '青方' && opponent2) opponent2.result = 'win';
+            if (m.jiu_jitsu_winner === '蓝方' && opponent2) opponent2.result = 'win';
         }
 
-        const venueLabel = m.jiu_jitsu_match_venue || m.jiu_jitsu_match_id || `${idx + 1}`;
+        const venueLabel = (m.jiu_jitsu_match_venue !== null && m.jiu_jitsu_match_id !== null) ? (String(m.jiu_jitsu_match_venue) + String(m.jiu_jitsu_match_id)) : `${idx + 1}`;
 
         matchData.push({
             id: m.id || (idx + 1), stage_id: 1, group_id: 1,
@@ -2118,11 +2293,6 @@ async function renderJJBracketFromMatches(weightClass, jjMatches, overrideCompMo
                         }
                         return undefined;
                     }
-                    if (currentCompMode === 'pool_elimination') {
-                        const matchInRound = jjMatches.find(m => m.jiu_jitsu_match_round_num === info.roundNumber);
-                        if (matchInRound && matchInRound.jiu_jitsu_match_round_name === 'R.Final') return 'R.Final';
-                        return `R${info.roundNumber}`;
-                    }
                     if (info.roundNumber && info.roundCount) {
                         const d = Math.pow(2, info.roundCount - info.roundNumber);
                         if (d === 1) return 'Final';
@@ -2132,6 +2302,7 @@ async function renderJJBracketFromMatches(weightClass, jjMatches, overrideCompMo
                 }
             });
             requestAnimationFrame(() => { replaceByeText(document.getElementById('bracket-viewer-container')); });
+            if (typeof JJBracketRenderer !== 'undefined') JJBracketRenderer._attachVenueLabels(document.getElementById('bracket-viewer-container'), jjMatches);
             attachBracketDblClick();
         } catch (err) {
             console.error('渲染柔术对阵图失败:', err);
@@ -2242,10 +2413,10 @@ async function renderJJBracketInSection(selector, weightClass, jjMatches) {
 
         if (m.jiu_jitsu_match_status === '已结束') {
             if (m.jiu_jitsu_winner === '红方' && opponent1) opponent1.result = 'win';
-            if (m.jiu_jitsu_winner === '青方' && opponent2) opponent2.result = 'win';
+            if (m.jiu_jitsu_winner === '蓝方' && opponent2) opponent2.result = 'win';
         }
 
-        const venueLabel = m.jiu_jitsu_match_venue || m.jiu_jitsu_match_id || `${idx + 1}`;
+        const venueLabel = (m.jiu_jitsu_match_venue !== null && m.jiu_jitsu_match_id !== null) ? (String(m.jiu_jitsu_match_venue) + String(m.jiu_jitsu_match_id)) : `${idx + 1}`;
 
         matchData.push({
             id: m.id || (idx + 1), stage_id: 1, group_id: 1,
@@ -2645,6 +2816,7 @@ async function generateAllBrackets() {
             clearBracketCache();
             alert(`全部对阵图生成完成！成功: ${data.generated || 0}个级别${data.errors && data.errors.length > 0 ? '，失败: ' + data.errors.length + '个' : ''}`);
             await loadBracketClassList();
+            await viewBracketTree();
         } else {
             alert('生成失败: ' + (resp.error || '未知错误'));
         }
@@ -2876,17 +3048,24 @@ function attachBracketDblClick() {
 }
 
 function openBracketScoreModal(matchInfo) {
+    const isJJ = isJJEvent();
+    const blueNameField = isJJ ? 'jiu_jitsu_blue_athlete_name' : 'kyougi_blue_athlete_name';
+    const blueTeamField = isJJ ? 'jiu_jitsu_blue_athlete_team' : 'kyougi_blue_athlete_team';
+    const redNameField = isJJ ? 'jiu_jitsu_red_athlete_name' : 'kyougi_red_athlete_name';
+    const redTeamField = isJJ ? 'jiu_jitsu_red_athlete_team' : 'kyougi_red_athlete_team';
+    const winnerField = isJJ ? 'jiu_jitsu_winner' : 'kyougi_winner';
+    const winMethodField = isJJ ? 'win_method' : 'kyougi_win_method';
     document.getElementById('bracketScoreMatchId').value = matchInfo.id || '';
     document.getElementById('bracketScoreWeightClass').value = selectedBracketClass || '';
-    document.getElementById('bracketScoreBlueName').textContent = matchInfo.blue_name || '青方';
-    document.getElementById('bracketScoreBlueUnit').textContent = matchInfo.blue_unit || '';
-    document.getElementById('bracketScoreRedName').textContent = matchInfo.red_name || '红方';
-    document.getElementById('bracketScoreRedUnit').textContent = matchInfo.red_unit || '';
+    document.getElementById('bracketScoreBlueName').textContent = matchInfo[blueNameField] || (isJJ ? '蓝方' : '青方');
+    document.getElementById('bracketScoreBlueUnit').textContent = matchInfo[blueTeamField] || '';
+    document.getElementById('bracketScoreRedName').textContent = matchInfo[redNameField] || '红方';
+    document.getElementById('bracketScoreRedUnit').textContent = matchInfo[redTeamField] || '';
     document.getElementById('bracketScoreBlueScore').value = matchInfo.blue_score || '';
     document.getElementById('bracketScoreRedScore').value = matchInfo.red_score || '';
-    document.getElementById('bracketScoreWinner').value = matchInfo.winner || '';
-    document.getElementById('bracketScoreWinMethod').value = matchInfo.win_method || '';
-    selectBracketWinner(matchInfo.winner || '');
+    document.getElementById('bracketScoreWinner').value = matchInfo[winnerField] || '';
+    document.getElementById('bracketScoreWinMethod').value = matchInfo[winMethodField] || '';
+    selectBracketWinner(matchInfo[winnerField] || '');
     document.getElementById('bracketScoreModal').classList.add('active');
 }
 
@@ -2898,7 +3077,7 @@ function selectBracketWinner(side) {
     document.getElementById('bracketScoreWinner').value = side || '';
     const blue = document.getElementById('bracketWinnerBlue');
     const red = document.getElementById('bracketWinnerRed');
-    if (side === '青方') {
+    if (side === '青方' || side === '蓝方') {
         blue.style.background = '#409EFF';
         blue.style.color = '#fff';
         blue.style.borderColor = '#409EFF';
@@ -2926,7 +3105,11 @@ async function resetBracketScore() {
     const matchId = document.getElementById('bracketScoreMatchId').value;
     const weightClass = document.getElementById('bracketScoreWeightClass').value;
 
-    if (!confirm('确定要重置该比赛数据吗？比分、胜方、获胜方式、场地号和场次号将全部清空。')) return;
+    if (isJJEvent()) {
+        if (!confirm('确定要重置吗？该赛事的所有对阵表数据将被清除！')) return;
+    } else {
+        if (!confirm('确定要重置该比赛数据吗？比分、胜方、获胜方式、场地号和场次号将全部清空。')) return;
+    }
 
     try {
         const resetUrl = isJJEvent() ? `${API_BASE}/jj-brackets/matches/${matchId}/reset` : `${API_BASE}/matches/${matchId}/reset`;
@@ -2937,9 +3120,10 @@ async function resetBracketScore() {
         const data = await resp.json();
         if (data.success) {
             closeBracketScoreModal();
-            if (weightClass) {
-                await viewBracketTree();
-            }
+            clearBracket();
+            clearBracketCache();
+            selectedBracketClass = '';
+            await loadBracketClassList();
         } else {
             alert('重置失败: ' + data.error);
         }

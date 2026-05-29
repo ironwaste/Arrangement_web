@@ -58,7 +58,7 @@
             <label>获胜方</label>
             <input type="hidden" id="bracketScoreWinner" value="">
             <div style="display:flex;gap:12px;">
-                <div id="bracketWinnerBlue" onclick="selectBracketWinner('青方')" style="flex:1;text-align:center;padding:12px 0;border:2px solid #dcdfe6;border-radius:8px;cursor:pointer;font-size:16px;font-weight:bold;color:#409EFF;transition:all 0.2s;">青方</div>
+                <div id="bracketWinnerBlue" onclick="selectBracketWinner(currentEventType === 'jiu_jitsu' ? '蓝方' : '青方')" style="flex:1;text-align:center;padding:12px 0;border:2px solid #dcdfe6;border-radius:8px;cursor:pointer;font-size:16px;font-weight:bold;color:#409EFF;transition:all 0.2s;">青方</div>
                 <div id="bracketWinnerRed" onclick="selectBracketWinner('红方')" style="flex:1;text-align:center;padding:12px 0;border:2px solid #dcdfe6;border-radius:8px;cursor:pointer;font-size:16px;font-weight:bold;color:#F56C6C;transition:all 0.2s;">红方</div>
             </div>
         </div>
@@ -106,3 +106,18 @@
         </div>
     </div>
 </div>
+
+<script>
+(function() {
+    if (typeof currentEventType !== 'undefined' && currentEventType === 'jiu_jitsu') {
+        var bracketScoreBlueName = document.getElementById('bracketScoreBlueName');
+        if (bracketScoreBlueName && bracketScoreBlueName.textContent === '青方') bracketScoreBlueName.textContent = '蓝方';
+        var scoreLabels = document.querySelectorAll('#bracketScoreModal label');
+        scoreLabels.forEach(function(lbl) {
+            if (lbl.textContent === '青方得分') lbl.textContent = '蓝方得分';
+        });
+        var bracketWinnerBlue = document.getElementById('bracketWinnerBlue');
+        if (bracketWinnerBlue) bracketWinnerBlue.textContent = '蓝方';
+    }
+})();
+</script>

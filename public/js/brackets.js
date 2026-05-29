@@ -410,7 +410,7 @@ async function loadAutoArrangeData() {
             const matchesData = await matchesRes.json();
             if (matchesData.success && matchesData.data) {
                 matchesData.data.forEach(m => {
-                    if (m.weight_class) arrangedClasses.add(m.weight_class);
+                    if (m.kyougi_match_categroy) arrangedClasses.add(m.kyougi_match_categroy);
                 });
             }
         } catch (e) { }
@@ -3044,8 +3044,9 @@ async function loadMatchResult() {
         const classSet = new Set();
         const venueSet = new Set();
         _allMatchResultData.forEach(m => {
-            if (m.weight_class && m.match_status !== '已分配') classSet.add(m.weight_class);
-            const venueLetter = m.venue || (m.venue_no || '').charAt(0);
+            if (m.kyougi_match_categroy && m.kyougi_match_status !== '已分配') classSet.add(m.kyougi_match_categroy);
+            const _vn = (m.kyougi_match_venue !== null && m.kyougi_match_id !== null) ? (String(m.kyougi_match_venue) + String(m.kyougi_match_id)) : '';
+            const venueLetter = (m.kyougi_match_venue || '').charAt(0) || '' || (_vn || '').charAt(0);
             if (venueLetter) venueSet.add(venueLetter);
         });
 
@@ -3076,18 +3077,19 @@ function renderMatchResult() {
     let filtered = _allMatchResultData;
 
     if (classFilter) {
-        filtered = filtered.filter(m => m.weight_class === classFilter);
+        filtered = filtered.filter(m => m.kyougi_match_categroy === classFilter);
     }
     if (venueFilter) {
         filtered = filtered.filter(m => {
-            const venueLetter = m.venue || (m.venue_no || '').charAt(0);
+            const _vn = (m.kyougi_match_venue !== null && m.kyougi_match_id !== null) ? (String(m.kyougi_match_venue) + String(m.kyougi_match_id)) : '';
+            const venueLetter = (m.kyougi_match_venue || '').charAt(0) || '' || (_vn || '').charAt(0);
             return venueLetter === venueFilter;
         });
     }
 
     filtered.sort((a, b) => {
-        const matchIdA = parseInt(a.match_id) || 0;
-        const matchIdB = parseInt(b.match_id) || 0;
+        const matchIdA = parseInt(a.kyougi_match_id) || 0;
+        const matchIdB = parseInt(b.kyougi_match_id) || 0;
         return matchIdA - matchIdB;
     });
 
@@ -3098,16 +3100,17 @@ function renderMatchResult() {
         tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#909399;padding:20px;">暂无对阵数据</td></tr>';
     } else {
         tbody.innerHTML = filtered.map(m => {
-            const venueLetter = m.venue || (m.venue_no || '').charAt(0) || '';
-            const matchNo = m.match_id || (m.venue_no || '').substring(1) || '';
-            const roundName = formatRoundNameForMatch(m.round_name || '');
-            const blueName = m.blue_name || '-';
-            const redName = m.red_name || '-';
-            const blueUnit = m.blue_unit || '';
-            const redUnit = m.red_unit || '';
-            const weightClass = m.weight_class || '';
-            const status = m.match_status || '未开始';
-            const isBye = (!m.blue_name || !m.red_name) && status !== '已分配';
+            const _vn = (m.kyougi_match_venue !== null && m.kyougi_match_id !== null) ? (String(m.kyougi_match_venue) + String(m.kyougi_match_id)) : '';
+            const venueLetter = (m.kyougi_match_venue || '').charAt(0) || '' || (_vn || '').charAt(0) || '';
+            const matchNo = m.kyougi_match_id || _vn.substring(1) || '';
+            const roundName = formatRoundNameForMatch(m.kyougi_match_round_name || '');
+            const blueName = m.kyougi_blue_athlete_name || '-';
+            const redName = m.kyougi_red_athlete_name || '-';
+            const blueUnit = m.kyougi_blue_athlete_team || '';
+            const redUnit = m.kyougi_red_athlete_team || '';
+            const weightClass = m.kyougi_match_categroy || '';
+            const status = m.kyougi_match_status || '未开始';
+            const isBye = (!m.kyougi_blue_athlete_name || !m.kyougi_red_athlete_name) && status !== '已分配';
 
             if (weightClass && status !== '已分配') classSet.add(weightClass);
 
@@ -3169,17 +3172,18 @@ function printMatchResult() {
     const venueFilter = document.getElementById('matchResultVenueFilter').value;
 
     let filtered = _allMatchResultData;
-    if (classFilter) filtered = filtered.filter(m => m.weight_class === classFilter);
+    if (classFilter) filtered = filtered.filter(m => m.kyougi_match_categroy === classFilter);
     if (venueFilter) filtered = filtered.filter(m => {
-        const venueLetter = m.venue || (m.venue_no || '').charAt(0);
+        const _vn = (m.kyougi_match_venue !== null && m.kyougi_match_id !== null) ? (String(m.kyougi_match_venue) + String(m.kyougi_match_id)) : '';
+        const venueLetter = (m.kyougi_match_venue || '').charAt(0) || '' || (_vn || '').charAt(0);
         return venueLetter === venueFilter;
     });
 
     if (filtered.length === 0) { alert('没有可打印的对阵表'); return; }
 
     filtered.sort((a, b) => {
-        const matchIdA = parseInt(a.match_id) || 0;
-        const matchIdB = parseInt(b.match_id) || 0;
+        const matchIdA = parseInt(a.kyougi_match_id) || 0;
+        const matchIdB = parseInt(b.kyougi_match_id) || 0;
         return matchIdA - matchIdB;
     });
 
@@ -3206,13 +3210,14 @@ function printMatchResult() {
     d.write('<table><thead><tr><th>场地</th><th>场次</th><th>轮次</th><th>青方</th><th>代表队</th><th></th><th>红方</th><th>代表队</th><th>级别</th></tr></thead><tbody>');
 
     filtered.forEach(m => {
-        const venueLetter = m.venue || (m.venue_no || '').charAt(0) || '';
-        const matchNo = m.match_id || (m.venue_no || '').substring(1) || '';
-        const roundName = formatRoundNameForMatch(m.round_name || '');
-        if (m.match_status === '已分配') {
-            d.write(`<tr><td>${venueLetter}</td><td>-</td><td>${roundName}</td><td colspan="5" style="text-align:center;">${m.weight_class || ''}</td><td>${m.weight_class || ''}</td></tr>`);
+        const _vn = (m.kyougi_match_venue !== null && m.kyougi_match_id !== null) ? (String(m.kyougi_match_venue) + String(m.kyougi_match_id)) : '';
+        const venueLetter = (m.kyougi_match_venue || '').charAt(0) || '' || (_vn || '').charAt(0) || '';
+        const matchNo = m.kyougi_match_id || _vn.substring(1) || '';
+        const roundName = formatRoundNameForMatch(m.kyougi_match_round_name || '');
+        if (m.kyougi_match_status === '已分配') {
+            d.write(`<tr><td>${venueLetter}</td><td>-</td><td>${roundName}</td><td colspan="5" style="text-align:center;">${m.kyougi_match_categroy || ''}</td><td>${m.kyougi_match_categroy || ''}</td></tr>`);
         } else {
-            d.write(`<tr><td>${venueLetter}</td><td>${matchNo}</td><td>${roundName}</td><td class="blue">${m.blue_name || '-'}</td><td>${m.blue_unit || ''}</td><td class="vs">VS</td><td class="red">${m.red_name || '-'}</td><td>${m.red_unit || ''}</td><td>${m.weight_class || ''}</td></tr>`);
+            d.write(`<tr><td>${venueLetter}</td><td>${matchNo}</td><td>${roundName}</td><td class="blue">${m.kyougi_blue_athlete_name || '-'}</td><td>${m.kyougi_blue_athlete_team || ''}</td><td class="vs">VS</td><td class="red">${m.kyougi_red_athlete_name || '-'}</td><td>${m.kyougi_red_athlete_team || ''}</td><td>${m.kyougi_match_categroy || ''}</td></tr>`);
         }
     });
 

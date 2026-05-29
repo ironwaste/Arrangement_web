@@ -31,26 +31,26 @@ async function insertKyougiMatch(db, data) {
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.event_id ?? null,
-      data.kyougi_match_venue ?? data.venue_no ?? null,
-      data.kyougi_match_id ?? data.match_id ?? null,
-      data.kyougi_match_categroy ?? data.weight_class ?? null,
-      data.kyougi_match_round_num ?? data.round ?? 1,
-      data.kyougi_match_round_name ?? data.round_name ?? null,
-      data.kyougi_match_category_total_rounds ?? data.total_rounds ?? 1,
-      data.kyougi_bracket_match_id ?? data.bracket_match_id ?? null,
-      data.kyougi_blue_athlete_id ?? data.blue_athlete_id ?? null,
-      data.kyougi_blue_athlete_name ?? data.blue_name ?? null,
-      data.kyougi_blue_athlete_team ?? data.blue_unit ?? null,
-      data.kyougi_blue_prev_winner ?? data.blue_prev_winner ?? null,
-      data.kyougi_red_athlete_id ?? data.red_athlete_id ?? null,
-      data.kyougi_red_athlete_name ?? data.red_name ?? null,
-      data.kyougi_red_athlete_team ?? data.red_unit ?? null,
-      data.kyougi_red_prev_winner_id ?? data.red_prev_winner ?? null,
-      data.kyougi_match_status ?? data.match_status ?? '未开始',
+      data.kyougi_match_venue ?? null,
+      data.kyougi_match_id ?? null,
+      data.kyougi_match_categroy ?? null,
+      data.kyougi_match_round_num ?? 1,
+      data.kyougi_match_round_name ?? null,
+      data.kyougi_match_category_total_rounds ?? 1,
+      data.kyougi_bracket_match_id ?? null,
+      data.kyougi_blue_athlete_id ?? null,
+      data.kyougi_blue_athlete_name ?? null,
+      data.kyougi_blue_athlete_team ?? null,
+      data.kyougi_blue_prev_winner ?? null,
+      data.kyougi_red_athlete_id ?? null,
+      data.kyougi_red_athlete_name ?? null,
+      data.kyougi_red_athlete_team ?? null,
+      data.kyougi_red_prev_winner_id ?? null,
+      data.kyougi_match_status ?? '未开始',
       scores,
-      data.kyougi_match_scores_detail ?? data.match_scores_detail ?? null,
-      data.kyougi_win_method ?? data.win_method ?? null,
-      data.kyougi_winner ?? data.winner ?? null
+      data.kyougi_match_scores_detail ?? null,
+      data.kyougi_win_method ?? null,
+      data.kyougi_winner ?? null
     ]
   );
 }
@@ -93,9 +93,9 @@ async function updateKyougiMatchBlue(db, id, data) {
       kyougi_blue_athlete_id = ?
      WHERE id = ?`,
     [
-      data.blue_name || '',
-      data.blue_unit || '',
-      data.blue_athlete_id || null,
+      data.kyougi_blue_athlete_name || '',
+      data.kyougi_blue_athlete_team || '',
+      data.kyougi_blue_athlete_id || null,
       id
     ]
   );
@@ -109,9 +109,9 @@ async function updateKyougiMatchRed(db, id, data) {
       kyougi_red_athlete_id = ?
      WHERE id = ?`,
     [
-      data.red_name || '',
-      data.red_unit || '',
-      data.red_athlete_id || null,
+      data.kyougi_red_athlete_name || '',
+      data.kyougi_red_athlete_team || '',
+      data.kyougi_red_athlete_id || null,
       id
     ]
   );
@@ -152,17 +152,17 @@ async function batchUpdateKyougiMatch(db, matchData) {
       kyougi_match_status = ?
      WHERE id = ?`,
     [
-      matchData.kyougi_match_venue || matchData.venue_no || matchData.venue || null,
-      matchData.match_id || null,
-      matchData.round || 1,
-      matchData.round_name || null,
-      matchData.blue_athlete_id || null,
-      matchData.blue_name || null,
-      matchData.blue_unit || null,
-      matchData.red_athlete_id || null,
-      matchData.red_name || null,
-      matchData.red_unit || null,
-      matchData.match_status || '未开始',
+      matchData.kyougi_match_venue || null,
+      matchData.kyougi_match_id || null,
+      matchData.kyougi_match_round_num || 1,
+      matchData.kyougi_match_round_name || null,
+      matchData.kyougi_blue_athlete_id || null,
+      matchData.kyougi_blue_athlete_name || null,
+      matchData.kyougi_blue_athlete_team || null,
+      matchData.kyougi_red_athlete_id || null,
+      matchData.kyougi_red_athlete_name || null,
+      matchData.kyougi_red_athlete_team || null,
+      matchData.kyougi_match_status || '未开始',
       matchData.id
     ]
   );
@@ -249,32 +249,10 @@ async function findNextMatchesByPrevWinner(db, eventId, prevWinnerLabel) {
 function toLegacyFormat(row) {
   if (!row) return row;
   const scores = parseScores(row.kyougi_match_scores);
-  const venueStr = row.kyougi_match_venue || '';
   return {
     ...row,
-    weight_class: row.kyougi_match_categroy,
-    round: row.kyougi_match_round_num,
-    round_name: row.kyougi_match_round_name,
-    total_rounds: row.kyougi_match_category_total_rounds,
-    bracket_match_id: row.kyougi_bracket_match_id,
-    match_id: row.kyougi_match_id,
-    blue_athlete_id: row.kyougi_blue_athlete_id,
-    blue_name: row.kyougi_blue_athlete_name,
-    blue_unit: row.kyougi_blue_athlete_team,
-    blue_prev_winner: row.kyougi_blue_prev_winner,
     blue_score: scores.blue_score,
-    red_athlete_id: row.kyougi_red_athlete_id,
-    red_name: row.kyougi_red_athlete_name,
-    red_unit: row.kyougi_red_athlete_team,
-    red_prev_winner: row.kyougi_red_prev_winner_id,
-    red_score: scores.red_score,
-    match_status: row.kyougi_match_status,
-    win_method: row.kyougi_win_method,
-    winner: row.kyougi_winner,
-    venue_no:((row.kyougi_match_venue !== null && row.kyougi_match_id !== null) 
-        ? (String(row.kyougi_match_venue) + String(row.kyougi_match_id)) 
-        : ''),
-    venue: venueStr.charAt(0) || ''
+    red_score: scores.red_score
   };
 }
 

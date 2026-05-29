@@ -100,6 +100,32 @@ module.exports = (db, manager) => {
             }
 
             const result = await generateJJBracketForEvent(db, manager, event_id, weight_class || null);
+
+            if (result && result.generated > 0) {
+                const eventIdNum = Number(event_id);
+                if (weight_class) {
+                    await db.run(
+                        'DELETE FROM jiu_jitsu_matchs WHERE event_id = ? AND jiu_jitsu_match_categroy = ?',
+                        [eventIdNum, weight_class]
+                    );
+                    await syncJJMatchesFromBracket(db, eventIdNum, weight_class);
+                } else {
+                    const stageMapRows = await db.all(
+                        'SELECT DISTINCT category_id FROM bracket_stage WHERE event_id = ?',
+                        [eventIdNum]
+                    );
+                    const classes = stageMapRows.map(r => r.category_id).filter(Boolean);
+                    await db.run('DELETE FROM jiu_jitsu_matchs WHERE event_id = ?', [eventIdNum]);
+                    for (const wc of classes) {
+                        try {
+                            await syncJJMatchesFromBracket(db, eventIdNum, wc);
+                        } catch (e) {
+                            console.warn(`同步 ${wc} 失败:`, e.message);
+                        }
+                    }
+                }
+            }
+
             res.json({ success: true, data: result });
         } catch (err) {
             res.status(500).json({ success: false, error: err.message });
@@ -453,6 +479,15 @@ module.exports = (db, manager) => {
             console.log('[jj-generate-single] 开始生成:', { event_id, weight_class });
             const result = await generateJJBracketForEvent(db, manager, event_id, weight_class);
             console.log('[jj-generate-single] 生成完成:', result);
+
+            if (result && result.generated > 0) {
+                await db.run(
+                    'DELETE FROM jiu_jitsu_matchs WHERE event_id = ? AND jiu_jitsu_match_categroy = ?',
+                    [Number(event_id), weight_class]
+                );
+                await syncJJMatchesFromBracket(db, Number(event_id), weight_class);
+            }
+
             res.json({ success: true, data: result });
         } catch (err) {
             console.error('[jj-generate-single] 生成失败:', err.message);
@@ -596,7 +631,7 @@ module.exports = (db, manager) => {
                     winnerName = match.jiu_jitsu_red_athlete_name || '';
                     winnerUnit = match.jiu_jitsu_red_athlete_team || '';
                     winnerAthleteId = match.jiu_jitsu_red_athlete_id || '';
-                } else if (winner === '青方') {
+                } else if (winner === '蓝方') {
                     winnerName = match.jiu_jitsu_blue_athlete_name || '';
                     winnerUnit = match.jiu_jitsu_blue_athlete_team || '';
                     winnerAthleteId = match.jiu_jitsu_blue_athlete_id || '';
@@ -638,7 +673,7 @@ module.exports = (db, manager) => {
                                     'UPDATE bracket_match SET opponent1 = ?, winner_id = ?, status = ? WHERE id = ?',
                                     [JSON.stringify(opp1), opp1.id, '0.0', bm.id]
                                 );
-                            } else if (winner === '青方' && opp2) {
+                            } else if (winner === '蓝方' && opp2) {
                                 winnerParticipantId = opp2.id;
                                 opp2.result = 'win';
                                 await db.run(
@@ -691,66 +726,14 @@ module.exports = (db, manager) => {
                 return res.status(404).json({ success: false, error: '比赛不存在' });
             }
 
-            await db.run(
-                'UPDATE jiu_jitsu_matchs SET jiu_jitsu_match_scores = NULL, jiu_jitsu_winner = NULL, jiu_jitsu_win_method = NULL, jiu_jitsu_match_status = ? WHERE id = ?',
-                ['未开始', id]
-            );
+            const eventId = match.event_id;
 
-            if (match.jiu_jitsu_bracket_match_id) {
-                try {
-                    const bm = await db.get('SELECT * FROM bracket_match WHERE id = ?', [match.jiu_jitsu_bracket_match_id]);
-                    if (bm) {
-                        await db.run(
-                            'UPDATE bracket_match SET winner_id = NULL, status = ? WHERE id = ?',
-                            ['pending', bm.id]
-                        );
+            await db.run('DELETE FROM jiu_jitsu_matchs WHERE event_id = ?', [eventId]);
 
-                        const currentRound = await db.get('SELECT number FROM bracket_round WHERE id = ?', [bm.round_id]);
-                        if (currentRound) {
-                            const nextRound = await db.get('SELECT id FROM bracket_round WHERE stage_id = ? AND number = ?', [bm.stage_id, currentRound.number + 1]);
-                            if (nextRound) {
-                                const nextMatchNumber = Math.ceil(bm.number / 2);
-                                const nextBm = await db.get('SELECT * FROM bracket_match WHERE stage_id = ? AND round_id = ? AND number = ?', [bm.stage_id, nextRound.id, nextMatchNumber]);
-                                if (nextBm) {
-                                    const isOdd = bm.number % 2 === 1;
-                                    if (isOdd) {
-                                        let nextOpp1 = nextBm.opponent1 ? JSON.parse(nextBm.opponent1) : {};
-                                        delete nextOpp1.id;
-                                        await db.run('UPDATE bracket_match SET opponent1 = ? WHERE id = ?', [JSON.stringify(nextOpp1), nextBm.id]);
-                                    } else {
-                                        let nextOpp2 = nextBm.opponent2 ? JSON.parse(nextBm.opponent2) : {};
-                                        delete nextOpp2.id;
-                                        await db.run('UPDATE bracket_match SET opponent2 = ? WHERE id = ?', [JSON.stringify(nextOpp2), nextBm.id]);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } catch (e) {
-                    console.warn('重置bracket_match数据失败:', e.message);
-                }
-            }
-
-            if (match.jiu_jitsu_match_venue && match.jiu_jitsu_match_id) {
-                const venueLabel = (match.jiu_jitsu_match_venue || '') + (match.jiu_jitsu_match_id || '');
-                const prevWinnerLabel = venueLabel ? (venueLabel + '胜者') : '';
-                const nextMatches = await db.all(
-                    'SELECT * FROM jiu_jitsu_matchs WHERE event_id = ? AND (jiu_jitsu_red_prev_winner_id = ? OR jiu_jitsu_blue_prev_winner = ?)',
-                    [match.event_id, prevWinnerLabel, prevWinnerLabel]
-                );
-                for (const nm of nextMatches) {
-                    if (nm.jiu_jitsu_red_prev_winner_id === prevWinnerLabel) {
-                        await db.run(
-                            'UPDATE jiu_jitsu_matchs SET jiu_jitsu_red_athlete_name = ?, jiu_jitsu_red_athlete_team = ?, jiu_jitsu_red_athlete_id = ? WHERE id = ?',
-                            ['', '', null, nm.id]
-                        );
-                    }
-                    if (nm.jiu_jitsu_blue_prev_winner === prevWinnerLabel) {
-                        await db.run(
-                            'UPDATE jiu_jitsu_matchs SET jiu_jitsu_blue_athlete_name = ?, jiu_jitsu_blue_athlete_team = ?, jiu_jitsu_blue_athlete_id = ? WHERE id = ?',
-                            ['', '', null, nm.id]
-                        );
-                    }
+            const allStages = await db.all('SELECT category_id FROM bracket_stage WHERE event_id = ?', [eventId]);
+            for (const s of allStages) {
+                if (s.category_id) {
+                    await clearJJBracketStageData(db, eventId, s.category_id);
                 }
             }
 
@@ -792,6 +775,246 @@ module.exports = (db, manager) => {
             }
             res.json({ success: true });
         } catch (err) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    router.get('/jj-matches/export-excel-template', async (req, res) => {
+        try {
+            const ExcelJS = require('exceljs');
+            const { event_id } = req.query;
+            if (!event_id) {
+                return res.status(400).json({ success: false, error: '缺少赛事ID' });
+            }
+
+            const eventRow = await db.get('SELECT event_name, event_date FROM events WHERE event_id = ?', [event_id]);
+            if (!eventRow) {
+                return res.status(404).json({ success: false, error: '赛事不存在' });
+            }
+            const eventName = eventRow.event_name || '比赛';
+            const eventDate = eventRow.event_date || '';
+            const fileName = `${eventName}${eventDate}`;
+
+            const schemeRows = await db.all(
+                'SELECT weight_class, category_venue, category_date_num, category_order FROM category_mode WHERE event_id = ?',
+                [Number(event_id)]
+            );
+            const schemeMap = new Map();
+            schemeRows.forEach(r => {
+                if (r.weight_class) schemeMap.set(r.weight_class, r);
+            });
+
+            const matches = await db.all(
+                'SELECT * FROM jiu_jitsu_matchs WHERE event_id = ? AND jiu_jitsu_match_venue IS NOT NULL AND jiu_jitsu_match_id IS NOT NULL',
+                [Number(event_id)]
+            );
+
+            if (matches.length === 0) {
+                return res.status(400).json({ success: false, error: '暂无对阵数据可导出' });
+            }
+
+            function getZoneSortValue(m) {
+                const zone = m.jiu_jitsu_match_zone || '';
+                if (zone === 'upper') return 1;
+                if (zone === 'lower') return 2;
+                if (zone === 'final') return 3;
+                return 0;
+            }
+
+            matches.sort((a, b) => {
+                const sa = schemeMap.get(a.jiu_jitsu_match_categroy) || { category_venue: '', category_date_num: '', category_order: '' };
+                const sb = schemeMap.get(b.jiu_jitsu_match_categroy) || { category_venue: '', category_date_num: '', category_order: '' };
+
+                const unitA = parseFloat(sa.category_date_num) || 0;
+                const unitB = parseFloat(sb.category_date_num) || 0;
+                if (unitA !== unitB) return unitA - unitB;
+
+                const venueCmp = (sa.category_venue || '').localeCompare(sb.category_venue || '');
+                if (venueCmp !== 0) return venueCmp;
+
+                const roundNumA = a.jiu_jitsu_match_round_num || 0;
+                const roundNumB = b.jiu_jitsu_match_round_num || 0;
+                const isFinalA = roundNumA >= 999 ? 1 : 0;
+                const isFinalB = roundNumB >= 999 ? 1 : 0;
+                if (isFinalA !== isFinalB) return isFinalA - isFinalB;
+
+                if (roundNumA !== roundNumB) return roundNumA - roundNumB;
+
+                const orderA = parseFloat(sa.category_order) || 0;
+                const orderB = parseFloat(sb.category_order) || 0;
+                if (orderA !== orderB) return orderA - orderB;
+
+                const zoneA = getZoneSortValue(a);
+                const zoneB = getZoneSortValue(b);
+                if (zoneA !== zoneB) return zoneA - zoneB;
+
+                return (a.jiu_jitsu_bracket_match_id || 0) - (b.jiu_jitsu_bracket_match_id || 0);
+            });
+
+            const venueGroups = {};
+            for (const m of matches) {
+                const letter = (m.jiu_jitsu_match_venue || '').charAt(0) || 'A';
+                if (!venueGroups[letter]) venueGroups[letter] = { min: null, max: null };
+                const venueNo = (m.jiu_jitsu_match_venue || '') + String(m.jiu_jitsu_match_id || '');
+                const num = parseInt(String(venueNo).replace(/^[A-Za-z]+/, '')) || 0;
+                if (!venueGroups[letter].min || num < venueGroups[letter].min) venueGroups[letter].min = num;
+                if (!venueGroups[letter].max || num > venueGroups[letter].max) venueGroups[letter].max = num;
+            }
+            const venueRangeStr = Object.keys(venueGroups).sort().map(letter => {
+                const g = venueGroups[letter];
+                return `${letter}${g.min}-${letter}${g.max}`;
+            }).join(' ');
+
+            const workbook = new ExcelJS.Workbook();
+            workbook.creator = '柔术编排系统';
+
+            const ws = workbook.addWorksheet('对阵表', {
+                properties: { defaultRowHeight: 15 },
+                pageSetup: {
+                    paperSize: 9,
+                    orientation: 'portrait',
+                    fitToPage: true,
+                    fitToWidth: 1,
+                    fitToHeight: 0,
+                    showGridLines: false,
+                    horizontalCentered: true,
+                    printTitlesRow: '1:9'
+                }
+            });
+            ws.pageSetup.margins = { left: 0.7, right: 0.7, top: 0.65, bottom: 0.83, header: 0.21, footer: 0.35 };
+
+            const colWidths = [6.78, 6.78, 6.55, 9.78, 10, 4.78, 9.78, 10, 10.33, 7.55];
+            colWidths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+            const titleFont = { name: 'Microsoft YaHei UI', size: 11, bold: true };
+            const dateFont = { name: 'Microsoft YaHei UI', size: 9, bold: true };
+            const infoFont = { name: 'Microsoft YaHei UI', size: 7 };
+            const headerFont = { name: 'Microsoft YaHei UI', size: 7 };
+            const dataFont = { name: 'Microsoft YaHei UI', size: 7 };
+            const centerAlign = { horizontal: 'center', vertical: 'middle', wrapText: true };
+            const leftAlign = { horizontal: 'left', vertical: 'middle' };
+            const thinBottom = { bottom: { style: 'thin', color: { indexed: 64 } } };
+
+            ws.getRow(1).height = 28.5;
+            ws.getCell(1, 1).value = eventName;
+            ws.getCell(1, 1).font = titleFont;
+            ws.getCell(1, 1).alignment = centerAlign;
+            ws.mergeCells(1, 1, 1, 10);
+
+            ws.getRow(2).height = 12;
+            ws.getCell(2, 1).value = `${eventDate} 对阵表`;
+            ws.getCell(2, 1).font = dateFont;
+            ws.getCell(2, 1).alignment = centerAlign;
+            ws.mergeCells(2, 1, 2, 10);
+
+            ws.getRow(3).height = 5;
+
+            ws.getRow(4).height = 15;
+            ws.getCell(4, 1).value = '场地：';
+            ws.getCell(4, 1).font = infoFont;
+            ws.getCell(4, 1).alignment = { vertical: 'middle' };
+            ws.getCell(4, 9).value = '时间：';
+            ws.getCell(4, 9).font = infoFont;
+            ws.getCell(4, 9).alignment = leftAlign;
+
+            ws.getRow(5).height = 15;
+            ws.getCell(5, 1).value = `场次：${venueRangeStr}`;
+            ws.getCell(5, 1).font = infoFont;
+            ws.getCell(5, 1).alignment = { vertical: 'middle' };
+            ws.getCell(5, 9).value = `日期：${eventDate}`;
+            ws.getCell(5, 9).font = infoFont;
+            ws.getCell(5, 9).alignment = leftAlign;
+
+            ws.getRow(6).height = 5;
+            ws.getRow(7).height = 10;
+
+            const headers = [
+                { col: 1, val: '场次', align: centerAlign },
+                { col: 3, val: '轮次', align: centerAlign },
+                { col: 4, val: '红方姓名', align: centerAlign },
+                { col: 5, val: '代表队', align: centerAlign },
+                { col: 7, val: '蓝方姓名', align: centerAlign },
+                { col: 8, val: '代表队', align: centerAlign },
+                { col: 9, val: '级别', align: centerAlign },
+                { col: 10, val: '备注', align: { vertical: 'middle', wrapText: true } }
+            ];
+            ws.getRow(8).height = 15;
+            for (const h of headers) {
+                const cell = ws.getCell(8, h.col);
+                cell.value = h.val;
+                cell.font = headerFont;
+                cell.alignment = h.align;
+                cell.border = thinBottom;
+            }
+
+            ws.getRow(9).height = 5;
+
+            function formatRoundName(roundName, roundNum, totalRounds) {
+                if (roundName && roundName.trim()) {
+                    const rn = roundName.trim();
+                    if (rn === '决赛' || rn === 'Final') return 'Final';
+                    if (rn === '半决赛' || rn === '1/2') return '1/2';
+                    const m = rn.match(/1\/(\d+)/);
+                    if (m) return `1/${m[1]}`;
+                    if (rn.match(/^1\/\d+决赛$/)) {
+                        return rn.replace('决赛', '');
+                    }
+                    return rn;
+                }
+                if (roundNum && totalRounds) {
+                    if (roundNum >= 999) return 'Final';
+                    if (roundNum === totalRounds) return 'Final';
+                    const d = Math.pow(2, totalRounds - roundNum);
+                    if (d === 2) return '1/2';
+                    return `1/${d}`;
+                }
+                return '';
+            }
+
+            let rowNum = 10;
+            for (const m of matches) {
+                const row = ws.getRow(rowNum);
+                row.height = 12.3;
+
+                const venueNo = (m.jiu_jitsu_match_venue || '') + String(m.jiu_jitsu_match_id || '');
+                const roundName = formatRoundName(m.jiu_jitsu_match_round_name || '', m.jiu_jitsu_match_round_num, m.jiu_jitsu_match_category_total_rounds);
+                const redName = m.jiu_jitsu_red_athlete_name || m.jiu_jitsu_red_prev_winner_id || '-';
+                const redUnit = m.jiu_jitsu_red_athlete_team || '';
+                const blueName = m.jiu_jitsu_blue_athlete_name || m.jiu_jitsu_blue_prev_winner || '-';
+                const blueUnit = m.jiu_jitsu_blue_athlete_team || '';
+                const wc = m.jiu_jitsu_match_categroy || '';
+                const isFinal = roundName === 'Final' || roundName === '决赛';
+
+                const dataCells = [
+                    { col: 1, val: venueNo, align: centerAlign },
+                    { col: 3, val: roundName, align: centerAlign },
+                    { col: 4, val: redName, align: { vertical: 'middle' } },
+                    { col: 5, val: redUnit, align: { vertical: 'middle' } },
+                    { col: 6, val: '-VS-', align: centerAlign },
+                    { col: 7, val: blueName, align: { vertical: 'middle' } },
+                    { col: 8, val: blueUnit, align: { vertical: 'middle' } },
+                    { col: 9, val: wc, align: { vertical: 'middle' } }
+                ];
+                if (isFinal) {
+                    dataCells.push({ col: 10, val: '决赛', align: { vertical: 'middle' } });
+                }
+
+                for (const dc of dataCells) {
+                    const cell = row.getCell(dc.col);
+                    cell.value = dc.val;
+                    cell.font = dataFont;
+                    cell.alignment = dc.align;
+                }
+
+                rowNum++;
+            }
+
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(fileName + '.xlsx')}`);
+            await workbook.xlsx.write(res);
+            res.end();
+        } catch (err) {
+            console.error('GET /jj-matches/export-excel-template 错误:', err.message);
             res.status(500).json({ success: false, error: err.message });
         }
     });
