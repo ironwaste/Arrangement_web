@@ -422,13 +422,14 @@
         .filter-arrow { color: rgba(255,255,255,0.5); font-size: 11px; margin-left: 2px; }
         .matches-split-table { width: 100%; }
         .matches-split-table thead { position: sticky; top: 0; z-index: 1; }
-        .matches-split-table thead tr { background: linear-gradient(to right, #8B0000, #00008B); }
+        .matches-split-table thead tr { background: linear-gradient(to right, #00008B, #8B0000); }
         .matches-split-table thead th { background: transparent; color: #fff; }
         .matches-split-table thead tr th:first-child { border-radius: 8px 0 0 0; }
         .matches-split-table thead tr th:last-child { border-radius: 0 8px 0 0; }
         .matches-split-table tbody tr:nth-child(odd) { background: #f0f7ed; }
         .matches-split-table tbody tr:nth-child(even) { background: #e8f3e0; }
         .matches-split-table tbody tr:hover { background: #d4edcc; }
+        .jj-matches-split-table thead tr { background: linear-gradient(to right, #8B0000, #00008B); }
         .poomsae-matches-table { table-layout: fixed; }
         .poomsae-matches-table th { padding: 6px 2px; text-align: center; font-size: 12px; white-space: normal; word-break: keep-all; line-height: 1.2; }
         .poomsae-matches-table td { padding: 4px 2px; text-align: center; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1499,9 +1500,13 @@
                     <span class="icon">⚔️</span>
                     <span class="text">对阵图</span>
                 </a>
-                <a class="menu-item<%= activePage === 'matches' ? ' active' : '' %>" href="/matches">
+                <a class="menu-item<%= activePage === 'matches' ? ' active' : '' %>" href="/matches" id="menuMatches">
                     <span class="icon">🔍</span>
-                    <span class="text">对阵表</span>
+                    <span class="text">跆拳道对阵表</span>
+                </a>
+                <a class="menu-item<%= activePage === 'jjMatches' ? ' active' : '' %>" href="/jj-matches" id="menuJJMatches">
+                    <span class="icon">📋</span>
+                    <span class="text">柔术对阵表</span>
                 </a>
                 <div class="menu-group-title">统计报表</div>
                 <a class="menu-item<%= activePage === 'teamScores' ? ' active' : '' %>" href="/team-scores">

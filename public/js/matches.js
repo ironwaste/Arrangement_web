@@ -145,84 +145,45 @@ async function loadMatches() {
     });
 
     sortedMatches.forEach(m => {
-        const isJJ = currentEventType === 'jiu_jitsu';
-        const mWeightClass = isJJ ? m.weight_class : m.kyougi_match_categroy;
+        const mWeightClass = m.kyougi_match_categroy;
         if (scheduleClasses.has(mWeightClass)) return;
-        const venueLetter = isJJ
-            ? (m.venue || (m.venue_no || '').charAt(0) || '')
-            : ((m.kyougi_match_venue || '').charAt(0) || '');
-        const matchNo = isJJ ? (m.match_id || '') : (m.kyougi_match_id || '');
-        const mMatchStatus = isJJ ? m.match_status : m.kyougi_match_status;
+        const venueLetter = (m.kyougi_match_venue || '').charAt(0) || '';
+        const matchNo = m.kyougi_match_id || '';
+        const mMatchStatus = m.kyougi_match_status;
         const statusClass = mMatchStatus === '未开始' ? 'status-pending' : mMatchStatus === '进行中' ? 'status-active' : 'status-finished';
         const blueScore = m.blue_score != null ? m.blue_score : '';
         const redScore = m.red_score != null ? m.red_score : '';
 
-        const mRoundName = isJJ ? m.round_name : m.kyougi_match_round_name;
-        const mZone = isJJ ? (m.zone || '') : (m.kyougi_match_zone || '');
-        const isRFinal = mRoundName === 'R.Final' || mZone === 'final';
+        const mRoundName = m.kyougi_match_round_name;
         const tr = document.createElement('tr');
         tr.dataset.matchId = m.id;
         tr.dataset.matchType = 'match';
 
-        if (isRFinal && isJJ) {
-            const athletes = _jjAthletesByClass[mWeightClass] || [];
-            const upperAthletes = [];
-            const lowerAthletes = [];
-            athletes.forEach(a => {
-                upperAthletes.push(a);
-                lowerAthletes.push(a);
-            });
-            const redOptions = upperAthletes.map(a =>
-                `<option value="${a.name}|${a.team}" ${m.red_name === a.name ? 'selected' : ''}>#${a.draw_num} ${a.name}</option>`
-            ).join('');
-            const blueOptions = lowerAthletes.map(a =>
-                `<option value="${a.name}|${a.team}" ${m.blue_name === a.name ? 'selected' : ''}>#${a.draw_num} ${a.name}</option>`
-            ).join('');
-            const redSelected = m.red_name && m.red_name !== '上区第一';
-            const blueSelected = m.blue_name && m.blue_name !== '下区第一';
-
-            tr.innerHTML = `
-                <td data-col="venueLetter">${venueLetter}</td>
-                <td data-col="matchNo">${matchNo}</td>
-                <td data-col="roundName">${formatRoundName(mRoundName || '')}</td>
-                <td data-col="redName" style="color:#F56C6C;"><select onchange="onJJFinalSelect(this, 'red', ${m.id})" style="width:100%;padding:2px;border:1px solid #dcdfe6;border-radius:3px;font-size:12px;color:#F56C6C;"><option value="" ${!redSelected ? 'selected' : ''}>上区第一</option>${redOptions}</select></td>
-                <td data-col="redUnit" style="color:#F56C6C;font-size:12px;" id="jj_red_team_${m.id}">${redSelected ? (m.red_unit || '') : ''}</td>
-                <td data-col="vs" style="color:#909399;font-weight:bold;">VS</td>
-                <td data-col="blueName" style="color:#409EFF;"><select onchange="onJJFinalSelect(this, 'blue', ${m.id})" style="width:100%;padding:2px;border:1px solid #dcdfe6;border-radius:3px;font-size:12px;color:#409EFF;"><option value="" ${!blueSelected ? 'selected' : ''}>下区第一</option>${blueOptions}</select></td>
-                <td data-col="blueUnit" style="color:#409EFF;font-size:12px;" id="jj_blue_team_${m.id}">${blueSelected ? (m.blue_unit || '') : ''}</td>
-                <td data-col="weightClass">${mWeightClass || ''}</td>
-                <td data-col="status" ondblclick="openScoreModal(this)"><span class="status-badge ${statusClass}">${mMatchStatus || ''}</span></td>
-                <td data-col="score">${blueScore !== '' && redScore !== '' ? (blueScore + ':' + redScore) : ''}</td>
-                <td data-col="winMethod">${m.win_method || ''}</td>
-                <td data-col="winner" style="${(m.winner === '青方' || m.winner === '蓝方') ? 'color:#409EFF;' : (m.winner === '红方' ? 'color:#F56C6C;' : '')}">${m.winner || ''}</td>
-            `;
-        } else {
-            const mRedName = isJJ ? m.red_name : m.kyougi_red_athlete_name;
-            const mBlueName = isJJ ? m.blue_name : m.kyougi_blue_athlete_name;
-            const mRedPrevWinner = isJJ ? m.red_prev_winner : m.kyougi_red_prev_winner_id;
-            const mBluePrevWinner = isJJ ? m.blue_prev_winner : m.kyougi_blue_prev_winner;
-            const mRedUnit = isJJ ? m.red_unit : m.kyougi_red_athlete_team;
-            const mBlueUnit = isJJ ? m.blue_unit : m.kyougi_blue_athlete_team;
-            const mWinMethod = isJJ ? m.win_method : m.kyougi_win_method;
-            const mWinner = isJJ ? m.winner : m.kyougi_winner;
-            const blueDisplay = mBlueName || mBluePrevWinner || '-';
-            const redDisplay = mRedName || mRedPrevWinner || '-';
-            tr.innerHTML = `
-                <td data-col="venueLetter">${venueLetter}</td>
-                <td data-col="matchNo">${matchNo}</td>
-                <td data-col="roundName">${formatRoundName(mRoundName || '')}</td>
-                <td data-col="redName" style="color:#F56C6C;">${redDisplay}</td>
-                <td data-col="redUnit" style="color:#F56C6C;">${mRedUnit || '-'}</td>
-                <td data-col="vs" style="color:#909399;font-weight:bold;">VS</td>
-                <td data-col="blueName" style="color:#409EFF;">${blueDisplay}</td>
-                <td data-col="blueUnit" style="color:#409EFF;">${mBlueUnit || '-'}</td>
-                <td data-col="weightClass">${mWeightClass || ''}</td>
-                <td data-col="status" ondblclick="openScoreModal(this)"><span class="status-badge ${statusClass}">${mMatchStatus || ''}</span></td>
-                <td data-col="score">${blueScore !== '' && redScore !== '' ? (blueScore + ':' + redScore) : ''}</td>
-                <td data-col="winMethod">${mWinMethod || ''}</td>
-                <td data-col="winner" style="${(mWinner === '青方' || mWinner === '蓝方') ? 'color:#409EFF;' : (mWinner === '红方' ? 'color:#F56C6C;' : '')}">${mWinner || ''}</td>
-            `;
-        }
+        const mRedName = m.kyougi_red_athlete_name;
+        const mBlueName = m.kyougi_blue_athlete_name;
+        const mRedPrevWinner = m.kyougi_red_prev_winner_id;
+        const mBluePrevWinner = m.kyougi_blue_prev_winner;
+        const mRedUnit = m.kyougi_red_athlete_team;
+        const mBlueUnit = m.kyougi_blue_athlete_team;
+        const mWinMethod = m.kyougi_win_method;
+        const mWinner = m.kyougi_winner;
+        const blueDisplay = mBlueName || mBluePrevWinner || '-';
+        const redDisplay = mRedName || mRedPrevWinner || '-';
+        tr.innerHTML = `
+            <td data-col="venueLetter">${venueLetter}</td>
+            <td data-col="matchNo">${matchNo}</td>
+            <td data-col="roundName">${formatRoundName(mRoundName || '')}</td>
+            <td data-col="blueName" style="color:#409EFF;">${blueDisplay}</td>
+            <td data-col="blueUnit" style="color:#409EFF;">${mBlueUnit || '-'}</td>
+            <td data-col="vs" style="color:#909399;font-weight:bold;">VS</td>
+            <td data-col="redName" style="color:#F56C6C;">${redDisplay}</td>
+            <td data-col="redUnit" style="color:#F56C6C;">${mRedUnit || '-'}</td>
+            <td data-col="weightClass">${mWeightClass || ''}</td>
+            <td data-col="status" ondblclick="openScoreModal(this)"><span class="status-badge ${statusClass}">${mMatchStatus || ''}</span></td>
+            <td data-col="score">${blueScore !== '' && redScore !== '' ? (blueScore + ':' + redScore) : ''}</td>
+            <td data-col="winMethod">${mWinMethod || ''}</td>
+            <td data-col="winner" style="${mWinner === '青方' ? 'color:#409EFF;' : (mWinner === '红方' ? 'color:#F56C6C;' : '')}">${mWinner || ''}</td>
+        `;
         _allMatchRows.push(tr);
         if (mMatchStatus === '进行中') active++;
         if (mMatchStatus === '未开始') pending++;
@@ -251,11 +212,11 @@ async function loadMatches() {
                 <td data-col="venueLetter">${venueLetter}</td>
                 <td data-col="matchNo">${matchNo}</td>
                 <td data-col="roundName">${roundName}</td>
-                <td data-col="redName" style="color:#F56C6C;"><select onchange="onScheduleFinalSelect(this, 'red', '${s.displayNum}')" style="width:100%;padding:2px;border:1px solid #dcdfe6;border-radius:3px;font-size:12px;color:#F56C6C;"><option value="">上区第一</option>${redOptions}</select></td>
-                <td data-col="redUnit" style="color:#F56C6C;font-size:12px;" id="sched_red_team_${s.displayNum}">${s.redTeam || ''}</td>
-                <td data-col="vs" style="color:#909399;font-weight:bold;">VS</td>
                 <td data-col="blueName" style="color:#409EFF;"><select onchange="onScheduleFinalSelect(this, 'blue', '${s.displayNum}')" style="width:100%;padding:2px;border:1px solid #dcdfe6;border-radius:3px;font-size:12px;color:#409EFF;"><option value="">下区第一</option>${blueOptions}</select></td>
                 <td data-col="blueUnit" style="color:#409EFF;font-size:12px;" id="sched_blue_team_${s.displayNum}">${s.blueTeam || ''}</td>
+                <td data-col="vs" style="color:#909399;font-weight:bold;">VS</td>
+                <td data-col="redName" style="color:#F56C6C;"><select onchange="onScheduleFinalSelect(this, 'red', '${s.displayNum}')" style="width:100%;padding:2px;border:1px solid #dcdfe6;border-radius:3px;font-size:12px;color:#F56C6C;"><option value="">上区第一</option>${redOptions}</select></td>
+                <td data-col="redUnit" style="color:#F56C6C;font-size:12px;" id="sched_red_team_${s.displayNum}">${s.redTeam || ''}</td>
                 <td data-col="weightClass">${s.level || ''}</td>
                 <td data-col="status" ondblclick="openScoreModal(this)"><span class="status-badge ${statusClass}">${s.status || ''}</span></td>
                 <td data-col="score"></td>
@@ -269,11 +230,11 @@ async function loadMatches() {
                 <td data-col="venueLetter">${venueLetter}</td>
                 <td data-col="matchNo">${matchNo}</td>
                 <td data-col="roundName">${roundName}</td>
-                <td data-col="redName" style="color:#F56C6C;">${redDisplay}</td>
-                <td data-col="redUnit" style="color:#F56C6C;">${s.redTeam || '-'}</td>
-                <td data-col="vs" style="color:#909399;font-weight:bold;">VS</td>
                 <td data-col="blueName" style="color:#409EFF;">${blueDisplay}</td>
                 <td data-col="blueUnit" style="color:#409EFF;">${s.blueTeam || '-'}</td>
+                <td data-col="vs" style="color:#909399;font-weight:bold;">VS</td>
+                <td data-col="redName" style="color:#F56C6C;">${redDisplay}</td>
+                <td data-col="redUnit" style="color:#F56C6C;">${s.redTeam || '-'}</td>
                 <td data-col="weightClass">${s.level || ''}</td>
                 <td data-col="status" ondblclick="openScoreModal(this)"><span class="status-badge ${statusClass}">${s.status || ''}</span></td>
                 <td data-col="score"></td>
@@ -301,7 +262,7 @@ async function loadMatches() {
             if (table) {
                 const thead = table.querySelector('thead');
                 if (thead) {
-                    thead.style.cssText = 'position:sticky;top:0;z-index:10;background:linear-gradient(to right,#8B0000,#00008B);';
+                    thead.style.cssText = 'position:sticky;top:0;z-index:10;background:linear-gradient(to right,#00008B,#8B0000);';
                     const headers = thead.querySelectorAll('th');
                     headers.forEach(th => {
                         th.style.cssText = th.getAttribute('style') + ';position:sticky;top:0;z-index:10;background:transparent;';
@@ -616,31 +577,19 @@ async function printMatchSchedule() {
         alert('没有可打印的比赛数据');
         return;
     }
-    const isJJ = currentEventType === 'jiu_jitsu';
     const venueGroups = new Map();
 
     matches.forEach(m => {
-        const venueLetter = isJJ
-            ? (m.venue || (m.venue_no || '').charAt(0) || '')
-            : ((m.kyougi_match_venue || '').charAt(0) || '');
-        const matchNo = isJJ ? (m.match_id || '') : (m.kyougi_match_id || '');
-        const mRoundName = isJJ ? m.round_name : m.kyougi_match_round_name;
-        const mZone = isJJ ? (m.zone || '') : (m.kyougi_match_zone || '');
-        const isRFinal = mRoundName === 'R.Final' || mZone === 'final';
+        const venueLetter = (m.kyougi_match_venue || '').charAt(0) || '';
+        const matchNo = m.kyougi_match_id || '';
+        const mRoundName = m.kyougi_match_round_name;
         let blueDisplay, redDisplay;
-        if (isRFinal) {
-            const rn = isJJ ? m.red_name : m.kyougi_red_athlete_name;
-            const bn = isJJ ? m.blue_name : m.kyougi_blue_athlete_name;
-            redDisplay = (rn && rn !== '上区第一') ? rn : '上区第一';
-            blueDisplay = (bn && bn !== '下区第一') ? bn : '下区第一';
-        } else {
-            const rn = isJJ ? m.red_name : m.kyougi_red_athlete_name;
-            const bn = isJJ ? m.blue_name : m.kyougi_blue_athlete_name;
-            const rpw = isJJ ? m.red_prev_winner : m.kyougi_red_prev_winner_id;
-            const bpw = isJJ ? m.blue_prev_winner : m.kyougi_blue_prev_winner;
-            redDisplay = rn || rpw || '';
-            blueDisplay = bn || bpw || '';
-        }
+        const rn = m.kyougi_red_athlete_name;
+        const bn = m.kyougi_blue_athlete_name;
+        const rpw = m.kyougi_red_prev_winner_id;
+        const bpw = m.kyougi_blue_prev_winner;
+        redDisplay = rn || rpw || '';
+        blueDisplay = bn || bpw || '';
 
         const key = venueLetter;
         if (!venueGroups.has(key)) venueGroups.set(key, []);
@@ -650,10 +599,10 @@ async function printMatchSchedule() {
             matchNo,
             round: formatRoundName(mRoundName || ''),
             red: redDisplay,
-            redUnit: (isJJ ? m.red_unit : m.kyougi_red_athlete_team) || '',
+            redUnit: m.kyougi_red_athlete_team || '',
             blue: blueDisplay,
-            blueUnit: (isJJ ? m.blue_unit : m.kyougi_blue_athlete_team) || '',
-            weightClass: (isJJ ? m.weight_class : m.kyougi_match_categroy) || ''
+            blueUnit: m.kyougi_blue_athlete_team || '',
+            weightClass: m.kyougi_match_categroy || ''
         });
     });
 
@@ -675,8 +624,8 @@ async function printMatchSchedule() {
     d.write('table { width: 100%; border-collapse: collapse; }');
     d.write('th, td { border: 1px solid #333; padding: 4px 6px; text-align: center; font-size: 9pt; white-space: nowrap; }');
     d.write('th { background: #f0f0f0; font-weight: bold; font-size: 9pt; }');
-    d.write('.blue-col { color: #1565C0; }');
-    d.write('.red-col { color: #C62828; }');
+    d.write('.blue-col { color: #409EFF; }');
+    d.write('.red-col { color: #F56C6C; }');
     d.write('.vs-col { color: #666; font-weight: bold; }');
     d.write('.name-col { text-align: left; }');
     d.write('@media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } .venue-section { page-break-inside: auto; } }');
@@ -689,17 +638,17 @@ async function printMatchSchedule() {
         d.write('<div class="print-header"><h1>' + eventName + '</h1><h2>对阵表</h2></div>');
         d.write('<div class="venue-title"><img class="venue-logo" src="' + window.location.origin + '/images/logo.png">' + venue + '场地</div>');
         d.write('<table>');
-        d.write('<thead><tr><th>场次</th><th>轮次</th><th class="red-col">红方</th><th>代表队</th><th>VS</th><th class="blue-col">' + (isJJ ? '蓝方' : '青方') + '</th><th>代表队</th><th>级别</th></tr></thead>');
+        d.write('<thead><tr><th>场次</th><th>轮次</th><th class="blue-col">青方</th><th>代表队</th><th>VS</th><th class="red-col">红方</th><th>代表队</th><th>级别</th></tr></thead>');
         d.write('<tbody>');
         items.forEach(item => {
             d.write('<tr>');
             d.write('<td>' + item.matchNo + '</td>');
             d.write('<td>' + item.round + '</td>');
-            d.write('<td class="red-col name-col">' + item.red + '</td>');
-            d.write('<td>' + item.redUnit + '</td>');
-            d.write('<td class="vs-col">VS</td>');
             d.write('<td class="blue-col name-col">' + item.blue + '</td>');
             d.write('<td>' + item.blueUnit + '</td>');
+            d.write('<td class="vs-col">VS</td>');
+            d.write('<td class="red-col name-col">' + item.red + '</td>');
+            d.write('<td>' + item.redUnit + '</td>');
             d.write('<td>' + item.weightClass + '</td>');
             d.write('</tr>');
         });
@@ -725,16 +674,15 @@ function exportMatchesExcelTemplate() {
 // ==================== 列管理（与称重管理界面统一） ====================
 
 function getMatchesColumns() {
-    const blueLabel = currentEventType === 'jiu_jitsu' ? '蓝方' : '青方';
     return [
         { key: 'venueLetter', label: '场地' },
         { key: 'matchNo', label: '场次' },
         { key: 'roundName', label: '轮次' },
+        { key: 'blueName', label: '青方姓名' },
+        { key: 'blueUnit', label: '青方代表队' },
+        { key: 'vs', label: 'VS' },
         { key: 'redName', label: '红方姓名' },
         { key: 'redUnit', label: '红方代表队' },
-        { key: 'vs', label: 'VS' },
-        { key: 'blueName', label: blueLabel + '姓名' },
-        { key: 'blueUnit', label: blueLabel + '代表队' },
         { key: 'weightClass', label: '级别' },
         { key: 'status', label: '状态' },
         { key: 'score', label: '比分' },
@@ -1041,7 +989,7 @@ function openScoreModal(td) {
     const redName = cells[6] ? cells[6].textContent.trim() : '';
     const redUnit = cells[7] ? cells[7].textContent.trim() : '';
 
-    document.getElementById('scoreBlueName').textContent = blueName || (currentEventType === 'jiu_jitsu' ? '蓝方' : '青方');
+    document.getElementById('scoreBlueName').textContent = blueName || '青方';
     document.getElementById('scoreBlueUnit').textContent = blueUnit || '';
     document.getElementById('scoreRedName').textContent = redName || '红方';
     document.getElementById('scoreRedUnit').textContent = redUnit || '';
@@ -1087,7 +1035,7 @@ function selectWinner(side) {
     document.getElementById('scoreWinner').value = side || '';
     const blue = document.getElementById('winnerBlue');
     const red = document.getElementById('winnerRed');
-    if (side === '青方' || side === '蓝方') {
+    if (side === '青方') {
         blue.style.background = '#409EFF';
         blue.style.color = '#fff';
         blue.style.borderColor = '#409EFF';
@@ -1326,11 +1274,10 @@ function doPrint() {
     const toVal = document.getElementById('printTo').value;
 
     let filtered = _printMatchesCache;
-    const isJJ = currentEventType === 'jiu_jitsu';
 
     if (selectedVenue) {
         filtered = filtered.filter(m => {
-            const v = isJJ ? (m.venue_no || '').charAt(0) : (m.kyougi_match_venue || '').charAt(0);
+            const v = (m.kyougi_match_venue || '').charAt(0);
             return v === selectedVenue;
         });
     }
@@ -1338,7 +1285,7 @@ function doPrint() {
     if (fromVal) {
         const from = parseInt(fromVal);
         filtered = filtered.filter(m => {
-            const num = parseInt(isJJ ? m.match_id : m.kyougi_match_id) || 0;
+            const num = parseInt(m.kyougi_match_id) || 0;
             return num >= from;
         });
     }
@@ -1346,7 +1293,7 @@ function doPrint() {
     if (toVal) {
         const to = parseInt(toVal);
         filtered = filtered.filter(m => {
-            const num = parseInt(isJJ ? m.match_id : m.kyougi_match_id) || 0;
+            const num = parseInt(m.kyougi_match_id) || 0;
             return num <= to;
         });
     }
@@ -1361,31 +1308,19 @@ function doPrint() {
 }
 
 function printMatchScheduleWithData(matches) {
-    const isJJ = currentEventType === 'jiu_jitsu';
     const venueGroups = new Map();
 
     matches.forEach(m => {
-        const venueLetter = isJJ
-            ? (m.venue || (m.venue_no || '').charAt(0) || '')
-            : ((m.kyougi_match_venue || '').charAt(0) || '');
-        const matchNo = isJJ ? (m.match_id || '') : (m.kyougi_match_id || '');
-        const mRoundName = isJJ ? m.round_name : m.kyougi_match_round_name;
-        const mZone = isJJ ? (m.zone || '') : (m.kyougi_match_zone || '');
-        const isRFinal = mRoundName === 'R.Final' || mZone === 'final';
+        const venueLetter = (m.kyougi_match_venue || '').charAt(0) || '';
+        const matchNo = m.kyougi_match_id || '';
+        const mRoundName = m.kyougi_match_round_name;
         let blueDisplay, redDisplay;
-        if (isRFinal) {
-            const rn = isJJ ? m.red_name : m.kyougi_red_athlete_name;
-            const bn = isJJ ? m.blue_name : m.kyougi_blue_athlete_name;
-            redDisplay = (rn && rn !== '上区第一') ? rn : '上区第一';
-            blueDisplay = (bn && bn !== '下区第一') ? bn : '下区第一';
-        } else {
-            const rn = isJJ ? m.red_name : m.kyougi_red_athlete_name;
-            const bn = isJJ ? m.blue_name : m.kyougi_blue_athlete_name;
-            const rpw = isJJ ? m.red_prev_winner : m.kyougi_red_prev_winner_id;
-            const bpw = isJJ ? m.blue_prev_winner : m.kyougi_blue_prev_winner;
-            redDisplay = rn || rpw || '';
-            blueDisplay = bn || bpw || '';
-        }
+        const rn = m.kyougi_red_athlete_name;
+        const bn = m.kyougi_blue_athlete_name;
+        const rpw = m.kyougi_red_prev_winner_id;
+        const bpw = m.kyougi_blue_prev_winner;
+        redDisplay = rn || rpw || '';
+        blueDisplay = bn || bpw || '';
 
         const key = venueLetter;
         if (!venueGroups.has(key)) venueGroups.set(key, []);
@@ -1395,10 +1330,10 @@ function printMatchScheduleWithData(matches) {
             matchNo,
             round: formatRoundName(mRoundName || ''),
             red: redDisplay,
-            redUnit: (isJJ ? m.red_unit : m.kyougi_red_athlete_team) || '',
+            redUnit: m.kyougi_red_athlete_team || '',
             blue: blueDisplay,
-            blueUnit: (isJJ ? m.blue_unit : m.kyougi_blue_athlete_team) || '',
-            weightClass: (isJJ ? m.weight_class : m.kyougi_match_categroy) || ''
+            blueUnit: m.kyougi_blue_athlete_team || '',
+            weightClass: m.kyougi_match_categroy || ''
         });
     });
 
@@ -1423,8 +1358,8 @@ function printMatchScheduleWithData(matches) {
     d.write('tbody { display: table-row-group; }');
     d.write('th, td { border: 1px solid #333; padding: 4px 6px; text-align: center; font-size: 9pt; white-space: nowrap; }');
     d.write('th { background: #f0f0f0; font-weight: bold; font-size: 9pt; }');
-    d.write('.blue-col { color: #1565C0; }');
-    d.write('.red-col { color: #C62828; }');
+    d.write('.blue-col { color: #409EFF; }');
+    d.write('.red-col { color: #F56C6C; }');
     d.write('.vs-col { color: #666; font-weight: bold; }');
     d.write('.name-col { text-align: left; }');
     d.write('tr { page-break-inside: avoid; break-inside: avoid; }');
@@ -1438,17 +1373,17 @@ function printMatchScheduleWithData(matches) {
         d.write('<div class="print-header"><h1>' + eventName + '</h1><h2>对阵表</h2></div>');
         d.write('<div class="venue-title"><img class="venue-logo" src="' + window.location.origin + '/images/logo.png">' + venue + '场地</div>');
         d.write('<table>');
-        d.write('<thead><tr><th>场次</th><th>轮次</th><th class="red-col">红方</th><th>代表队</th><th>VS</th><th class="blue-col">' + (isJJ ? '蓝方' : '青方') + '</th><th>代表队</th><th>级别</th></tr></thead>');
+        d.write('<thead><tr><th>场次</th><th>轮次</th><th class="blue-col">青方</th><th>代表队</th><th>VS</th><th class="red-col">红方</th><th>代表队</th><th>级别</th></tr></thead>');
         d.write('<tbody>');
         items.forEach(item => {
             d.write('<tr>');
             d.write('<td>' + item.matchNo + '</td>');
             d.write('<td>' + item.round + '</td>');
-            d.write('<td class="red-col name-col">' + item.red + '</td>');
-            d.write('<td>' + item.redUnit + '</td>');
-            d.write('<td class="vs-col">VS</td>');
             d.write('<td class="blue-col name-col">' + item.blue + '</td>');
             d.write('<td>' + item.blueUnit + '</td>');
+            d.write('<td class="vs-col">VS</td>');
+            d.write('<td class="red-col name-col">' + item.red + '</td>');
+            d.write('<td>' + item.redUnit + '</td>');
             d.write('<td>' + item.weightClass + '</td>');
             d.write('</tr>');
         });

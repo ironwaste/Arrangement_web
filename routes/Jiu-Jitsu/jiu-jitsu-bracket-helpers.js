@@ -968,6 +968,24 @@ async function syncJJMatchesFromBracket(db, event_id, weightClass, compMode) {
 
     if (allBracketMatches.length === 0) return 0;
 
+    const existingVenueMap = new Map();
+    try {
+        const existingRows = await db.all(
+            'SELECT jiu_jitsu_bracket_match_id, jiu_jitsu_match_venue, jiu_jitsu_match_id FROM jiu_jitsu_matchs WHERE event_id = ? AND jiu_jitsu_match_categroy = ?',
+            [event_id, weightClass]
+        );
+        if (existingRows) {
+            for (const r of existingRows) {
+                if (r.jiu_jitsu_bracket_match_id != null && (r.jiu_jitsu_match_venue != null || r.jiu_jitsu_match_id != null)) {
+                    existingVenueMap.set(String(r.jiu_jitsu_bracket_match_id), {
+                        venue: r.jiu_jitsu_match_venue,
+                        matchId: r.jiu_jitsu_match_id
+                    });
+                }
+            }
+        }
+    } catch (e) {}
+
     const bmIdToRoundAndNum = new Map();
     const stageRoundNumToMatches = new Map();
     for (const bm of allBracketMatches) {
@@ -1203,6 +1221,10 @@ async function syncJJMatchesFromBracket(db, event_id, weightClass, compMode) {
             }
         }
 
+        const existingVenue = existingVenueMap.get(String(bm.id));
+        const preservedVenue = existingVenue ? existingVenue.venue : null;
+        const preservedMatchId = existingVenue ? existingVenue.matchId : null;
+
         await db.run(
             `INSERT INTO jiu_jitsu_matchs
             (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy,
@@ -1215,7 +1237,7 @@ async function syncJJMatchesFromBracket(db, event_id, weightClass, compMode) {
              jiu_jitsu_match_status)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
-                event_id, null, null, weightClass,
+                event_id, preservedVenue, preservedMatchId, weightClass,
                 roundNum, rn, maxRoundNumber,
                 bm.id,
                 redAthleteId, redName, redUnit,

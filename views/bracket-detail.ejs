@@ -111,13 +111,18 @@
 (function() {
     if (typeof currentEventType !== 'undefined' && currentEventType === 'jiu_jitsu') {
         var bracketScoreBlueName = document.getElementById('bracketScoreBlueName');
-        if (bracketScoreBlueName && bracketScoreBlueName.textContent === '青方') bracketScoreBlueName.textContent = '蓝方';
+        if (bracketScoreBlueName && bracketScoreBlueName.textContent === '青方') bracketScoreBlueName.textContent = '红方';
+        var bracketScoreRedName = document.getElementById('bracketScoreRedName');
+        if (bracketScoreRedName && bracketScoreRedName.textContent === '红方') bracketScoreRedName.textContent = '蓝方';
         var scoreLabels = document.querySelectorAll('#bracketScoreModal label');
         scoreLabels.forEach(function(lbl) {
-            if (lbl.textContent === '青方得分') lbl.textContent = '蓝方得分';
+            if (lbl.textContent === '青方得分') lbl.textContent = '红方得分';
+            if (lbl.textContent === '红方得分') lbl.textContent = '蓝方得分';
         });
         var bracketWinnerBlue = document.getElementById('bracketWinnerBlue');
-        if (bracketWinnerBlue) bracketWinnerBlue.textContent = '蓝方';
+        if (bracketWinnerBlue) { bracketWinnerBlue.textContent = '红方'; bracketWinnerBlue.setAttribute('onclick', "selectBracketWinner('红方')"); }
+        var bracketWinnerRed = document.getElementById('bracketWinnerRed');
+        if (bracketWinnerRed) { bracketWinnerRed.textContent = '蓝方'; bracketWinnerRed.setAttribute('onclick', "selectBracketWinner('蓝方')"); }
     }
 })();
 </script>

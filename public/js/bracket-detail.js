@@ -496,17 +496,16 @@ async function printAllBrackets() {
                 const drawNoByName = new Map();
                 for (const p of printAllParticipants) {
                     if (p.name) {
-                        const fromAthletes = drawNoByNameFromAthletesPrint.get(p.name);
-                        if (fromAthletes != null) {
-                            drawNoByName.set(p.name, fromAthletes);
-                        } else {
-                            let drawNum = null;
-                            if (p.custom_data) {
-                                try { const cd = JSON.parse(p.custom_data); if (cd.draw_num != null) drawNum = cd.draw_num; } catch (e) {}
-                            }
-                            if (drawNum == null && p.origin != null) drawNum = p.origin;
-                            drawNoByName.set(p.name, drawNum);
+                        let drawNum = null;
+                        if (p.custom_data) {
+                            try { const cd = JSON.parse(p.custom_data); if (cd.athlete_draw_num != null) drawNum = cd.athlete_draw_num; } catch (e) {}
                         }
+                        if (drawNum == null) {
+                            const fromAthletes = drawNoByNameFromAthletesPrint.get(p.name);
+                            if (fromAthletes != null) drawNum = fromAthletes;
+                        }
+                        if (drawNum == null && p.origin != null) drawNum = p.origin;
+                        drawNoByName.set(p.name, drawNum);
                     }
                 }
                 viewerDiv.querySelectorAll('.participant').forEach(el => {
@@ -853,17 +852,16 @@ async function viewAllBrackets() {
                 const drawNoByName = new Map();
                 for (const p of allParticipants) {
                     if (p.name) {
-                        const fromAthletes = drawNoByNameFromAthletesAll.get(p.name);
-                        if (fromAthletes != null) {
-                            drawNoByName.set(p.name, fromAthletes);
-                        } else {
-                            let drawNum = null;
-                            if (p.custom_data) {
-                                try { const cd = JSON.parse(p.custom_data); if (cd.draw_num != null) drawNum = cd.draw_num; } catch (e) {}
-                            }
-                            if (drawNum == null && p.origin != null) drawNum = p.origin;
-                            drawNoByName.set(p.name, drawNum);
+                        let drawNum = null;
+                        if (p.custom_data) {
+                            try { const cd = JSON.parse(p.custom_data); if (cd.athlete_draw_num != null) drawNum = cd.athlete_draw_num; } catch (e) {}
                         }
+                        if (drawNum == null) {
+                            const fromAthletes = drawNoByNameFromAthletesAll.get(p.name);
+                            if (fromAthletes != null) drawNum = fromAthletes;
+                        }
+                        if (drawNum == null && p.origin != null) drawNum = p.origin;
+                        drawNoByName.set(p.name, drawNum);
                     }
                 }
                 viewerDiv.querySelectorAll('.participant').forEach(el => {
@@ -1199,17 +1197,16 @@ async function renderBracketViewer(data, weightClass) {
                 const drawNoByName = new Map();
                 for (const p of data.participants) {
                     if (p.name) {
-                        const fromAthletes = drawNoByNameFromAthletes.get(p.name);
-                        if (fromAthletes != null) {
-                            drawNoByName.set(p.name, fromAthletes);
-                        } else {
-                            let drawNum = null;
-                            if (p.custom_data) {
-                                try { const cd = JSON.parse(p.custom_data); if (cd.draw_num != null) drawNum = cd.draw_num; } catch (e) {}
-                            }
-                            if (drawNum == null && p.origin != null) drawNum = p.origin;
-                            drawNoByName.set(p.name, drawNum);
+                        let drawNum = null;
+                        if (p.custom_data) {
+                            try { const cd = JSON.parse(p.custom_data); if (cd.athlete_draw_num != null) drawNum = cd.athlete_draw_num; } catch (e) {}
                         }
+                        if (drawNum == null) {
+                            const fromAthletes = drawNoByNameFromAthletes.get(p.name);
+                            if (fromAthletes != null) drawNum = fromAthletes;
+                        }
+                        if (drawNum == null && p.origin != null) drawNum = p.origin;
+                        drawNoByName.set(p.name, drawNum);
                     }
                 }
                 document.querySelectorAll('#bracket-viewer-container .participant').forEach(el => {
@@ -1300,9 +1297,9 @@ async function renderBracketFromMatches(weightClass) {
         const getParticipantId = (athleteNo, drawNo, name, unit, isBlue) => {
             const key = name + '|' + (unit || '');
             if (!participantMap.has(key)) {
-                
                 const nameWithUnit = unit ? `${name || '待定'} (${unit})` : (name || '待定');
-                const displayName = `${athleteNo || ''}  ${drawNo || ''}   ${nameWithUnit}`;
+                const parts = [athleteNo, drawNo, nameWithUnit].filter(v => v != null && v !== '');
+                const displayName = parts.join('  ');
                 participantMap.set(key, { id: pid++, name: displayName });
             }
             return participantMap.get(key).id;
@@ -3057,9 +3054,9 @@ function openBracketScoreModal(matchInfo) {
     const winMethodField = isJJ ? 'win_method' : 'kyougi_win_method';
     document.getElementById('bracketScoreMatchId').value = matchInfo.id || '';
     document.getElementById('bracketScoreWeightClass').value = selectedBracketClass || '';
-    document.getElementById('bracketScoreBlueName').textContent = matchInfo[blueNameField] || (isJJ ? '蓝方' : '青方');
+    document.getElementById('bracketScoreBlueName').textContent = matchInfo[blueNameField] || (isJJ ? '红方' : '青方');
     document.getElementById('bracketScoreBlueUnit').textContent = matchInfo[blueTeamField] || '';
-    document.getElementById('bracketScoreRedName').textContent = matchInfo[redNameField] || '红方';
+    document.getElementById('bracketScoreRedName').textContent = matchInfo[redNameField] || (isJJ ? '蓝方' : '红方');
     document.getElementById('bracketScoreRedUnit').textContent = matchInfo[redTeamField] || '';
     document.getElementById('bracketScoreBlueScore').value = matchInfo.blue_score || '';
     document.getElementById('bracketScoreRedScore').value = matchInfo.red_score || '';
@@ -3077,26 +3074,27 @@ function selectBracketWinner(side) {
     document.getElementById('bracketScoreWinner').value = side || '';
     const blue = document.getElementById('bracketWinnerBlue');
     const red = document.getElementById('bracketWinnerRed');
-    if (side === '青方' || side === '蓝方') {
-        blue.style.background = '#409EFF';
+    const isJJ = isJJEvent();
+    if (side === '青方' || (isJJ && side === '红方')) {
+        blue.style.background = isJJ ? '#F56C6C' : '#409EFF';
         blue.style.color = '#fff';
-        blue.style.borderColor = '#409EFF';
+        blue.style.borderColor = isJJ ? '#F56C6C' : '#409EFF';
         red.style.background = '#fff';
-        red.style.color = '#F56C6C';
+        red.style.color = isJJ ? '#409EFF' : '#F56C6C';
         red.style.borderColor = '#dcdfe6';
-    } else if (side === '红方') {
-        red.style.background = '#F56C6C';
+    } else if (side === '红方' || (isJJ && side === '蓝方')) {
+        red.style.background = isJJ ? '#409EFF' : '#F56C6C';
         red.style.color = '#fff';
-        red.style.borderColor = '#F56C6C';
+        red.style.borderColor = isJJ ? '#409EFF' : '#F56C6C';
         blue.style.background = '#fff';
-        blue.style.color = '#409EFF';
+        blue.style.color = isJJ ? '#F56C6C' : '#409EFF';
         blue.style.borderColor = '#dcdfe6';
     } else {
         blue.style.background = '#fff';
-        blue.style.color = '#409EFF';
+        blue.style.color = isJJ ? '#F56C6C' : '#409EFF';
         blue.style.borderColor = '#dcdfe6';
         red.style.background = '#fff';
-        red.style.color = '#F56C6C';
+        red.style.color = isJJ ? '#409EFF' : '#F56C6C';
         red.style.borderColor = '#dcdfe6';
     }
 }

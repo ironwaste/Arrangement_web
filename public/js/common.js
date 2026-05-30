@@ -217,20 +217,28 @@ function updateArrangeMenu() {
     const menuBrackets = document.getElementById('menuBrackets');
     const menuBracketTest = document.getElementById('menuBracketTest');
     const menuJJBrackets = document.getElementById('menuJJBrackets');
+    const menuJJMatches = document.getElementById('menuJJMatches');
+    const menuMatches = document.getElementById('menuMatches');
     if (!menuBrackets || !menuBracketTest) return;
 
     if (currentEventType === 'wrestling') {
         menuBrackets.style.display = 'none';
         menuBracketTest.style.display = '';
         if (menuJJBrackets) menuJJBrackets.style.display = 'none';
+        if (menuJJMatches) menuJJMatches.style.display = 'none';
+        if (menuMatches) menuMatches.style.display = '';
     } else if (currentEventType === 'jiu_jitsu') {
         menuBrackets.style.display = 'none';
         menuBracketTest.style.display = 'none';
         if (menuJJBrackets) menuJJBrackets.style.display = '';
+        if (menuJJMatches) menuJJMatches.style.display = '';
+        if (menuMatches) menuMatches.style.display = 'none';
     } else {
         menuBrackets.style.display = '';
         menuBracketTest.style.display = 'none';
         if (menuJJBrackets) menuJJBrackets.style.display = 'none';
+        if (menuJJMatches) menuJJMatches.style.display = 'none';
+        if (menuMatches) menuMatches.style.display = '';
     }
 }
 
@@ -240,7 +248,7 @@ function updateArrangeMenu() {
  * @param {string} panelId - 面板ID（如 'athletes', 'brackets', 'matches' 等）
  */
 function showPanel(panelId) {
-    const needEventValidation = ['athletes', 'weighin', 'brackets', 'bracketDetail', 'matches', 'teamScores', 'medalBoard', 'poomsae'];
+    const needEventValidation = ['athletes', 'weighin', 'brackets', 'bracketDetail', 'matches', 'jjMatches', 'teamScores', 'medalBoard', 'poomsae'];
 
     // 需要赛事的页面必须先选择赛事
     if (needEventValidation.includes(panelId) && !currentEventId) {
@@ -257,6 +265,7 @@ function showPanel(panelId) {
         'bracketDetail': '/bracket-detail',
         'bracketTest': '/bracket-test',
         'jjBrackets': '/jj-brackets',
+        'jjMatches': '/jj-matches',
         'matches': '/matches',
         'teamScores': '/team-scores',
         'medalBoard': '/medal-board',

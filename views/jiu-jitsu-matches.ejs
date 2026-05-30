@@ -1,6 +1,6 @@
 <div class="card">
     <div class="card-header">
-        <h2>跆拳道对阵表</h2>
+        <h2>柔术对阵表</h2>
         <div class="toolbar" style="margin: 0;">
             <button class="btn btn-warning" onclick="exportMedalBoard()">📥 奖牌榜</button>
             <button class="btn btn-primary" onclick="exportRankAnnouncement()">📥 名次公告</button>
@@ -14,17 +14,17 @@
     <div class="table-container" style="display:flex;flex-direction:column;gap:12px;">
         <div style="border:1px solid #e4e7ed;border-radius:8px;box-shadow:0 2px 8px rgba(0,21,41,0.06);overflow:hidden;">
             <div style="overflow:auto;max-height:45vh;">
-            <table id="matchesTableLeft" class="matches-split-table">
+            <table id="matchesTableLeft" class="matches-split-table jj-matches-split-table">
                 <thead>
                     <tr>
                         <th data-col="venueLetter">场地</th>
                         <th data-col="matchNo">场次</th>
                         <th data-col="roundName">轮次</th>
-                        <th data-col="blueName">青方</th>
-                        <th data-col="blueUnit">代表队</th>
-                        <th></th>
                         <th data-col="redName">红方</th>
                         <th data-col="redUnit">代表队</th>
+                        <th></th>
+                        <th data-col="blueName">蓝方</th>
+                        <th data-col="blueUnit">代表队</th>
                         <th data-col="weightClass">级别</th>
                         <th data-col="status">状态</th>
                         <th>比分</th>
@@ -38,17 +38,17 @@
         </div>
         <div style="border:1px solid #e4e7ed;border-radius:8px;box-shadow:0 2px 8px rgba(0,21,41,0.06);overflow:hidden;">
             <div style="overflow:auto;max-height:45vh;">
-            <table id="matchesTableRight" class="matches-split-table">
+            <table id="matchesTableRight" class="matches-split-table jj-matches-split-table">
                 <thead>
                     <tr>
                         <th data-col="venueLetter">场地</th>
                         <th data-col="matchNo">场次</th>
                         <th data-col="roundName">轮次</th>
-                        <th data-col="blueName">青方</th>
-                        <th data-col="blueUnit">代表队</th>
-                        <th></th>
                         <th data-col="redName">红方</th>
                         <th data-col="redUnit">代表队</th>
+                        <th></th>
+                        <th data-col="blueName">蓝方</th>
+                        <th data-col="blueUnit">代表队</th>
                         <th data-col="weightClass">级别</th>
                         <th data-col="status">状态</th>
                         <th>比分</th>
@@ -113,31 +113,31 @@
         <input type="hidden" id="scoreDisplayNum">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
             <div style="flex:1;text-align:center;">
-                <div style="color:#409EFF;font-weight:bold;font-size:15px;" id="scoreBlueName">青方</div>
-                <div style="color:#909399;font-size:12px;" id="scoreBlueUnit"></div>
+                <div style="color:#F56C6C;font-weight:bold;font-size:15px;" id="scoreRedName">红方</div>
+                <div style="color:#909399;font-size:12px;" id="scoreRedUnit"></div>
             </div>
             <div style="font-size:18px;font-weight:bold;color:#909399;">VS</div>
             <div style="flex:1;text-align:center;">
-                <div style="color:#F56C6C;font-weight:bold;font-size:15px;" id="scoreRedName">红方</div>
-                <div style="color:#909399;font-size:12px;" id="scoreRedUnit"></div>
+                <div style="color:#409EFF;font-weight:bold;font-size:15px;" id="scoreBlueName">蓝方</div>
+                <div style="color:#909399;font-size:12px;" id="scoreBlueUnit"></div>
             </div>
         </div>
         <div style="display:flex;gap:16px;margin-bottom:16px;">
             <div style="flex:1;">
-                <label style="display:block;margin-bottom:4px;font-weight:bold;font-size:13px;color:#409EFF;">青方得分</label>
-                <input type="number" id="scoreBlueScore" min="0" style="width:100%;padding:8px;border:1px solid #dcdfe6;border-radius:4px;font-size:16px;text-align:center;">
-            </div>
-            <div style="flex:1;">
                 <label style="display:block;margin-bottom:4px;font-weight:bold;font-size:13px;color:#F56C6C;">红方得分</label>
                 <input type="number" id="scoreRedScore" min="0" style="width:100%;padding:8px;border:1px solid #dcdfe6;border-radius:4px;font-size:16px;text-align:center;">
+            </div>
+            <div style="flex:1;">
+                <label style="display:block;margin-bottom:4px;font-weight:bold;font-size:13px;color:#409EFF;">蓝方得分</label>
+                <input type="number" id="scoreBlueScore" min="0" style="width:100%;padding:8px;border:1px solid #dcdfe6;border-radius:4px;font-size:16px;text-align:center;">
             </div>
         </div>
         <div class="form-group">
             <label>获胜方</label>
             <input type="hidden" id="scoreWinner" value="">
             <div style="display:flex;gap:12px;">
-                <div id="winnerBlue" onclick="selectWinner('青方')" style="flex:1;text-align:center;padding:12px 0;border:2px solid #dcdfe6;border-radius:8px;cursor:pointer;font-size:16px;font-weight:bold;color:#409EFF;transition:all 0.2s;">青方</div>
                 <div id="winnerRed" onclick="selectWinner('红方')" style="flex:1;text-align:center;padding:12px 0;border:2px solid #dcdfe6;border-radius:8px;cursor:pointer;font-size:16px;font-weight:bold;color:#F56C6C;transition:all 0.2s;">红方</div>
+                <div id="winnerBlue" onclick="selectWinner('蓝方')" style="flex:1;text-align:center;padding:12px 0;border:2px solid #dcdfe6;border-radius:8px;cursor:pointer;font-size:16px;font-weight:bold;color:#409EFF;transition:all 0.2s;">蓝方</div>
             </div>
         </div>
         <div class="form-group">
@@ -158,5 +158,3 @@
         </div>
     </div>
 </div>
-
-
