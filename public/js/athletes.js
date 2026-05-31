@@ -480,6 +480,14 @@ async function proceedDraw(weightClass) {
     const msg = weightClass ? `确定对「${weightClass}」进行抽签？` : '确定对所有级别进行抽签？';
     if (!confirm(msg)) return;
 
+    if (typeof currentEventType !== 'undefined' && currentEventType === 'jiu_jitsu' && currentEventId) {
+        try {
+            const clearBody = { event_id: currentEventId };
+            if (weightClass) clearBody.weight_class = weightClass;
+            await apiPost('/jj-brackets/clear', clearBody);
+        } catch (e) {}
+    }
+
     const body = {
         event_id: currentEventId,
         weight_class: weightClass || undefined,
@@ -534,6 +542,14 @@ async function executeDraw() {
     const resultDiv = document.getElementById('drawResult');
     resultDiv.style.display = 'block';
     resultDiv.innerHTML = '<p style="color:#e6a23c;">⏳ 正在抽签...</p>';
+
+    if (typeof currentEventType !== 'undefined' && currentEventType === 'jiu_jitsu' && currentEventId) {
+        try {
+            const clearBody = { event_id: currentEventId };
+            if (weightClass) clearBody.weight_class = weightClass;
+            await apiPost('/jj-brackets/clear', clearBody);
+        } catch (e) {}
+    }
 
     const body = {
         event_id: currentEventId,

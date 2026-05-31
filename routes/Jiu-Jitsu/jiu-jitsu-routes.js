@@ -149,25 +149,34 @@ module.exports = (db, manager) => {
                 if (r.weight_class) schemeMap.set(r.weight_class, r);
             });
 
+            const stageMapRows = await db.all(
+                'SELECT DISTINCT category_id FROM bracket_stage WHERE event_id = ?',
+                [eventIdNum]
+            );
+            const bracketClasses = new Set(stageMapRows.map(r => r.category_id).filter(Boolean));
+
+            const noBracket = [];
             const unassigned = [];
             for (const [wc, scheme] of schemeMap) {
-                if (!scheme.category_venue || !scheme.category_date_num) {
+                if (!bracketClasses.has(wc)) {
+                    noBracket.push(wc);
+                } else if (!scheme.category_venue || !scheme.category_date_num) {
                     unassigned.push(wc);
                 }
             }
+
+            if (noBracket.length > 0) {
+                return res.json({ success: false, error: '以下级别尚未生成对阵图，请先生成对阵图：\n' + noBracket.join('\n') });
+            }
             if (unassigned.length > 0) {
-                return res.json({ success: false, error: '以下级别未完成场地分配：\n' + unassigned.join('\n') });
+                return res.json({ success: false, error: '以下级别未完成场地/单元编排，请先完成编排设置：\n' + unassigned.join('\n') });
             }
 
             let classes = [];
             if (weight_class) {
                 classes = [weight_class];
             } else {
-                const stageMapRows = await db.all(
-                    'SELECT DISTINCT category_id FROM bracket_stage WHERE event_id = ?',
-                    [eventIdNum]
-                );
-                classes = stageMapRows.map(r => r.category_id).filter(Boolean);
+                classes = [...bracketClasses];
             }
 
             if (classes.length === 0) {
@@ -492,6 +501,22 @@ module.exports = (db, manager) => {
         } catch (err) {
             console.error('[jj-generate-single] 生成失败:', err.message);
             console.error(err.stack);
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    router.get('/jj-brackets/stages', async (req, res) => {
+        try {
+            const { event_id } = req.query;
+            if (!event_id) {
+                return res.json({ success: true, data: [] });
+            }
+            const rows = await db.all(
+                'SELECT id, category_id, name, type FROM bracket_stage WHERE event_id = ?',
+                [Number(event_id)]
+            );
+            res.json({ success: true, data: rows });
+        } catch (err) {
             res.status(500).json({ success: false, error: err.message });
         }
     });

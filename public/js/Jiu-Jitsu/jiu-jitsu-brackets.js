@@ -722,31 +722,49 @@ const JiuJitsuBrackets = {
         const rows = tbody ? tbody.querySelectorAll('tr') : [];
         if (rows.length === 0) { alert('暂无编排数据，请先添加运动员'); return; }
 
-        const unassigned = [];
-        rows.forEach(tr => {
-            const cells = tr.querySelectorAll('td');
-            if (cells.length < 7) return;
-            const weightClassTd = tr.querySelector('td[data-col="weightClass"]');
-            const weightClass = weightClassTd ? weightClassTd.textContent.trim() : '';
-            const orderInput = cells[3].querySelector('input');
-            const venueSelect = cells[4].querySelector('select');
-            const unitSelect = cells[5].querySelector('select');
-            const order = orderInput ? (parseInt(orderInput.value) || 0) : 0;
-            const venue = venueSelect ? venueSelect.value.trim() : '';
-            const unit = unitSelect ? unitSelect.value.trim() : '';
-            const missing = [];
-            if (!venue) missing.push('场地');
-            if (!unit) missing.push('单元');
-            if (!order) missing.push('顺序');
-            if (missing.length > 0) {
-                unassigned.push(`${weightClass}（未分配${missing.join('、')}）`);
+        try {
+            const stageRes = await fetch(`${API_BASE}/jj-brackets/stages?${getEventParam()}`);
+            const stageData = await stageRes.json();
+            const bracketClasses = new Set();
+            if (stageData.success && stageData.data) {
+                stageData.data.forEach(s => { if (s.category_id) bracketClasses.add(s.category_id); });
             }
-        });
 
-        if (unassigned.length > 0) {
-            alert('⚠️ 以下级别未完成场地分配，请先完成编排设置：\n\n' + unassigned.join('\n'));
-            return;
-        }
+            const noBracket = [];
+            const unassigned = [];
+            rows.forEach(tr => {
+                const cells = tr.querySelectorAll('td');
+                if (cells.length < 7) return;
+                const weightClassTd = tr.querySelector('td[data-col="weightClass"]');
+                const weightClass = weightClassTd ? weightClassTd.textContent.trim() : '';
+                if (!bracketClasses.has(weightClass)) {
+                    noBracket.push(weightClass);
+                    return;
+                }
+                const orderInput = cells[3].querySelector('input');
+                const venueSelect = cells[4].querySelector('select');
+                const unitSelect = cells[5].querySelector('select');
+                const order = orderInput ? (parseInt(orderInput.value) || 0) : 0;
+                const venue = venueSelect ? venueSelect.value.trim() : '';
+                const unit = unitSelect ? unitSelect.value.trim() : '';
+                const missing = [];
+                if (!venue) missing.push('场地');
+                if (!unit) missing.push('单元');
+                if (!order) missing.push('顺序');
+                if (missing.length > 0) {
+                    unassigned.push(`${weightClass}（未分配${missing.join('、')}）`);
+                }
+            });
+
+            if (noBracket.length > 0) {
+                alert('⚠️ 以下级别尚未生成对阵图，请先生成对阵图：\n\n' + noBracket.join('\n'));
+                return;
+            }
+            if (unassigned.length > 0) {
+                alert('⚠️ 以下级别未完成场地/单元编排，请先完成编排设置：\n\n' + unassigned.join('\n'));
+                return;
+            }
+        } catch (e) {}
 
         try {
             const res = await fetch(`${API_BASE}/jj-brackets/generate-matches`, {
