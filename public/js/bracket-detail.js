@@ -2824,20 +2824,47 @@ async function generateSelectedBracket() {
         alert('还没有对运动员进行抽签，暂无对阵图');
         return;
     }
-    if (!confirm(`确定要生成「${selectedBracketClass}」的对阵图吗？`)) return;
 
     try {
         const generateUrl = isJJEvent() ? '/jj-brackets/generate-single' : '/auto-arrange/generate-bracket';
         const resp = await apiPost(generateUrl, { event_id: currentEventId, weight_class: selectedBracketClass });
         if (resp.success) {
-            if (isJJEvent()) {
-            }
             alert(`「${selectedBracketClass}」对阵图生成成功`);
             clearBracketCache();
             await loadBracketClassList();
             await viewBracketTree();
         } else {
-            alert('生成失败: ' + (resp.error || '未知错误'));
+            if (resp.hasExistingData) {
+                try {
+                    const checkRes = await apiPost('/jj-brackets/clear', { event_id: currentEventId, weight_class: selectedBracketClass, check_only: true });
+                    
+                    let confirmMsg = `已有对阵图数据，请先清除后再生成。`;
+                    if (checkRes.success && checkRes.hasMatchData) {
+                        confirmMsg += `\n\n⚠️ 注意：清除该级别对阵图将删除整个赛事的对阵表数据（${checkRes.matchCount}场）！`;
+                    }
+                    confirmMsg += '\n\n是否立即清除该级别的对阵图和整个赛事的对阵表数据？';
+                    
+                    const shouldClear = confirm(confirmMsg);
+                    if (shouldClear) {
+                        try {
+                            const clearRes = await apiPost('/jj-brackets/clear', { event_id: currentEventId, weight_class: selectedBracketClass, clear_bracket: true });
+                            if (clearRes.success) {
+                                alert('✅ 数据已清除，请重新点击生成对阵图');
+                                clearBracketCache();
+                                await loadBracketClassList();
+                            } else {
+                                alert('❌ 清除失败: ' + (clearRes.error || '未知错误'));
+                            }
+                        } catch (e) {
+                            alert('❌ 清除请求失败: ' + e.message);
+                        }
+                    }
+                } catch (e) {
+                    alert('❌ 检查数据失败: ' + e.message);
+                }
+            } else {
+                alert('生成失败: ' + (resp.error || '未知错误'));
+            }
         }
     } catch (err) {
         alert('生成失败: ' + err.message);
@@ -2851,21 +2878,48 @@ async function generateAllBrackets() {
         alert('还没有对运动员进行抽签，暂无对阵图');
         return;
     }
-    if (!confirm('确定要生成全部级别的对阵图吗？')) return;
 
     try {
         const generateUrl = isJJEvent() ? '/jj-brackets/generate' : '/auto-arrange/generate-bracket';
         const resp = await apiPost(generateUrl, { event_id: currentEventId });
         if (resp.success) {
             const data = resp.data || {};
-            if (isJJEvent()) {
-            }
             clearBracketCache();
             alert(`全部对阵图生成完成！成功: ${data.generated || 0}个级别${data.errors && data.errors.length > 0 ? '，失败: ' + data.errors.length + '个' : ''}`);
             await loadBracketClassList();
             await viewBracketTree();
         } else {
-            alert('生成失败: ' + (resp.error || '未知错误'));
+            if (resp.hasExistingData) {
+                try {
+                    const checkRes = await apiPost('/jj-brackets/clear', { event_id: currentEventId, check_only: true });
+                    
+                    let confirmMsg = '已有对阵图数据，请先清除后再生成。';
+                    if (checkRes.success && checkRes.hasMatchData) {
+                        confirmMsg += `\n\n⚠️ 注意：原有对阵表数据（${checkRes.matchCount}场）将会被清除！`;
+                    }
+                    confirmMsg += '\n\n是否立即清除所有对阵图和对阵表数据？';
+                    
+                    const shouldClear = confirm(confirmMsg);
+                    if (shouldClear) {
+                        try {
+                            const clearRes = await apiPost('/jj-brackets/clear', { event_id: currentEventId, clear_bracket: true });
+                            if (clearRes.success) {
+                                alert('✅ 数据已清除，请重新点击生成对阵图');
+                                clearBracketCache();
+                                await loadBracketClassList();
+                            } else {
+                                alert('❌ 清除失败: ' + (clearRes.error || '未知错误'));
+                            }
+                        } catch (e) {
+                            alert('❌ 清除请求失败: ' + e.message);
+                        }
+                    }
+                } catch (e) {
+                    alert('❌ 检查数据失败: ' + e.message);
+                }
+            } else {
+                alert('生成失败: ' + (resp.error || '未知错误'));
+            }
         }
     } catch (err) {
         alert('生成失败: ' + err.message);

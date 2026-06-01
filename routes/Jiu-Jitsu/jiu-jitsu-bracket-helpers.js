@@ -154,20 +154,11 @@ async function clearJJBracketStageData(db, event_id, weightClass) {
     for (const row of stageRows) {
         const sid = row.id;
         try {
-            const matchRows = await db.all('SELECT opponent1, opponent2 FROM bracket_match WHERE stage_id = ?', [sid]);
-            const pIds = new Set();
-            for (const m of matchRows) {
-                if (m.opponent1) { try { const o = JSON.parse(m.opponent1); if (o?.id) pIds.add(o.id); } catch (e) {} }
-                if (m.opponent2) { try { const o = JSON.parse(m.opponent2); if (o?.id) pIds.add(o.id); } catch (e) {} }
-            }
             await db.run('DELETE FROM bracket_match_game WHERE stage_id = ?', [sid]);
             await db.run('DELETE FROM bracket_match WHERE stage_id = ?', [sid]);
             await db.run('DELETE FROM bracket_round WHERE stage_id = ?', [sid]);
             await db.run('DELETE FROM bracket_group WHERE stage_id = ?', [sid]);
             await db.run('DELETE FROM bracket_stage WHERE id = ?', [sid]);
-            for (const pid of pIds) {
-                await db.run('DELETE FROM bracket_participant WHERE id = ?', [pid]);
-            }
         } catch (e) {
             console.log('删除柔术bracket stage:', sid, e.message);
         }

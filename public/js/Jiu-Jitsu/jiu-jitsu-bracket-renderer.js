@@ -44,7 +44,7 @@ const JJBracketRenderer = {
         for (const m of jjMatches) {
             const vn = (m.jiu_jitsu_match_venue !== null && m.jiu_jitsu_match_id !== null)
                 ? (String(m.jiu_jitsu_match_venue) + String(m.jiu_jitsu_match_id)) : '';
-            if (m.id && vn) venueMap.set(String(m.id), vn);
+            if (m.jiu_jitsu_bracket_match_id && vn) venueMap.set(String(m.jiu_jitsu_bracket_match_id), vn);
         }
         if (venueMap.size === 0) return;
         container.querySelectorAll('.match').forEach(matchEl => {
