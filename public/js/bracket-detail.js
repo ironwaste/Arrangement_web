@@ -2557,34 +2557,44 @@ function parseWeightFromClass(cls) {
     return match ? parseFloat(match[1]) : 0;
 }
 
-function getGroupOrder(cls) {
-    const orderMap = { '甲': 1, '乙': 2, '丙': 3, '丁': 4 };
-    for (const key of Object.keys(orderMap)) {
+function getGroupOrderFromClass(cls) {
+    const schoolOrder = { '小学': 1, '初中': 2, '高中': 3, '大学': 4, '成年': 5 };
+    const tianganOrder = { '甲': 1, '乙': 2, '丙': 3, '丁': 4, '戊': 5, '己': 6, '庚': 7, '辛': 8, '壬': 9, '癸': 10 };
+    
+    for (const key of Object.keys(schoolOrder)) {
         if (cls.includes(key)) {
-            return orderMap[key];
+            return schoolOrder[key];
         }
     }
+    
+    for (const key of Object.keys(tianganOrder)) {
+        if (cls.includes(key)) {
+            return tianganOrder[key] + 100;
+        }
+    }
+    
     return 99;
+}
+
+function getGenderFromClass(cls) {
+    return cls.includes('女') ? '女' : '男';
 }
 
 function sortWeightClasses(classes) {
     return [...classes].sort((a, b) => {
-        const hasFemaleA = a.includes('女');
-        const hasFemaleB = b.includes('女');
+        const genderA = getGenderFromClass(a);
+        const genderB = getGenderFromClass(b);
+        if (genderA !== genderB) {
+            return genderA === '男' ? -1 : 1;
+        }
         
-        if (hasFemaleA && !hasFemaleB) return -1;
-        if (!hasFemaleA && hasFemaleB) return 1;
-        
-        const groupA = getGroupOrder(a);
-        const groupB = getGroupOrder(b);
+        const groupA = getGroupOrderFromClass(a);
+        const groupB = getGroupOrderFromClass(b);
         if (groupA !== groupB) {
             return groupA - groupB;
         }
         
-        const weightA = parseWeightFromClass(a);
-        const weightB = parseWeightFromClass(b);
-        
-        return weightA - weightB;
+        return a.localeCompare(b, 'zh-CN');
     });
 }
 
@@ -2645,87 +2655,107 @@ async function loadBracketClassList() {
         allAthletes = resp.data || [];
     }
 
-    // 按年龄组、级别是否生成进行分组
-    const groupMap = {}; // key: age_group, value: { generated: Map<class, count>, notGenerated: Map<class, count> }
+    const groupMap = {};
     
     allAthletes.forEach(a => {
         const group = a.athlete_age_group || '未分组';
         const cls = a.athlete_category || a.weight_class || '未分类';
         
-        if (!groupMap[group]) {
-            groupMap[group] = {
-                generated: new Map(),
-                notGenerated: new Map()
-            };
-        }
+        if (!groupMap[group]) groupMap[group] = {};
+        if (!groupMap[group][cls]) groupMap[group][cls] = { total: 0, generated: 0 };
         
+        groupMap[group][cls].total++;
         if (generatedClasses.has(cls)) {
-            groupMap[group].generated.set(cls, (groupMap[group].generated.get(cls) || 0) + 1);
-        } else {
-            groupMap[group].notGenerated.set(cls, (groupMap[group].notGenerated.get(cls) || 0) + 1);
+            groupMap[group][cls].generated++;
         }
     });
 
-    // 渲染分组列表
-    const groups = Object.keys(groupMap).sort();
+    const schoolOrder = { '小学': 1, '初中': 2, '高中': 3, '大学': 4, '成年': 5 };
+    const tianganOrder = { '甲': 1, '乙': 2, '丙': 3, '丁': 4, '戊': 5, '己': 6, '庚': 7, '辛': 8, '壬': 9, '癸': 10 };
     
+    const getGroupSortValue = (group) => {
+        for (const key of Object.keys(schoolOrder)) {
+            if (group.includes(key)) return schoolOrder[key];
+        }
+        for (const key of Object.keys(tianganOrder)) {
+            if (group.includes(key)) return tianganOrder[key] + 100;
+        }
+        return 99;
+    };
+    
+    const groups = Object.keys(groupMap).sort((a, b) => {
+        return getGroupSortValue(a) - getGroupSortValue(b);
+    });
+
     groups.forEach(group => {
-        const groupData = groupMap[group];
+        const classMap = groupMap[group];
+        const classes = sortWeightClasses(Object.keys(classMap));
+        const classCount = classes.length;
+
+        const groupDiv = document.createElement('div');
+        groupDiv.className = 'group-container';
         
-        // 渲染未生成的级别部分
-        if (groupData.notGenerated.size > 0) {
-            const notGenHeader = document.createElement('div');
-            notGenHeader.className = 'class-section-header';
-            notGenHeader.innerHTML = `📋 ${group} - 待生成`;
-            notGenHeader.onclick = () => {
-                notGenHeader.classList.toggle('collapsed');
-                const wrapper = notGenHeader.nextElementSibling;
-                if (wrapper) wrapper.style.display = notGenHeader.classList.contains('collapsed') ? 'none' : 'block';
-            };
-            list.appendChild(notGenHeader);
-            
-            const notGenWrapper = document.createElement('div');
-            const notGenClasses = sortWeightClasses([...groupData.notGenerated.keys()]);
-            notGenClasses.forEach(cls => {
-                const count = groupData.notGenerated.get(cls);
-                const li = document.createElement('li');
-                li.dataset.class = cls;
-                li.innerHTML = `<span>${cls}</span><span class="count">${count}人</span>`;
-                li.onclick = () => selectBracketClass(cls);
-                li.ondblclick = () => { selectBracketClass(cls); viewBracketTree(); };
-                if (cls === selectedBracketClass) li.classList.add('active');
-                notGenWrapper.appendChild(li);
-            });
-            list.appendChild(notGenWrapper);
-        }
+        const groupHeader = document.createElement('div');
+        groupHeader.className = 'group-header';
+        groupHeader.innerHTML = `<span style="font-weight:bold;">${group}</span><span class="count" style="margin-left:auto;">${classCount}个级别</span>`;
+        groupHeader.onclick = () => {
+            groupDiv.classList.toggle('collapsed');
+        };
+        groupDiv.appendChild(groupHeader);
+
+        const classList = document.createElement('ul');
+        classList.className = 'group-class-list';
         
-        // 渲染已生成的级别部分
-        if (groupData.generated.size > 0) {
-            const genHeader = document.createElement('div');
-            genHeader.className = 'class-section-header generated';
-            genHeader.innerHTML = `✅ ${group} - 已生成`;
-            genHeader.onclick = () => {
-                genHeader.classList.toggle('collapsed');
-                const wrapper = genHeader.nextElementSibling;
-                if (wrapper) wrapper.style.display = genHeader.classList.contains('collapsed') ? 'none' : 'block';
-            };
-            list.appendChild(genHeader);
+        classes.forEach(cls => {
+            const info = classMap[cls];
+            const isFullyGenerated = info.generated === info.total;
+            const isPartiallyGenerated = info.generated > 0 && info.generated < info.total;
+            const isNotGenerated = info.generated === 0;
             
-            const genWrapper = document.createElement('div');
-            const genClasses = sortWeightClasses([...groupData.generated.keys()]);
-            genClasses.forEach(cls => {
-                const count = groupData.generated.get(cls);
-                const li = document.createElement('li');
-                li.className = 'generated-class';
-                li.dataset.class = cls;
-                li.innerHTML = `<span>${cls}</span><span class="count">${count}人</span>`;
-                li.onclick = () => selectBracketClass(cls);
-                li.ondblclick = () => { selectBracketClass(cls); viewBracketTree(); };
-                if (cls === selectedBracketClass) li.classList.add('active');
-                genWrapper.appendChild(li);
-            });
-            list.appendChild(genWrapper);
-        }
+            const li = document.createElement('li');
+            li.dataset.class = cls;
+            li.className = selectedBracketClass === cls ? 'active' : '';
+            
+            let statusBadge = '';
+            let statusStyle = '';
+            
+            if (isFullyGenerated) {
+                statusBadge = '✅';
+                statusStyle = 'background:#f0f9eb;border-color:#c2e7b0;';
+            } else if (isPartiallyGenerated) {
+                statusBadge = '⏳';
+                statusStyle = 'background:#fdf6ec;border-color:#faecd8;';
+            } else {
+                statusBadge = '⏸️';
+                statusStyle = 'background:#fef0f0;border-color:#fde2e2;';
+            }
+            
+            li.style.cssText = statusStyle;
+            li.innerHTML = `<span>${statusBadge} ${cls}</span><span class="count">${info.total}人</span>`;
+            li.onclick = function() {
+                selectBracketClass(cls);
+                if (isFullyGenerated || isPartiallyGenerated) {
+                    viewBracketTree();
+                } else {
+                    const display = document.getElementById('bracketDisplay');
+                    display.innerHTML = `
+                        <div style="text-align: center; padding: 60px 20px; color: #909399;">
+                            <div style="font-size: 48px; margin-bottom: 16px;">📋</div>
+                            <div style="font-size: 16px; font-weight: bold; margin-bottom: 8px;">「${cls}」对阵图未生成</div>
+                            <div style="font-size: 14px; color: #606266; margin-bottom: 20px;">请双击级别或点击下方按钮生成对阵图</div>
+                            <button class="btn btn-success" onclick="generateSelectedBracket()" style="padding: 10px 24px; font-size: 14px;">
+                                ⚡ 生成当前级别对阵图
+                            </button>
+                        </div>
+                    `;
+                }
+            };
+            li.ondblclick = function() { selectBracketClass(cls); viewBracketTree(); };
+            classList.appendChild(li);
+        });
+        
+        groupDiv.appendChild(classList);
+        list.appendChild(groupDiv);
     });
 
     if (generatedClasses.size > 0 && !selectedBracketClass) {
@@ -2743,6 +2773,26 @@ async function loadBracketClassList() {
 function selectBracketClass(cls) {
     selectedBracketClass = cls;
     document.querySelectorAll('#bracketClassList li').forEach(li => { li.classList.toggle('active', li.dataset.class === cls); });
+}
+
+async function handleClassClick(cls, hasGenerated) {
+    selectBracketClass(cls);
+    const display = document.getElementById('bracketDisplay');
+    
+    if (hasGenerated) {
+        await viewBracketTree();
+    } else {
+        display.innerHTML = `
+            <div style="text-align: center; padding: 60px 20px; color: #909399;">
+                <div style="font-size: 48px; margin-bottom: 16px;">📋</div>
+                <div style="font-size: 16px; font-weight: bold; margin-bottom: 8px;">「${cls}」对阵图未生成</div>
+                <div style="font-size: 14px; color: #606266; margin-bottom: 20px;">请双击级别或点击下方按钮生成对阵图</div>
+                <button class="btn btn-success" onclick="generateSelectedBracket()" style="padding: 10px 24px; font-size: 14px;">
+                    ⚡ 生成当前级别对阵图
+                </button>
+            </div>
+        `;
+    }
 }
 
 async function checkAthletesDrawn(weightClass) {
