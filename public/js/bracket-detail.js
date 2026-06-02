@@ -3229,55 +3229,7 @@ async function clearAllBrackets() {
     }
 }
 
-async function resetAllBrackets() {
-    if (!currentEventId) { alert('请先选择赛事'); return; }
 
-    const hasGenerated = await checkBracketsGeneratedForEvent();
-    let confirmMessage = '确定要重置吗？所有已生成级别将回到待生成状态！';
-    if (hasGenerated) {
-        confirmMessage = '现在已经生成对阵表，如果要进行此项操作，则该赛事所有对阵表将会被清除。确定要重置吗？';
-    }
-
-    if (!confirm(confirmMessage)) return;
-
-    try {
-        let resp;
-        if (isJJEvent()) {
-            resp = await apiPost('/jj-brackets/clear', { event_id: currentEventId });
-        } else {
-            resp = await apiPost('/brackets/clear-all', { event_id: currentEventId });
-        }
-        if (resp.success) {
-            selectedCategoryId = null;
-            selectedBracketClass = '';
-            clearBracket();
-            clearBracketCache();
-            await loadBracketClassList();
-            alert('重置成功！所有对阵表已清除');
-        } else {
-            alert('重置失败: ' + (resp.error || '未知错误'));
-        }
-    } catch (err) {
-        alert('重置失败: ' + err.message);
-    }
-}
-
-async function checkBracketsGeneratedForEvent() {
-    if (!currentEventId) return false;
-
-    try {
-        if (isJJEvent()) {
-            const jjClassesResp = await apiGet('/jj-brackets/classes?' + getEventParam());
-            return jjClassesResp.success && jjClassesResp.data && jjClassesResp.data.length > 0;
-        }
-        const stageMapResp = await apiGet('/brackets/stage-map?' + getEventParam());
-        const stageMaps = (stageMapResp.success && stageMapResp.data) ? stageMapResp.data : [];
-        return stageMaps.some(sm => sm.stage_id);
-    } catch (err) {
-        console.error('检查对阵表生成状态失败:', err);
-        return false;
-    }
-}
 
 function showBracketClassInfo(cls, allAthletes) {
     const athletes = allAthletes.filter(a => a.weight_class === cls);
