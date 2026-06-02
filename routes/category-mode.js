@@ -85,7 +85,13 @@ module.exports = (db) => {
       const athleteCategories = new Set(athletes.map(a => a.athlete_category));
 
       for (const ec of existingCategories) {
-        if (!athleteCategories.has(ec.weight_class)) {
+        const hasExactMatch = athleteCategories.has(ec.weight_class);
+        const hasPartialMatch = athletes.some(a => 
+          a.athlete_category && ec.weight_class && 
+          (a.athlete_category.includes(ec.weight_class) || ec.weight_class.includes(a.athlete_category))
+        );
+        
+        if (!hasExactMatch && !hasPartialMatch) {
           await db.run(
             'DELETE FROM category_mode WHERE category_id = ?',
             [ec.category_id]
@@ -206,6 +212,41 @@ module.exports = (db) => {
       `, [event_id]);
 
       res.json({ success: true, data: stats });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  router.get('/competition-modes', async (req, res) => {
+    try {
+      const { event_id, weight_class, category_id } = req.query;
+      let sql = 'SELECT * FROM category_mode WHERE 1=1';
+      const params = [];
+      
+      if (event_id) {
+        sql += ' AND event_id = ?';
+        params.push(event_id);
+      }
+
+      let weightClassValue = weight_class;
+      if (category_id && !weightClassValue) {
+        const categoryRow = await db.get(
+          'SELECT weight_class FROM category_mode WHERE category_id = ?',
+          [category_id]
+        );
+        if (categoryRow && categoryRow.weight_class) {
+          weightClassValue = categoryRow.weight_class;
+        }
+      }
+
+      if (weightClassValue) {
+        sql += ' AND weight_class = ?';
+        params.push(weightClassValue);
+      }
+      
+      sql += ' ORDER BY weight_class';
+      const rows = await db.all(sql, params);
+      res.json({ success: true, data: rows });
     } catch (err) {
       res.status(500).json({ success: false, error: err.message });
     }

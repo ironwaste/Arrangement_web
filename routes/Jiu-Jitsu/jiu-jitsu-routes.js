@@ -602,23 +602,43 @@ module.exports = (db, manager) => {
 
     router.post('/jj-brackets/generate-single', async (req, res) => {
         try {
-            const { event_id, weight_class, force } = req.body;
-            if (!event_id || !weight_class) {
-                return res.status(400).json({ success: false, error: '缺少必要参数' });
+            const { event_id, category_id, weight_class, force } = req.body;
+            if (!event_id) {
+                return res.status(400).json({ success: false, error: '缺少event_id参数' });
             }
 
             const eventIdNum = Number(event_id);
 
-            if (!force) {
+            let categoryIdNum = category_id ? Number(category_id) : null;
+            let weightClassValue = weight_class;
+
+            if (!categoryIdNum && !weightClassValue) {
+                return res.status(400).json({ success: false, error: '缺少category_id或weight_class参数' });
+            }
+
+            if (categoryIdNum && !weightClassValue) {
+                const categoryRow = await db.get(
+                    'SELECT weight_class FROM category_mode WHERE event_id = ? AND category_id = ?',
+                    [eventIdNum, categoryIdNum]
+                );
+                if (!categoryRow || !categoryRow.weight_class) {
+                    return res.status(400).json({ success: false, error: '未找到对应的级别信息' });
+                }
+                weightClassValue = categoryRow.weight_class;
+            }
+
+            if (!categoryIdNum && weightClassValue) {
                 const categoryRow = await db.get(
                     'SELECT category_id FROM category_mode WHERE event_id = ? AND weight_class = ?',
-                    [eventIdNum, weight_class]
+                    [eventIdNum, weightClassValue]
                 );
-                const categoryId = categoryRow ? categoryRow.category_id : null;
+                categoryIdNum = categoryRow ? categoryRow.category_id : null;
+            }
 
+            if (!force) {
                 const existingData = await db.get(
                     'SELECT COUNT(*) as count FROM bracket_stage WHERE event_id = ? AND category_id = ?',
-                    [eventIdNum, categoryId]
+                    [eventIdNum, categoryIdNum]
                 );
                 if (existingData && existingData.count > 0) {
                     return res.json({
@@ -629,15 +649,13 @@ module.exports = (db, manager) => {
                 }
             }
 
-            console.log('[jj-generate-single] 开始生成:', { event_id, weight_class });
-
-            const eventIdNum = Number(event_id);
+            console.log('[jj-generate-single] 开始生成:', { event_id, category_id: categoryIdNum, weight_class: weightClassValue });
 
             const savedScheduleData = new Map();
             try {
                 const oldRows = await db.all(
                     'SELECT jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_zone, jiu_jitsu_red_athlete_id, jiu_jitsu_blue_athlete_id, jiu_jitsu_match_scores, jiu_jitsu_winner, jiu_jitsu_win_method, jiu_jitsu_match_status FROM jiu_jitsu_matchs WHERE event_id = ? AND jiu_jitsu_match_categroy = ?',
-                    [eventIdNum, weight_class]
+                    [eventIdNum, weightClassValue]
                 );
                 if (oldRows && oldRows.length > 0) {
                     for (const r of oldRows) {
@@ -657,23 +675,21 @@ module.exports = (db, manager) => {
                 console.warn('[jj-generate-single] 保存编排数据失败:', e.message);
             }
 
-            const result = await generateJJBracketForEvent(db, manager, event_id, weight_class);
+            const result = await generateJJBracketForEvent(db, manager, event_id, weightClassValue);
             console.log('[jj-generate-single] 生成完成:', result);
 
             if (result && result.generated > 0) {
                 await db.run(
                     'DELETE FROM jiu_jitsu_matchs WHERE event_id = ? AND jiu_jitsu_match_categroy = ?',
-                    [eventIdNum, weight_class]
+                    [eventIdNum, weightClassValue]
                 );
-                await syncJJMatchesFromBracket(db, eventIdNum, weight_class);
-<<<<<<< Updated upstream
-=======
+                await syncJJMatchesFromBracket(db, eventIdNum, weightClassValue);
 
                 if (savedScheduleData.size > 0) {
                     try {
                         const newRows = await db.all(
                             'SELECT id, jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_zone, jiu_jitsu_red_athlete_id, jiu_jitsu_blue_athlete_id FROM jiu_jitsu_matchs WHERE event_id = ? AND jiu_jitsu_match_categroy = ?',
-                            [eventIdNum, weight_class]
+                            [eventIdNum, weightClassValue]
                         );
                         for (const nr of newRows) {
                             const key = `${nr.jiu_jitsu_match_round_num || 0}|${nr.jiu_jitsu_match_round_name || ''}|${nr.jiu_jitsu_match_zone || ''}|${nr.jiu_jitsu_red_athlete_id || ''}|${nr.jiu_jitsu_blue_athlete_id || ''}`;
@@ -697,7 +713,6 @@ module.exports = (db, manager) => {
                         console.warn('[jj-generate-single] 恢复编排数据失败:', e.message);
                     }
                 }
->>>>>>> Stashed changes
             }
 
             res.json({ success: true, data: result });
@@ -742,15 +757,27 @@ module.exports = (db, manager) => {
 
     router.get('/jj-brackets/matches', async (req, res) => {
         try {
-            const { event_id, weight_class } = req.query;
+            const { event_id, weight_class, category_id } = req.query;
             if (!event_id) {
                 return res.json({ success: true, data: [] });
             }
             let sql = 'SELECT * FROM jiu_jitsu_matchs WHERE event_id = ?';
             const params = [Number(event_id)];
-            if (weight_class) {
+
+            let weightClassValue = weight_class;
+            if (category_id && !weightClassValue) {
+                const categoryRow = await db.get(
+                    'SELECT weight_class FROM category_mode WHERE category_id = ?',
+                    [category_id]
+                );
+                if (categoryRow && categoryRow.weight_class) {
+                    weightClassValue = categoryRow.weight_class;
+                }
+            }
+
+            if (weightClassValue) {
                 sql += ' AND jiu_jitsu_match_categroy = ?';
-                params.push(weight_class);
+                params.push(weightClassValue);
             }
             sql += ' ORDER BY jiu_jitsu_match_round_num, jiu_jitsu_match_id';
             const rows = await db.all(sql, params);
@@ -974,19 +1001,20 @@ module.exports = (db, manager) => {
 
     router.post('/jj-brackets/clear', async (req, res) => {
         try {
-            const { event_id, weight_class, clear_bracket, check_only } = req.body;
+            const { event_id, category_id, clear_bracket, check_only } = req.body;
             if (!event_id) {
                 return res.status(400).json({ success: false, error: '缺少event_id参数' });
             }
 
             const eventIdNum = Number(event_id);
+            const categoryIdNum = category_id ? Number(category_id) : null;
 
             if (check_only) {
                 let checkSql = 'SELECT COUNT(*) as count FROM bracket_stage WHERE event_id = ?';
                 const checkParams = [eventIdNum];
-                if (weight_class) {
+                if (categoryIdNum) {
                     checkSql += ' AND category_id = ?';
-                    checkParams.push(weight_class);
+                    checkParams.push(categoryIdNum);
                 }
                 const bracketCount = await db.get(checkSql, checkParams);
 
@@ -1002,22 +1030,39 @@ module.exports = (db, manager) => {
             }
 
             const shouldClearBracket = clear_bracket !== false;
-            
-            await db.run(
-                'DELETE FROM jiu_jitsu_matchs WHERE event_id = ?',
-                [eventIdNum]
-            );
 
-            if (weight_class) {
-                if (shouldClearBracket) {
-                    await clearJJBracketStageData(db, eventIdNum, weight_class);
+            if (categoryIdNum) {
+                const catRow = await db.get(
+                    'SELECT weight_class FROM category_mode WHERE category_id = ?',
+                    [categoryIdNum]
+                );
+                const weightClassValue = catRow ? catRow.weight_class : null;
+
+                await db.run(
+                    'DELETE FROM jiu_jitsu_matchs WHERE event_id = ? AND jiu_jitsu_match_categroy = ?',
+                    [eventIdNum, weightClassValue]
+                );
+
+                if (shouldClearBracket && weightClassValue) {
+                    await clearJJBracketStageData(db, eventIdNum, weightClassValue);
                 }
             } else {
+                await db.run(
+                    'DELETE FROM jiu_jitsu_matchs WHERE event_id = ?',
+                    [eventIdNum]
+                );
+
                 if (shouldClearBracket) {
                     const allStages = await db.all('SELECT category_id FROM bracket_stage WHERE event_id = ?', [eventIdNum]);
                     for (const s of allStages) {
                         if (s.category_id) {
-                            await clearJJBracketStageData(db, eventIdNum, s.category_id);
+                            const catRow = await db.get(
+                                'SELECT weight_class FROM category_mode WHERE category_id = ?',
+                                [s.category_id]
+                            );
+                            if (catRow && catRow.weight_class) {
+                                await clearJJBracketStageData(db, eventIdNum, catRow.weight_class);
+                            }
                         }
                     }
                 }

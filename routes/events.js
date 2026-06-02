@@ -129,24 +129,24 @@ module.exports = (db, bracketsManager) => {
         if (stageRow.id) {
           const oldSid = stageRow.id;
           try {
-            const matchRows = await db.prepare('SELECT opponent1, opponent2 FROM bracket_match WHERE stage_id = ?').all(Number(oldSid));
+            const matchRows = await db.all('SELECT opponent1, opponent2 FROM bracket_match WHERE stage_id = ?', [Number(oldSid)]);
             const pIds = new Set();
             for (const m of matchRows) {
               if (m.opponent1) { try { const o = JSON.parse(m.opponent1); if (o?.id) pIds.add(o.id); } catch(e) {} }
               if (m.opponent2) { try { const o = JSON.parse(m.opponent2); if (o?.id) pIds.add(o.id); } catch(e) {} }
             }
-            await db.prepare('DELETE FROM bracket_match_game WHERE stage_id = ?').run(Number(oldSid));
-            await db.prepare('DELETE FROM bracket_match WHERE stage_id = ?').run(Number(oldSid));
-            await db.prepare('DELETE FROM bracket_round WHERE stage_id = ?').run(Number(oldSid));
-            await db.prepare('DELETE FROM bracket_group WHERE stage_id = ?').run(Number(oldSid));
-            await db.prepare('DELETE FROM bracket_stage WHERE id = ?').run(Number(oldSid));
-            for (const pid of pIds) { await db.prepare('DELETE FROM bracket_participant WHERE id = ?').run(pid); }
+            await db.run('DELETE FROM bracket_match_game WHERE stage_id = ?', [Number(oldSid)]);
+            await db.run('DELETE FROM bracket_match WHERE stage_id = ?', [Number(oldSid)]);
+            await db.run('DELETE FROM bracket_round WHERE stage_id = ?', [Number(oldSid)]);
+            await db.run('DELETE FROM bracket_group WHERE stage_id = ?', [Number(oldSid)]);
+            await db.run('DELETE FROM bracket_stage WHERE id = ?', [Number(oldSid)]);
+            for (const pid of pIds) { await db.run('DELETE FROM bracket_participant WHERE id = ?', [pid]); }
           } catch (e) {
             console.log('清除旧stage:', oldSid, e.message);
           }
         }
       }
-      await db.prepare('DELETE FROM bracket_participant WHERE tournament_id = ?').run(eventId);
+      await db.run('DELETE FROM bracket_participant WHERE tournament_id = ?', [eventId]);
 
       if (athleteIds.length > 0) {
         await deleteKyougiMatchsByAthletes(db, athleteIds);
@@ -233,12 +233,13 @@ module.exports = (db, bracketsManager) => {
     })();
 
     const nameUnitMap = new Map();
-    const unitRows = await db.prepare('SELECT id, athlete_name, athlete_team FROM athletes WHERE event_id = ? AND athlete_category = ?').all(event_id, weightClass);
+    const unitRows = await db.all('SELECT id, athlete_name, athlete_team FROM athletes WHERE event_id = ? AND athlete_category = ?', [event_id, weightClass]);
       unitRows.forEach(r => { nameUnitMap.set(r.id, r.athlete_team || ''); });
 
-    const participants = await db.prepare(
-      'SELECT id, name, custom_data FROM bracket_participant WHERE tournament_id = ?'
-    ).all(Number(event_id));
+    const participants = await db.all(
+      'SELECT id, name, custom_data FROM bracket_participant WHERE tournament_id = ?',
+      [Number(event_id)]
+    );
 
     const participantMap = new Map();
     participants.forEach(p => {
@@ -260,9 +261,10 @@ module.exports = (db, bracketsManager) => {
 
     let scheme = {};
     try {
-      const schemeRow = await db.prepare(
-        'SELECT category_venue, category_date_num, category_order FROM category_mode WHERE event_id = ? AND weight_class = ?'
-      ).get(event_id, weightClass);
+      const schemeRow = await db.get(
+        'SELECT category_venue, category_date_num, category_order FROM category_mode WHERE event_id = ? AND weight_class = ?',
+        [event_id, weightClass]
+      );
       if (schemeRow) {
         scheme = {
           category_venue: schemeRow.category_venue || '',
@@ -279,18 +281,19 @@ module.exports = (db, bracketsManager) => {
       const numSid = Number(sid);
       if (isNaN(numSid)) continue;
 
-      const stageInfo = await db.prepare('SELECT id, name, settings FROM bracket_stage WHERE id = ?').get(numSid);
+      const stageInfo = await db.get('SELECT id, name, settings FROM bracket_stage WHERE id = ?', [numSid]);
       if (!stageInfo) continue;
 
-      const bracketMatches = await db.prepare(
+      const bracketMatches = await db.all(
         `SELECT bm.id, bm.number, bm.opponent1, bm.opponent2, bm.status,
                 br.number AS round_number, br.name AS round_name,
                 ? AS stage_id
          FROM bracket_match bm
          LEFT JOIN bracket_round br ON bm.round_id = br.id
          WHERE bm.stage_id = ?
-         ORDER BY br.number, bm.number`
-      ).all(numSid, numSid);
+         ORDER BY br.number, bm.number`,
+        [numSid, numSid]
+      );
 
       if (bracketMatches && bracketMatches.length > 0) {
         for (const bm of bracketMatches) {
@@ -397,9 +400,10 @@ module.exports = (db, bracketsManager) => {
 
     if (!allMatches || allMatches.length === 0) return;
 
-    const schemeRows = await db.prepare(
-      'SELECT weight_class, category_venue, category_date_num, category_order FROM category_mode WHERE event_id = ?'
-    ).all(event_id);
+    const schemeRows = await db.all(
+      'SELECT weight_class, category_venue, category_date_num, category_order FROM category_mode WHERE event_id = ?',
+      [event_id]
+    );
 
     const schemeMap = new Map();
     schemeRows.forEach(r => {
@@ -412,9 +416,10 @@ module.exports = (db, bracketsManager) => {
       }
     });
 
-    const drawNumRows = await db.prepare(
-      'SELECT id, athlete_draw_num FROM athletes WHERE event_id = ?'
-    ).all(event_id);
+    const drawNumRows = await db.all(
+      'SELECT id, athlete_draw_num FROM athletes WHERE event_id = ?',
+      [event_id]
+    );
     const drawNumMap = new Map();
     drawNumRows.forEach(r => {
       if (r.athlete_draw_num != null) {
@@ -533,17 +538,17 @@ module.exports = (db, bracketsManager) => {
       }
     }
 
-    const stageMapRows = await db.prepare('SELECT id AS stage_id, category_id AS class_name FROM bracket_stage WHERE event_id = ?').all(event_id);
+    const stageMapRows = await db.all('SELECT id AS stage_id, category_id AS class_name FROM bracket_stage WHERE event_id = ?', [event_id]);
     const stageIdToClassName = new Map();
     stageMapRows.forEach(r => stageIdToClassName.set(r.stage_id, r.class_name));
 
     const bmIdToRoundAndNum = new Map();
     const stageRoundNumToMatches = new Map();
-    const allBracketMatches = await db.prepare(
+    const allBracketMatches = await db.all(
       `SELECT bm.id, bm.number, bm.stage_id, br.number AS round_number
        FROM bracket_match bm
        LEFT JOIN bracket_round br ON bm.round_id = br.id`
-    ).all();
+    );
     for (const bm of allBracketMatches) {
       bmIdToRoundAndNum.set(bm.id, { round: bm.round_number, number: bm.number, stageId: bm.stage_id });
       const key = `${bm.stage_id}|${bm.round_number}`;
@@ -1300,7 +1305,7 @@ module.exports = (db, bracketsManager) => {
   router.get('/poomsae-scores/:matchId', async (req, res) => {
     try {
       const { matchId } = req.params;
-      const rows = await db.prepare('SELECT * FROM poomsae_scores WHERE match_id = ? ORDER BY judge_no').all(matchId);
+      const rows = await db.all('SELECT * FROM poomsae_scores WHERE match_id = ? ORDER BY judge_no', [matchId]);
       res.json({ success: true, data: rows });
     } catch (err) {
       res.status(500).json({ success: false, error: err.message });
@@ -1313,24 +1318,21 @@ module.exports = (db, bracketsManager) => {
       const { scores, judge_count } = req.body;
       if (!scores || !Array.isArray(scores)) return res.status(400).json({ success: false, error: '缺少评分数据' });
 
-      const upsert = db.prepare(`
-        INSERT INTO poomsae_scores (match_id, judge_no, accuracy, presentation, total)
-        VALUES (?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-          accuracy = VALUES(accuracy),
-          presentation = VALUES(presentation),
-          total = VALUES(total),
-          updated_at = CURRENT_TIMESTAMP
-      `);
-
-      {
-        for (const s of scores) {
-          const total = (parseFloat(s.accuracy) || 0) + (parseFloat(s.presentation) || 0);
-          await upsert.run(matchId, s.judge_no, s.accuracy, s.presentation, total);
-        }
+      for (const s of scores) {
+        const total = (parseFloat(s.accuracy) || 0) + (parseFloat(s.presentation) || 0);
+        await db.run(
+          `INSERT INTO poomsae_scores (match_id, judge_no, accuracy, presentation, total)
+           VALUES (?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE
+             accuracy = VALUES(accuracy),
+             presentation = VALUES(presentation),
+             total = VALUES(total),
+             updated_at = CURRENT_TIMESTAMP`,
+          [matchId, s.judge_no, s.accuracy, s.presentation, total]
+        );
       }
 
-      const allRows = await db.prepare('SELECT accuracy, presentation, total FROM poomsae_scores WHERE match_id = ? ORDER BY judge_no').all(matchId);
+      const allRows = await db.all('SELECT accuracy, presentation, total FROM poomsae_scores WHERE match_id = ? ORDER BY judge_no', [matchId]);
       const allAcc = allRows.map(r => r.accuracy);
       const allPres = allRows.map(r => r.presentation);
       const allTotals = allRows.map(r => r.total);
@@ -1351,27 +1353,31 @@ module.exports = (db, bracketsManager) => {
       const presAvg = trimAvg(allPres, jc);
       const finalScore = trimAvg(allTotals, jc);
 
-      await db.prepare('UPDATE poomsae_match_schedule SET final_score = ?, accuracy_avg = ?, presentation_avg = ?, status = \'done\', updated_at = NOW() WHERE id = ?').run(finalScore, accAvg, presAvg, matchId);
+      await db.run('UPDATE poomsae_match_schedule SET final_score = ?, accuracy_avg = ?, presentation_avg = ?, status = \'done\', updated_at = NOW() WHERE id = ?', [finalScore, accAvg, presAvg, matchId]);
 
-      const finishedMatch = await db.prepare('SELECT * FROM poomsae_match_schedule WHERE id = ?').get(matchId);
+      const finishedMatch = await db.get('SELECT * FROM poomsae_match_schedule WHERE id = ?', [matchId]);
       if (finishedMatch && finishedMatch.round) {
         const classKey = [finishedMatch.poomsae_type, finishedMatch.gender, finishedMatch.group_class, finishedMatch.weight_class].join('|');
         const currentRound = finishedMatch.round;
 
-        const pendingCount = await db.prepare(
-          'SELECT COUNT(*) as cnt FROM poomsae_match_schedule WHERE event_id = ? AND poomsae_type = ? AND gender = ? AND group_class = ? AND weight_class = ? AND round = ? AND status != ?'
-        ).get(finishedMatch.event_id, finishedMatch.poomsae_type, finishedMatch.gender, finishedMatch.group_class, finishedMatch.weight_class, currentRound, 'done').cnt;
+        const pendingCountRow = await db.get(
+          'SELECT COUNT(*) as cnt FROM poomsae_match_schedule WHERE event_id = ? AND poomsae_type = ? AND gender = ? AND group_class = ? AND weight_class = ? AND round = ? AND status != ?',
+          [finishedMatch.event_id, finishedMatch.poomsae_type, finishedMatch.gender, finishedMatch.group_class, finishedMatch.weight_class, currentRound, 'done']
+        );
+        const pendingCount = pendingCountRow ? pendingCountRow.cnt : 0;
 
         if (pendingCount === 0) {
           const nextRound = currentRound + 1;
-          const nextEntries = await db.prepare(
-            'SELECT * FROM poomsae_match_schedule WHERE event_id = ? AND poomsae_type = ? AND gender = ? AND group_class = ? AND weight_class = ? AND round = ? AND advance_rank IS NOT NULL'
-          ).all(finishedMatch.event_id, finishedMatch.poomsae_type, finishedMatch.gender, finishedMatch.group_class, finishedMatch.weight_class, nextRound);
+          const nextEntries = await db.all(
+            'SELECT * FROM poomsae_match_schedule WHERE event_id = ? AND poomsae_type = ? AND gender = ? AND group_class = ? AND weight_class = ? AND round = ? AND advance_rank IS NOT NULL',
+            [finishedMatch.event_id, finishedMatch.poomsae_type, finishedMatch.gender, finishedMatch.group_class, finishedMatch.weight_class, nextRound]
+          );
 
           if (nextEntries.length > 0) {
-            const currentRoundMatches = await db.prepare(
-              'SELECT * FROM poomsae_match_schedule WHERE event_id = ? AND poomsae_type = ? AND gender = ? AND group_class = ? AND weight_class = ? AND round = ? AND status = ?'
-            ).all(finishedMatch.event_id, finishedMatch.poomsae_type, finishedMatch.gender, finishedMatch.group_class, finishedMatch.weight_class, currentRound, 'done');
+            const currentRoundMatches = await db.all(
+              'SELECT * FROM poomsae_match_schedule WHERE event_id = ? AND poomsae_type = ? AND gender = ? AND group_class = ? AND weight_class = ? AND round = ? AND status = ?',
+              [finishedMatch.event_id, finishedMatch.poomsae_type, finishedMatch.gender, finishedMatch.group_class, finishedMatch.weight_class, currentRound, 'done']
+            );
 
             const athleteScores = new Map();
             currentRoundMatches.forEach(m => {
@@ -1384,7 +1390,7 @@ module.exports = (db, bracketsManager) => {
             const rankedAthletes = Array.from(athleteScores.values())
               .sort((a, b) => b.totalScore - a.totalScore);
 
-            const athletes = await db.prepare('SELECT * FROM athletes WHERE event_id = ? AND athlete_type = ?').all(finishedMatch.event_id, 'poomsae');
+            const athletes = await db.all('SELECT * FROM athletes WHERE event_id = ? AND athlete_type = ?', [finishedMatch.event_id, 'poomsae']);
             const athleteMap = {};
             athletes.forEach(a => { athleteMap[a.id] = a; });
 
@@ -1400,10 +1406,6 @@ module.exports = (db, bracketsManager) => {
             };
             const roundDef = (FORMAT_ROUNDS_LOCAL[fmt] || []).find(r => r.round === nextRound);
 
-            const updateStmt = db.prepare(
-              'UPDATE poomsae_match_schedule SET athlete_id = ?, athlete_name = ?, athlete_unit = ?, routine = ? WHERE id = ?'
-            );
-
             const rankAthleteMap = new Map();
             rankedAthletes.forEach((entry, idx) => {
               rankAthleteMap.set(idx + 1, entry.match.athlete_id);
@@ -1418,7 +1420,10 @@ module.exports = (db, bracketsManager) => {
                 if (roundDef && roundDef.slots) {
                   routine = roundDef.slots.map(s => athlete[`format_slot_${s}`] || '').filter(r => r.trim()).join('、');
                 }
-                await updateStmt.run(aid, athlete.name || '', athlete.unit || '', routine, entry.id);
+                await db.run(
+                  'UPDATE poomsae_match_schedule SET athlete_id = ?, athlete_name = ?, athlete_unit = ?, routine = ? WHERE id = ?',
+                  [aid, athlete.name || '', athlete.unit || '', routine, entry.id]
+                );
               }
             }
           }
@@ -1521,9 +1526,10 @@ module.exports = (db, bracketsManager) => {
 
       const eventIdNum = Number(event_id);
 
-      const schemeRows = await db.prepare(
-        'SELECT weight_class, category_venue, category_date_num, category_order FROM category_mode WHERE event_id = ?'
-      ).all(eventIdNum);
+      const schemeRows = await db.all(
+        'SELECT weight_class, category_venue, category_date_num, category_order FROM category_mode WHERE event_id = ?',
+        [eventIdNum]
+      );
 
       const schemeData = {};
       schemeRows.forEach(row => {
@@ -1536,9 +1542,10 @@ module.exports = (db, bracketsManager) => {
         }
       });
 
-      const athleteRows = await db.prepare(
-        'SELECT DISTINCT athlete_category FROM athletes WHERE event_id = ? AND athlete_type = ?'
-      ).all(eventIdNum, 'taekwondo_kyougi');
+      const athleteRows = await db.all(
+        'SELECT DISTINCT athlete_category FROM athletes WHERE event_id = ? AND athlete_type = ?',
+        [eventIdNum, 'taekwondo_kyougi']
+      );
 
       athleteRows.forEach(row => {
         if (row.athlete_category && !schemeData[row.athlete_category]) {
@@ -1575,42 +1582,35 @@ module.exports = (db, bracketsManager) => {
         const unitVal = (item.category_date_num && item.category_date_num.trim() !== '' && parseInt(item.category_date_num) > 0) ? parseInt(item.category_date_num) : null;
         const orderVal = (item.category_order && item.category_order.trim() !== '' && parseInt(item.category_order) > 0) ? parseInt(item.category_order) : null;
 
-        const existing = await db.prepare(
-          'SELECT category_id FROM category_mode WHERE event_id = ? AND weight_class = ?'
-        ).get(Number(event_id), item.weight_class);
+        const existing = await db.get(
+          'SELECT category_id FROM category_mode WHERE event_id = ? AND weight_class = ?',
+          [Number(event_id), item.weight_class]
+        );
 
         if (existing) {
-          await db.prepare(
+          await db.run(
             `UPDATE category_mode SET
              category_venue = ?,
              category_date_num = ?,
              category_order = ?,
              updated_at = CURRENT_TIMESTAMP
-             WHERE category_id = ?`
-          ).run(
-            venueVal,
-            unitVal,
-            orderVal,
-            existing.category_id
+             WHERE category_id = ?`,
+            [venueVal, unitVal, orderVal, existing.category_id]
           );
         } else {
-          await db.prepare(
+          await db.run(
             `INSERT INTO category_mode
              (event_id, weight_class, category_venue, category_date_num, category_order)
-             VALUES (?, ?, ?, ?, ?)`
-          ).run(
-            Number(event_id),
-            item.weight_class,
-            venueVal,
-            unitVal,
-            orderVal
+             VALUES (?, ?, ?, ?, ?)`,
+            [Number(event_id), item.weight_class, venueVal, unitVal, orderVal]
           );
         }
 
         if (!venueVal || !unitVal) {
-          await db.prepare(
-            `DELETE FROM taekwondo_kyougi_matchs WHERE event_id = ? AND kyougi_match_categroy = ? AND kyougi_bracket_match_id IS NULL`
-          ).run(Number(event_id), item.weight_class);
+          await db.run(
+            `DELETE FROM taekwondo_kyougi_matchs WHERE event_id = ? AND kyougi_match_categroy = ? AND kyougi_bracket_match_id IS NULL`,
+            [Number(event_id), item.weight_class]
+          );
         }
       }
 
@@ -1634,18 +1634,21 @@ module.exports = (db, bracketsManager) => {
         const unitVal = (category_date_num && String(category_date_num).trim() !== '' && parseInt(category_date_num) > 0) ? parseInt(category_date_num) : null;
         const orderVal = (category_order && String(category_order).trim() !== '' && parseInt(category_order) > 0) ? parseInt(category_order) : null;
 
-        const existing = await db.prepare(
-          'SELECT category_id FROM category_mode WHERE event_id = ? AND weight_class = ?'
-        ).get(Number(event_id), weight_class);
+        const existing = await db.get(
+          'SELECT category_id FROM category_mode WHERE event_id = ? AND weight_class = ?',
+          [Number(event_id), weight_class]
+        );
 
         if (existing) {
-          await db.prepare(
-            `UPDATE category_mode SET category_venue = ?, category_date_num = ?, category_order = ?, updated_at = CURRENT_TIMESTAMP WHERE category_id = ?`
-          ).run(venueVal, unitVal, orderVal, existing.category_id);
+          await db.run(
+            `UPDATE category_mode SET category_venue = ?, category_date_num = ?, category_order = ?, updated_at = CURRENT_TIMESTAMP WHERE category_id = ?`,
+            [venueVal, unitVal, orderVal, existing.category_id]
+          );
         } else {
-          await db.prepare(
-            `INSERT INTO category_mode (event_id, weight_class, category_venue, category_date_num, category_order) VALUES (?, ?, ?, ?, ?)`
-          ).run(Number(event_id), weight_class, venueVal, unitVal, orderVal);
+          await db.run(
+            `INSERT INTO category_mode (event_id, weight_class, category_venue, category_date_num, category_order) VALUES (?, ?, ?, ?, ?)`,
+            [Number(event_id), weight_class, venueVal, unitVal, orderVal]
+          );
         }
 
         return res.json({ success: true });
@@ -1712,9 +1715,10 @@ module.exports = (db, bracketsManager) => {
           continue;
         }
 
-        const existingScheme = await db.prepare(
-          'SELECT category_id, category_venue, category_date_num, category_order FROM category_mode WHERE event_id = ? AND weight_class = ?'
-        ).get(Number(event_id), wc);
+        const existingScheme = await db.get(
+          'SELECT category_id, category_venue, category_date_num, category_order FROM category_mode WHERE event_id = ? AND weight_class = ?',
+          [Number(event_id), wc]
+        );
 
         if (existingScheme && existingScheme.category_venue && existingScheme.category_date_num) {
           assigned++;
@@ -1726,13 +1730,15 @@ module.exports = (db, bracketsManager) => {
         const order = Math.floor(unitIdx / venueUnits.length) + 1;
 
         if (existingScheme) {
-          await db.prepare(
-            `UPDATE category_mode SET category_venue = ?, category_date_num = ?, category_order = ?, updated_at = CURRENT_TIMESTAMP WHERE category_id = ?`
-          ).run(target.venue, target.unit, order, existingScheme.category_id);
+          await db.run(
+            `UPDATE category_mode SET category_venue = ?, category_date_num = ?, category_order = ?, updated_at = CURRENT_TIMESTAMP WHERE category_id = ?`,
+            [target.venue, target.unit, order, existingScheme.category_id]
+          );
         } else {
-          await db.prepare(
-            `INSERT INTO category_mode (event_id, weight_class, category_venue, category_date_num, category_order) VALUES (?, ?, ?, ?, ?)`
-          ).run(Number(event_id), wc, target.venue, target.unit, order);
+          await db.run(
+            `INSERT INTO category_mode (event_id, weight_class, category_venue, category_date_num, category_order) VALUES (?, ?, ?, ?, ?)`,
+            [Number(event_id), wc, target.venue, target.unit, order]
+          );
         }
 
         assigned++;
@@ -1752,42 +1758,83 @@ module.exports = (db, bracketsManager) => {
 
   router.post('/auto-arrange/generate-bracket', async (req, res) => {
     try {
-      const { event_id, weight_class, force } = req.body;
+      const { event_id, weight_class, category_id, force } = req.body;
 
       if (!event_id) {
         return res.status(400).json({ success: false, error: '缺少event_id参数' });
       }
 
-      const eventRow = await db.get('SELECT event_type FROM events WHERE event_id = ?', [Number(event_id)]);
+      const eventIdNum = Number(event_id);
+      let categoryIdNum = category_id ? Number(category_id) : null;
+      let weightClassValue = weight_class;
+
+      console.log('[generate-bracket] 接收参数:', { event_id, weight_class, category_id, force });
+      console.log('[generate-bracket] 初始值:', { eventIdNum, categoryIdNum, weightClassValue });
+
+      if (!categoryIdNum && weightClassValue) {
+        console.log('[generate-bracket] 尝试通过weight_class查询category_id:', weightClassValue);
+        const categoryRow = await db.get(
+          'SELECT category_id, weight_class FROM category_mode WHERE event_id = ? AND weight_class = ?',
+          [eventIdNum, weightClassValue]
+        );
+        console.log('[generate-bracket] 查询结果:', categoryRow);
+        categoryIdNum = categoryRow ? categoryRow.category_id : null;
+        
+        if (!categoryIdNum) {
+          console.log('[generate-bracket] 精确匹配失败，尝试模糊匹配');
+          const likeRow = await db.get(
+            'SELECT category_id, weight_class FROM category_mode WHERE event_id = ? AND weight_class LIKE ?',
+            [eventIdNum, weightClassValue + '%']
+          );
+          console.log('[generate-bracket] 模糊匹配结果:', likeRow);
+          if (likeRow) {
+            categoryIdNum = likeRow.category_id;
+            weightClassValue = likeRow.weight_class;
+          }
+        }
+      }
+
+      if (!weightClassValue && categoryIdNum) {
+        const categoryRow = await db.get(
+          'SELECT weight_class FROM category_mode WHERE category_id = ?',
+          [categoryIdNum]
+        );
+        weightClassValue = categoryRow ? categoryRow.weight_class : null;
+      }
+
+      const eventRow = await db.get('SELECT event_type FROM events WHERE event_id = ?', [eventIdNum]);
       const eventType = eventRow ? eventRow.event_type : 'taekwondo_kyougi';
 
       if (eventType === 'jiu_jitsu') {
-        const jjResult = await generateJJBracketForEvent(db, bracketsManager, Number(event_id), weight_class || null, req.body.classes_to_generate);
+        const jjResult = await generateJJBracketForEvent(db, bracketsManager, eventIdNum, weightClassValue || null, req.body.classes_to_generate);
         return res.json({
           success: true,
           data: { generated: jjResult.generated, skipped: jjResult.skipped || 0, errors: jjResult.errors, results: jjResult.results }
         });
       }
 
-      if (weight_class) {
+      if (weightClassValue) {
         if (!force) {
-          const categoryRow = await db.get(
-            'SELECT category_id FROM category_mode WHERE event_id = ? AND weight_class = ?',
-            [Number(event_id), weight_class]
-          );
-          const categoryId = categoryRow ? categoryRow.category_id : null;
-
-          const existingStage = await db.get(
-            'SELECT id FROM bracket_stage WHERE event_id = ? AND category_id = ?',
-            [Number(event_id), categoryId]
-          );
-          if (existingStage) {
-            return res.json({
-              success: false,
-              error: '该级别已有对阵图数据，请先清除后再生成。',
-              hasExistingData: true,
-              weight_class: weight_class
-            });
+          console.log('[generate-bracket] 检查现有数据:', { eventIdNum, categoryIdNum, weightClassValue });
+          
+          if (!categoryIdNum) {
+            console.log('[generate-bracket] categoryIdNum 为空，跳过现有数据检查');
+          } else {
+            const existingStage = await db.get(
+              'SELECT id, category_id FROM bracket_stage WHERE event_id = ? AND category_id = ?',
+              [eventIdNum, categoryIdNum]
+            );
+            console.log('[generate-bracket] 查询结果:', existingStage);
+            if (existingStage) {
+              return res.json({
+                success: false,
+                error: '该级别已有对阵图数据，请先清除后再生成。',
+                hasExistingData: true,
+                weight_class: weightClassValue,
+                category_id: categoryIdNum,
+                stage_id: existingStage.id
+              });
+            }
           }
         }
       } else {
@@ -1929,16 +1976,47 @@ module.exports = (db, bracketsManager) => {
   router.get('/brackets/stage-id/:weightClass', async (req, res) => {
     try {
       const { weightClass } = req.params;
-      const { event_id } = req.query;
-      const categoryRow = await db.get(
-        'SELECT category_id FROM category_mode WHERE event_id = ? AND weight_class = ?',
-        [Number(event_id), weightClass]
-      );
-      const categoryId = categoryRow ? categoryRow.category_id : null;
+      const { event_id, category_id } = req.query;
+
+      let categoryIdNum = category_id ? Number(category_id) : null;
+
+      if (!categoryIdNum && weightClass) {
+        const categoryRow = await db.get(
+          'SELECT category_id FROM category_mode WHERE event_id = ? AND weight_class = ?',
+          [Number(event_id), weightClass]
+        );
+        categoryIdNum = categoryRow ? categoryRow.category_id : null;
+      }
 
       const rows = await db.all(
         'SELECT id AS stage_id, type AS stage_type, settings FROM bracket_stage WHERE event_id = ? AND category_id = ?',
-        [Number(event_id), categoryId]
+        [Number(event_id), categoryIdNum]
+      );
+      if (rows && rows.length > 0) {
+        const stageIds = rows.map(r => r.stage_id).join(',');
+        const stageType = rows[0].stage_type || 'single_elimination';
+        let groupCount = 1;
+        try {
+          const settings = JSON.parse(rows[0].settings || '{}');
+          groupCount = settings.groupCount || 1;
+        } catch (e) {}
+        res.json({ success: true, data: { stage_id: stageIds, stage_type: stageType, group_count: groupCount } });
+      } else {
+        res.json({ success: true, data: null });
+      }
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  router.get('/brackets/stage-by-category/:categoryId', async (req, res) => {
+    try {
+      const { categoryId } = req.params;
+      const { event_id } = req.query;
+
+      const rows = await db.all(
+        'SELECT id AS stage_id, type AS stage_type, settings FROM bracket_stage WHERE event_id = ? AND category_id = ?',
+        [Number(event_id), Number(categoryId)]
       );
       if (rows && rows.length > 0) {
         const stageIds = rows.map(r => r.stage_id).join(',');
@@ -2038,9 +2116,10 @@ module.exports = (db, bracketsManager) => {
         return res.json({ success: false, error: '没有找到运动员数据' });
       }
 
-      const schemeRows = await db.prepare(
-        'SELECT weight_class, category_venue, category_date_num, category_order FROM category_mode WHERE event_id = ?'
-      ).all(eventIdNum);
+      const schemeRows = await db.all(
+        'SELECT weight_class, category_venue, category_date_num, category_order FROM category_mode WHERE event_id = ?',
+        [eventIdNum]
+      );
       const schemeMap = new Map();
       schemeRows.forEach(r => {
         if (r.weight_class) schemeMap.set(r.weight_class, r);
@@ -2156,42 +2235,51 @@ module.exports = (db, bracketsManager) => {
 
   router.post('/brackets/clear', async (req, res) => {
     try {
-      const { weight_class, event_id } = req.body;
+      const { event_id, category_id } = req.body;
       const eventIdNum = Number(event_id);
-      if (!weight_class) {
-        return res.status(400).json({ success: false, error: '缺少weight_class参数' });
+      const categoryIdNum = category_id ? Number(category_id) : null;
+
+      if (!eventIdNum) {
+        return res.status(400).json({ success: false, error: '缺少event_id参数' });
+      }
+      if (!categoryIdNum) {
+        return res.status(400).json({ success: false, error: '缺少category_id参数' });
       }
 
-      await deleteKyougiMatchsByClass(db, weight_class, event_id ? eventIdNum : null);
-
       const categoryRow = await db.get(
-        'SELECT category_id FROM category_mode WHERE event_id = ? AND weight_class = ?',
-        [eventIdNum, weight_class]
+        'SELECT weight_class FROM category_mode WHERE category_id = ?',
+        [categoryIdNum]
       );
-      const categoryId = categoryRow ? categoryRow.category_id : null;
+      const weightClassValue = categoryRow ? categoryRow.weight_class : null;
 
-      const stageRow = await db.get(
+      if (weightClassValue) {
+        await deleteKyougiMatchsByClass(db, weightClassValue, eventIdNum);
+      }
+
+      const stageRows = await db.all(
         'SELECT id FROM bracket_stage WHERE event_id = ? AND category_id = ?',
-        [eventIdNum, categoryId]
+        [eventIdNum, categoryIdNum]
       );
 
-      if (stageRow && stageRow.id) {
-        const oldSid = stageRow.id;
-        try {
-          const matchRows = await db.prepare('SELECT opponent1, opponent2 FROM bracket_match WHERE stage_id = ?').all(Number(oldSid));
-          const pIds = new Set();
-          for (const m of matchRows) {
-            if (m.opponent1) { try { const o = JSON.parse(m.opponent1); if (o?.id) pIds.add(o.id); } catch(e) {} }
-            if (m.opponent2) { try { const o = JSON.parse(m.opponent2); if (o?.id) pIds.add(o.id); } catch(e) {} }
+      for (const stageRow of stageRows) {
+        if (stageRow.id) {
+          const oldSid = stageRow.id;
+          try {
+            const matchRows = await db.all('SELECT opponent1, opponent2 FROM bracket_match WHERE stage_id = ?', [Number(oldSid)]);
+            const pIds = new Set();
+            for (const m of matchRows) {
+              if (m.opponent1) { try { const o = JSON.parse(m.opponent1); if (o?.id) pIds.add(o.id); } catch(e) {} }
+              if (m.opponent2) { try { const o = JSON.parse(m.opponent2); if (o?.id) pIds.add(o.id); } catch(e) {} }
+            }
+            await db.run('DELETE FROM bracket_match_game WHERE stage_id = ?', [Number(oldSid)]);
+            await db.run('DELETE FROM bracket_match WHERE stage_id = ?', [Number(oldSid)]);
+            await db.run('DELETE FROM bracket_round WHERE stage_id = ?', [Number(oldSid)]);
+            await db.run('DELETE FROM bracket_group WHERE stage_id = ?', [Number(oldSid)]);
+            await db.run('DELETE FROM bracket_stage WHERE id = ?', [Number(oldSid)]);
+            for (const pid of pIds) { await db.run('DELETE FROM bracket_participant WHERE id = ?', [pid]); }
+          } catch (e) {
+            console.log('清除stage:', oldSid, e.message);
           }
-          await db.prepare('DELETE FROM bracket_match_game WHERE stage_id = ?').run(Number(oldSid));
-          await db.prepare('DELETE FROM bracket_match WHERE stage_id = ?').run(Number(oldSid));
-          await db.prepare('DELETE FROM bracket_round WHERE stage_id = ?').run(Number(oldSid));
-          await db.prepare('DELETE FROM bracket_group WHERE stage_id = ?').run(Number(oldSid));
-          await db.prepare('DELETE FROM bracket_stage WHERE id = ?').run(Number(oldSid));
-          for (const pid of pIds) { await db.prepare('DELETE FROM bracket_participant WHERE id = ?').run(pid); }
-        } catch (e) {
-          console.log('清除stage:', oldSid, e.message);
         }
       }
 
@@ -2215,18 +2303,18 @@ module.exports = (db, bracketsManager) => {
         if (stageRow.id) {
           const oldSid = stageRow.id;
           try {
-            const matchRows = await db.prepare('SELECT opponent1, opponent2 FROM bracket_match WHERE stage_id = ?').all(Number(oldSid));
+            const matchRows = await db.all('SELECT opponent1, opponent2 FROM bracket_match WHERE stage_id = ?', [Number(oldSid)]);
             const pIds = new Set();
             for (const m of matchRows) {
               if (m.opponent1) { try { const o = JSON.parse(m.opponent1); if (o?.id) pIds.add(o.id); } catch(e) {} }
               if (m.opponent2) { try { const o = JSON.parse(m.opponent2); if (o?.id) pIds.add(o.id); } catch(e) {} }
             }
-            await db.prepare('DELETE FROM bracket_match_game WHERE stage_id = ?').run(Number(oldSid));
-            await db.prepare('DELETE FROM bracket_match WHERE stage_id = ?').run(Number(oldSid));
-            await db.prepare('DELETE FROM bracket_round WHERE stage_id = ?').run(Number(oldSid));
-            await db.prepare('DELETE FROM bracket_group WHERE stage_id = ?').run(Number(oldSid));
-            await db.prepare('DELETE FROM bracket_stage WHERE id = ?').run(Number(oldSid));
-            for (const pid of pIds) { await db.prepare('DELETE FROM bracket_participant WHERE id = ?').run(pid); }
+            await db.run('DELETE FROM bracket_match_game WHERE stage_id = ?', [Number(oldSid)]);
+            await db.run('DELETE FROM bracket_match WHERE stage_id = ?', [Number(oldSid)]);
+            await db.run('DELETE FROM bracket_round WHERE stage_id = ?', [Number(oldSid)]);
+            await db.run('DELETE FROM bracket_group WHERE stage_id = ?', [Number(oldSid)]);
+            await db.run('DELETE FROM bracket_stage WHERE id = ?', [Number(oldSid)]);
+            for (const pid of pIds) { await db.run('DELETE FROM bracket_participant WHERE id = ?', [pid]); }
           } catch (e) {
             console.log('清除stage:', oldSid, e.message);
           }

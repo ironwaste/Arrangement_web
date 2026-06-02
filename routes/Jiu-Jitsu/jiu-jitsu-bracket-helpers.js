@@ -157,6 +157,25 @@ async function clearJJBracketStageData(db, event_id, weightClass) {
         'SELECT id FROM bracket_stage WHERE (event_id = ? AND category_id = ?) OR (tournament_id = ? AND name LIKE ?)',
         [event_id, categoryId, Number(event_id), weightClass + '%']
     );
+
+    const participantIdsToDelete = new Set();
+    for (const row of stageRows) {
+        const sid = row.id;
+        const matches = await db.all('SELECT opponent1, opponent2 FROM bracket_match WHERE stage_id = ?', [sid]);
+        for (const m of matches) {
+            try {
+                if (m.opponent1) {
+                    const o1 = typeof m.opponent1 === 'string' ? JSON.parse(m.opponent1) : m.opponent1;
+                    if (o1 && o1.id) participantIdsToDelete.add(o1.id);
+                }
+                if (m.opponent2) {
+                    const o2 = typeof m.opponent2 === 'string' ? JSON.parse(m.opponent2) : m.opponent2;
+                    if (o2 && o2.id) participantIdsToDelete.add(o2.id);
+                }
+            } catch (e) {}
+        }
+    }
+
     for (const row of stageRows) {
         const sid = row.id;
         try {
@@ -168,6 +187,12 @@ async function clearJJBracketStageData(db, event_id, weightClass) {
         } catch (e) {
             console.log('删除柔术bracket stage:', sid, e.message);
         }
+    }
+
+    for (const pid of participantIdsToDelete) {
+        try {
+            await db.run('DELETE FROM bracket_participant WHERE id = ?', [pid]);
+        } catch (e) {}
     }
 }
 
@@ -348,8 +373,8 @@ async function generateJJBracketForClass(db, manager, weightClass, athletes, eve
         }
 
         const otherStages = await db.all(
-            'SELECT id FROM bracket_stage WHERE tournament_id = ? AND category_id IS NULL AND id != ?',
-            [Number(event_id), deStage?.id || 0]
+            'SELECT id FROM bracket_stage WHERE tournament_id = ? AND category_id IS NULL AND id != ? AND (name = ? OR name LIKE ? OR name LIKE ?)',
+            [Number(event_id), deStage?.id || 0, weightClass, weightClass + '%', '%败者%']
         );
         for (const s of otherStages) {
             await db.run(

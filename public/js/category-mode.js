@@ -28,17 +28,22 @@ const CategoryModeComponent = {
       
       if (data.success) {
         this.categoryData = data.data || [];
+        console.log('[CategoryModeComponent] 从sync加载的数据:', this.categoryData.length, '条');
+        console.log('[CategoryModeComponent] 数据示例:', this.categoryData.slice(0, 3));
         return this.categoryData;
       }
       
+      console.warn('[CategoryModeComponent] sync失败，尝试备用加载');
       const fallbackResp = await fetch(`${API_BASE}/category-mode?event_id=${this.currentEventId}`);
       const fallbackData = await fallbackResp.json();
       this.categoryData = fallbackData.data || [];
+      console.log('[CategoryModeComponent] 从备用加载的数据:', this.categoryData.length, '条');
       return this.categoryData;
     } catch (err) {
       console.error('加载category_mode数据失败:', err);
       
       try {
+        console.warn('[CategoryModeComponent] 尝试从athletes备用加载');
         const currentAthleteType = currentEventType === 'jiu_jitsu' ? 'jiu_jitsu' : 'taekwondo_kyougi';
         const athleteResp = await fetch(`${API_BASE}/athletes?event_id=${this.currentEventId}&athlete_type=${currentAthleteType}`);
         const athleteData = await athleteResp.json();
@@ -49,6 +54,7 @@ const CategoryModeComponent = {
           const wc = a.athlete_category || a.weight_class || '未分级';
           if (!classMap.has(wc)) {
             classMap.set(wc, { 
+              category_id: null,
               id: null, 
               event_id: this.currentEventId, 
               weight_class: wc, 
@@ -62,10 +68,22 @@ const CategoryModeComponent = {
           }
           classMap.get(wc).categroy_count++;
         });
+
+        const catModeResp = await fetch(`${API_BASE}/category-mode?event_id=${this.currentEventId}`);
+        const catModeData = await catModeResp.json();
+        const catModeRows = catModeData.data || [];
+        
+        catModeRows.forEach(cm => {
+          if (cm.weight_class && classMap.has(cm.weight_class)) {
+            classMap.get(cm.weight_class).category_id = cm.category_id;
+          }
+        });
         
         this.categoryData = Array.from(classMap.values()).sort((a, b) => 
           a.weight_class.localeCompare(b.weight_class, 'zh-CN')
         );
+        console.log('[CategoryModeComponent] 备用加载完成:', this.categoryData.length, '条');
+        console.log('[CategoryModeComponent] 备用数据示例:', this.categoryData.slice(0, 3));
         return this.categoryData;
       } catch (fallbackErr) {
         console.error('备用加载也失败:', fallbackErr);

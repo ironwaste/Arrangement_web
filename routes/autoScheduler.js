@@ -251,8 +251,8 @@ async function generateBracketForClass(db, manager, weightClass, athletes, event
 
     const allStageIds = [];
     const deStages = await db.all(
-      'SELECT id FROM bracket_stage WHERE tournament_id = ? AND category_id IS NULL',
-      [Number(event_id)]
+      'SELECT id FROM bracket_stage WHERE tournament_id = ? AND category_id IS NULL AND (name = ? OR name LIKE ? OR name LIKE ?)',
+      [Number(event_id), weightClass, weightClass + '%', '%败者%']
     );
     for (const s of deStages) {
       await db.prepare(

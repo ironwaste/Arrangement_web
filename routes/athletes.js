@@ -27,7 +27,7 @@ module.exports = (db) => {
   /* ==================== 运动员 CRUD ==================== */
   router.get('/athletes', async (req, res) => {
     try {
-      const { weight_class, unit, gender, event_id, athlete_type } = req.query;
+      const { weight_class, unit, gender, event_id, athlete_type, category_id } = req.query;
       let sql = 'SELECT * FROM athletes WHERE 1=1';
       const params = [];
 
@@ -41,7 +41,19 @@ module.exports = (db) => {
           return;
         }
       }
-      if (weight_class) { sql += ' AND athlete_category = ?'; params.push(weight_class); }
+
+      let weightClassValue = weight_class;
+      if (category_id && !weightClassValue) {
+        const categoryRow = await db.get(
+          'SELECT weight_class FROM category_mode WHERE category_id = ?',
+          [category_id]
+        );
+        if (categoryRow && categoryRow.weight_class) {
+          weightClassValue = categoryRow.weight_class;
+        }
+      }
+
+      if (weightClassValue) { sql += ' AND athlete_category = ?'; params.push(weightClassValue); }
       if (unit) { sql += ' AND athlete_team LIKE ?'; params.push(`%${unit}%`); }
       if (gender) { sql += ' AND athlete_gender = ?'; params.push(gender); }
       if (athlete_type) { sql += ' AND athlete_type = ?'; params.push(athlete_type); }

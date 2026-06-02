@@ -35,8 +35,7 @@ module.exports = function(db, bracketsManager) {
                     'Delta',
                     'Echo',
                     'Foxtrot',
-                    'Golf',
-                    'Hotel'
+                    'Golf'
                 ],
                 settings: {
                     groupCount: 2,

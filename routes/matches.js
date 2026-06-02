@@ -23,8 +23,8 @@ module.exports = (db) => {
   /* ==================== 对阵表查询 ==================== */
   router.get('/matches', async (req, res) => {
     try {
-      const { weight_class, round, status, event_id, arranged_only } = req.query;
-      const matches = await queryKyougiMatchs(db, { weight_class, round, status, event_id });
+      const { weight_class, round, status, event_id, category_id, arranged_only } = req.query;
+      const matches = await queryKyougiMatchs(db, { weight_class, round, status, event_id, category_id });
 
       const firstRoundMap = new Map();
       for (const m of matches) {

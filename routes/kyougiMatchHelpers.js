@@ -209,9 +209,22 @@ async function queryKyougiMatchs(db, filters) {
     sql += ' AND event_id = ?';
     params.push(filters.event_id);
   }
-  if (filters.weight_class || filters.kyougi_match_categroy) {
+
+  let weightClass = filters.weight_class || filters.kyougi_match_categroy;
+
+  if (filters.category_id && !weightClass) {
+    const categoryRow = await db.get(
+      'SELECT weight_class FROM category_mode WHERE category_id = ?',
+      [filters.category_id]
+    );
+    if (categoryRow && categoryRow.weight_class) {
+      weightClass = categoryRow.weight_class;
+    }
+  }
+
+  if (weightClass) {
     sql += ' AND kyougi_match_categroy = ?';
-    params.push(filters.weight_class || filters.kyougi_match_categroy);
+    params.push(weightClass);
   }
   if (filters.round || filters.kyougi_match_round_num) {
     sql += ' AND kyougi_match_round_num = ?';
