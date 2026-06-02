@@ -210,9 +210,15 @@ module.exports = (db, bracketsManager) => {
 
   /* ==================== 对阵图数据同步 ==================== */
   async function syncMatchesFromBracket(weightClass, event_id) {
+    const categoryRow = await db.get(
+      'SELECT category_id FROM category_mode WHERE event_id = ? AND weight_class = ?',
+      [event_id, weightClass]
+    );
+    const categoryId = categoryRow ? categoryRow.category_id : null;
+
     const stageMapRows = await db.all(
       'SELECT id AS stage_id, type AS stage_type, settings FROM bracket_stage WHERE event_id = ? AND category_id = ?',
-      [event_id, weightClass]
+      [event_id, categoryId]
     );
 
     if (!stageMapRows || stageMapRows.length === 0) return;
@@ -1513,9 +1519,11 @@ module.exports = (db, bracketsManager) => {
         return res.status(400).json({ success: false, error: '缺少event_id参数' });
       }
 
+      const eventIdNum = Number(event_id);
+
       const schemeRows = await db.prepare(
         'SELECT weight_class, category_venue, category_date_num, category_order FROM category_mode WHERE event_id = ?'
-      ).all(Number(event_id));
+      ).all(eventIdNum);
 
       const schemeData = {};
       schemeRows.forEach(row => {
@@ -1524,6 +1532,20 @@ module.exports = (db, bracketsManager) => {
             category_venue: row.category_venue || '',
             category_date_num: row.category_date_num != null ? String(row.category_date_num) : '',
             category_order: row.category_order != null ? String(row.category_order) : ''
+          };
+        }
+      });
+
+      const athleteRows = await db.prepare(
+        'SELECT DISTINCT athlete_category FROM athletes WHERE event_id = ? AND athlete_type = ?'
+      ).all(eventIdNum, 'taekwondo_kyougi');
+
+      athleteRows.forEach(row => {
+        if (row.athlete_category && !schemeData[row.athlete_category]) {
+          schemeData[row.athlete_category] = {
+            category_venue: '',
+            category_date_num: '',
+            category_order: ''
           };
         }
       });
@@ -1730,7 +1752,7 @@ module.exports = (db, bracketsManager) => {
 
   router.post('/auto-arrange/generate-bracket', async (req, res) => {
     try {
-      const { event_id, weight_class } = req.body;
+      const { event_id, weight_class, force } = req.body;
 
       if (!event_id) {
         return res.status(400).json({ success: false, error: '缺少event_id参数' });
@@ -1740,11 +1762,69 @@ module.exports = (db, bracketsManager) => {
       const eventType = eventRow ? eventRow.event_type : 'taekwondo_kyougi';
 
       if (eventType === 'jiu_jitsu') {
-        const jjResult = await generateJJBracketForEvent(db, bracketsManager, Number(event_id), weight_class || null);
+        const jjResult = await generateJJBracketForEvent(db, bracketsManager, Number(event_id), weight_class || null, req.body.classes_to_generate);
         return res.json({
           success: true,
-          data: { generated: jjResult.generated, skipped: 0, errors: jjResult.errors, results: jjResult.results }
+          data: { generated: jjResult.generated, skipped: jjResult.skipped || 0, errors: jjResult.errors, results: jjResult.results }
         });
+      }
+
+      if (weight_class) {
+        if (!force) {
+          const categoryRow = await db.get(
+            'SELECT category_id FROM category_mode WHERE event_id = ? AND weight_class = ?',
+            [Number(event_id), weight_class]
+          );
+          const categoryId = categoryRow ? categoryRow.category_id : null;
+
+          const existingStage = await db.get(
+            'SELECT id FROM bracket_stage WHERE event_id = ? AND category_id = ?',
+            [Number(event_id), categoryId]
+          );
+          if (existingStage) {
+            return res.json({
+              success: false,
+              error: '该级别已有对阵图数据，请先清除后再生成。',
+              hasExistingData: true,
+              weight_class: weight_class
+            });
+          }
+        }
+      } else {
+        const athletes = await db.all(
+          'SELECT DISTINCT athlete_category FROM athletes WHERE event_id = ? AND athlete_type = ?',
+          [Number(event_id), 'taekwondo_kyougi']
+        );
+        const allClasses = athletes.map(a => a.athlete_category).filter(Boolean);
+
+        const existingStages = await db.all(
+          'SELECT DISTINCT cm.weight_class FROM bracket_stage bs JOIN category_mode cm ON bs.category_id = cm.category_id WHERE bs.event_id = ?',
+          [Number(event_id)]
+        );
+        const existingClasses = existingStages.map(s => s.weight_class).filter(Boolean);
+
+        const allExist = allClasses.length > 0 && allClasses.every(cls => existingClasses.includes(cls));
+
+        if (allExist && !force) {
+          return res.json({
+            success: false,
+            error: '所有级别对阵图已经存在，如需重新生成，请点击清除全部级别对阵图',
+            allLevelsExist: true,
+            existingClasses: allClasses,
+            totalClasses: allClasses.length
+          });
+        }
+
+        const classesToGenerate = force ? allClasses : allClasses.filter(cls => !existingClasses.includes(cls));
+
+        if (classesToGenerate.length === 0) {
+          return res.json({
+            success: true,
+            data: { generated: 0, skipped: allClasses.length, errors: [], results: ['所有级别对阵图已存在，无需生成'] }
+          });
+        }
+
+        req.body.classes_to_generate = classesToGenerate;
       }
 
       const athletes = await db.all(
@@ -1765,9 +1845,9 @@ module.exports = (db, bracketsManager) => {
         classMap.get(wc).push(a);
       });
 
-      const classesToGenerate = weight_class
-        ? [[weight_class, classMap.get(weight_class) || []]]
-        : Array.from(classMap.entries());
+      const classesToGenerateList = weight_class
+        ? [weight_class]
+        : (req.body.classes_to_generate || Array.from(classMap.keys()));
 
       const results = [];
       const errors = [];
@@ -1775,8 +1855,10 @@ module.exports = (db, bracketsManager) => {
       let generated = 0;
       let skipped = 0;
 
-      for (const [wc, classAthletes] of classesToGenerate) {
+      for (const wc of classesToGenerateList) {
         try {
+          const classAthletes = classMap.get(wc) || [];
+          
           if (classAthletes.length < 2) {
             errors.push(`${wc}: 运动员不足2人,跳过`);
             failedClasses.push({ weightClass: wc, reason: '运动员不足2人' });
@@ -1824,7 +1906,10 @@ module.exports = (db, bracketsManager) => {
     try {
       const { event_id } = req.query;
       const rows = await db.all(
-        'SELECT category_id AS class_name, id AS stage_id, type AS stage_type, settings FROM bracket_stage WHERE event_id = ?',
+        `SELECT cm.weight_class AS class_name, bs.id AS stage_id, bs.type AS stage_type, bs.settings 
+         FROM bracket_stage bs 
+         LEFT JOIN category_mode cm ON bs.category_id = cm.category_id AND bs.event_id = cm.event_id 
+         WHERE bs.event_id = ?`,
         [Number(event_id)]
       );
       const result = (rows || []).map(r => {
@@ -1845,9 +1930,15 @@ module.exports = (db, bracketsManager) => {
     try {
       const { weightClass } = req.params;
       const { event_id } = req.query;
+      const categoryRow = await db.get(
+        'SELECT category_id FROM category_mode WHERE event_id = ? AND weight_class = ?',
+        [Number(event_id), weightClass]
+      );
+      const categoryId = categoryRow ? categoryRow.category_id : null;
+
       const rows = await db.all(
         'SELECT id AS stage_id, type AS stage_type, settings FROM bracket_stage WHERE event_id = ? AND category_id = ?',
-        [Number(event_id), weightClass]
+        [Number(event_id), categoryId]
       );
       if (rows && rows.length > 0) {
         const stageIds = rows.map(r => r.stage_id).join(',');
@@ -2073,9 +2164,15 @@ module.exports = (db, bracketsManager) => {
 
       await deleteKyougiMatchsByClass(db, weight_class, event_id ? eventIdNum : null);
 
+      const categoryRow = await db.get(
+        'SELECT category_id FROM category_mode WHERE event_id = ? AND weight_class = ?',
+        [eventIdNum, weight_class]
+      );
+      const categoryId = categoryRow ? categoryRow.category_id : null;
+
       const stageRow = await db.get(
         'SELECT id FROM bracket_stage WHERE event_id = ? AND category_id = ?',
-        [eventIdNum, weight_class]
+        [eventIdNum, categoryId]
       );
 
       if (stageRow && stageRow.id) {

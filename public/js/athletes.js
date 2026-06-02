@@ -158,126 +158,159 @@ function parseWeightFromClass(cls) {
     return match ? parseFloat(match[1]) : 0;
 }
 
-function getGroupOrder(cls) {
-    const orderMap = { '甲': 1, '乙': 2, '丙': 3, '丁': 4 };
-    for (const key of Object.keys(orderMap)) {
+function getGroupOrderFromClass(cls) {
+    const schoolOrder = { '小学': 1, '初中': 2, '高中': 3, '大学': 4, '成年': 5 };
+    const tianganOrder = { '甲': 1, '乙': 2, '丙': 3, '丁': 4, '戊': 5, '己': 6, '庚': 7, '辛': 8, '壬': 9, '癸': 10 };
+    
+    for (const key of Object.keys(schoolOrder)) {
         if (cls.includes(key)) {
-            return orderMap[key];
+            return schoolOrder[key];
         }
     }
+    
+    for (const key of Object.keys(tianganOrder)) {
+        if (cls.includes(key)) {
+            return tianganOrder[key] + 100;
+        }
+    }
+    
     return 99;
+}
+
+function getGenderFromClass(cls) {
+    return cls.includes('女') ? '女' : '男';
 }
 
 function sortWeightClasses(classes) {
     return [...classes].sort((a, b) => {
-        const hasFemaleA = a.includes('女');
-        const hasFemaleB = b.includes('女');
+        const genderA = getGenderFromClass(a);
+        const genderB = getGenderFromClass(b);
+        if (genderA !== genderB) {
+            return genderA === '男' ? -1 : 1;
+        }
         
-        if (hasFemaleA && !hasFemaleB) return -1;
-        if (!hasFemaleA && hasFemaleB) return 1;
-        
-        const groupA = getGroupOrder(a);
-        const groupB = getGroupOrder(b);
+        const groupA = getGroupOrderFromClass(a);
+        const groupB = getGroupOrderFromClass(b);
         if (groupA !== groupB) {
             return groupA - groupB;
         }
         
-        const weightA = parseWeightFromClass(a);
-        const weightB = parseWeightFromClass(b);
-        
-        return weightA - weightB;
+        return a.localeCompare(b, 'zh-CN');
     });
 }
 
 function loadClassList(allAthletes) {
     if (!currentEventId) {
         document.getElementById('classList').innerHTML = '';
-        document.getElementById('drawnClassList').innerHTML = '';
         return;
     }
 
     const athletes = allAthletes || [];
 
     const groupMap = {};
-    const drawnGroupMap = {};
     
     athletes.forEach(a => {
         const group = a.athlete_age_group || '未分组';
         const cls = a.athlete_category || '未分类';
-        const key = `${group}|${cls}`;
         
+        if (!groupMap[group]) groupMap[group] = {};
+        if (!groupMap[group][cls]) groupMap[group][cls] = { total: 0, drawn: 0 };
+        
+        groupMap[group][cls].total++;
         if (a.athlete_draw_num) {
-            if (!drawnGroupMap[group]) drawnGroupMap[group] = {};
-            drawnGroupMap[group][cls] = (drawnGroupMap[group][cls] || 0) + 1;
-        } else {
-            if (!groupMap[group]) groupMap[group] = {};
-            groupMap[group][cls] = (groupMap[group][cls] || 0) + 1;
+            groupMap[group][cls].drawn++;
         }
     });
 
-    const renderGroupedList = (listEl, groupData, isDrawn) => {
-        listEl.innerHTML = '';
-        
-        if (Object.keys(groupData).length === 0) {
-            const emptyLi = document.createElement('li');
-            emptyLi.style.cssText = `background:transparent;border:1px dashed ${isDrawn ? '#c2e7b0' : '#d9deea'};color:#8a93a6;cursor:default;text-align:center;`;
-            emptyLi.textContent = isDrawn ? '暂无已抽签' : '全部已抽签';
-            listEl.appendChild(emptyLi);
-            return;
-        }
-
-        const groups = Object.keys(groupData).sort();
-        
-        groups.forEach(group => {
-            const classMap = groupData[group];
-            const classes = sortWeightClasses(Object.keys(classMap));
-            const classCount = classes.length;
-            const athleteCount = Object.values(classMap).reduce((sum, cnt) => sum + cnt, 0);
-
-            const groupDiv = document.createElement('div');
-            groupDiv.className = 'group-container';
-            
-            const groupHeader = document.createElement('div');
-            groupHeader.className = 'group-header';
-            groupHeader.innerHTML = `<span style="font-weight:bold;">${group}</span><span class="count" style="margin-left:auto;">${classCount}个级别</span>`;
-            groupHeader.onclick = () => {
-                groupDiv.classList.toggle('collapsed');
-            };
-            groupDiv.appendChild(groupHeader);
-
-            const classList = document.createElement('ul');
-            classList.className = 'group-class-list';
-            
-            classes.forEach(cls => {
-                const li = document.createElement('li');
-                li.className = selectedClass === cls ? 'active' : '';
-                li.innerHTML = `<span>${cls}</span><span class="count">${classMap[cls]}</span>`;
-                li.onclick = (e) => {
-                    e.stopPropagation();
-                    selectedClass = cls;
-                    loadAthletes();
-                };
-                classList.appendChild(li);
-            });
-            
-            groupDiv.appendChild(classList);
-            listEl.appendChild(groupDiv);
-        });
-    };
-
-    const leftList = document.getElementById('classList');
-    const rightList = document.getElementById('drawnClassList');
-
-    if (Object.keys(groupMap).length > 0) {
-        const allItem = document.createElement('li');
-        allItem.className = 'all-item' + (selectedClass === '' ? ' active' : '');
-        allItem.innerHTML = `<span>全部</span><span class="count">${athletes.length}</span>`;
-        allItem.onclick = () => { selectedClass = ''; loadAthletes(); };
-        leftList.appendChild(allItem);
+    const listEl = document.getElementById('classList');
+    listEl.innerHTML = '';
+    
+    if (Object.keys(groupMap).length === 0) {
+        const emptyLi = document.createElement('li');
+        emptyLi.style.cssText = 'background:transparent;border:1px dashed #d9deea;color:#8a93a6;cursor:default;text-align:center;';
+        emptyLi.textContent = '暂无运动员数据';
+        listEl.appendChild(emptyLi);
+        return;
     }
 
-    renderGroupedList(leftList, groupMap, false);
-    renderGroupedList(rightList, drawnGroupMap, true);
+    const schoolOrder = { '小学': 1, '初中': 2, '高中': 3, '大学': 4, '成年': 5 };
+    const tianganOrder = { '甲': 1, '乙': 2, '丙': 3, '丁': 4, '戊': 5, '己': 6, '庚': 7, '辛': 8, '壬': 9, '癸': 10 };
+    
+    const getGroupSortValue = (group) => {
+        for (const key of Object.keys(schoolOrder)) {
+            if (group.includes(key)) return schoolOrder[key];
+        }
+        for (const key of Object.keys(tianganOrder)) {
+            if (group.includes(key)) return tianganOrder[key] + 100;
+        }
+        return 99;
+    };
+    
+    const groups = Object.keys(groupMap).sort((a, b) => {
+        return getGroupSortValue(a) - getGroupSortValue(b);
+    });
+
+    const allItem = document.createElement('li');
+    allItem.className = 'all-item' + (selectedClass === '' ? ' active' : '');
+    allItem.innerHTML = `<span>全部</span><span class="count">${athletes.length}</span>`;
+    allItem.onclick = () => { selectedClass = ''; loadAthletes(); };
+    listEl.appendChild(allItem);
+
+    groups.forEach(group => {
+        const classMap = groupMap[group];
+        const classes = sortWeightClasses(Object.keys(classMap));
+        const classCount = classes.length;
+
+        const groupDiv = document.createElement('div');
+        groupDiv.className = 'group-container';
+        
+        const groupHeader = document.createElement('div');
+        groupHeader.className = 'group-header';
+        groupHeader.innerHTML = `<span style="font-weight:bold;">${group}</span><span class="count" style="margin-left:auto;">${classCount}个级别</span>`;
+        groupHeader.onclick = () => {
+            groupDiv.classList.toggle('collapsed');
+        };
+        groupDiv.appendChild(groupHeader);
+
+        const classList = document.createElement('ul');
+        classList.className = 'group-class-list';
+        
+        classes.forEach(cls => {
+            const info = classMap[cls];
+            const isFullyDrawn = info.drawn === info.total;
+            const isPartiallyDrawn = info.drawn > 0 && info.drawn < info.total;
+            const isNotDrawn = info.drawn === 0;
+            
+            const li = document.createElement('li');
+            li.className = selectedClass === cls ? 'active' : '';
+            
+            let statusBadge = '';
+            let statusStyle = '';
+            
+            if (isFullyDrawn) {
+                statusBadge = '✅';
+                statusStyle = 'background:#f0f9eb;border-color:#c2e7b0;';
+            } else if (isPartiallyDrawn) {
+                statusBadge = '⏳';
+                statusStyle = 'background:#fdf6ec;border-color:#faecd8;';
+            } else {
+                statusBadge = '⏸️';
+                statusStyle = 'background:#fef0f0;border-color:#fde2e2;';
+            }
+            
+            li.style.cssText = statusStyle;
+            li.innerHTML = `<span>${statusBadge} ${cls}</span><span class="count">${info.drawn}/${info.total}</span>`;
+            li.onclick = (e) => {
+                e.stopPropagation();
+                selectedClass = cls;
+                loadAthletes();
+            };
+            classList.appendChild(li);
+        });
+        
+        groupDiv.appendChild(classList);
+        listEl.appendChild(groupDiv);
+    });
 }
 
 // ==================== 类型筛选 ====================

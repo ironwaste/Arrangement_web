@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bracket Manager & Viewer 测试</title>
+    <link rel="stylesheet" href="/node_modules/brackets-viewer/dist/brackets-viewer.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            color: #2c3e50;
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #7f8c8d;
+            font-size: 16px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: #3498db;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
+        }
+
+        .btn-success {
+            background: #27ae60;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #229954;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(39, 174, 96, 0.4);
+        }
+
+        .btn-warning {
+            background: #f39c12;
+            color: white;
+        }
+
+        .btn-warning:hover {
+            background: #d68910;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(243, 156, 18, 0.4);
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c0392b;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(231, 76, 60, 0.4);
+        }
+
+        .btn-info {
+            background: #9b59b6;
+            color: white;
+        }
+
+        .btn-info:hover {
+            background: #8e44ad;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(155, 89, 182, 0.4);
+        }
+
+        .bracket-section {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .bracket-section h2 {
+            color: #2c3e50;
+            font-size: 24px;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 3px solid #3498db;
+        }
+
+        .bracket-container {
+            overflow-x: auto;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            min-height: 400px;
+        }
+
+        .brackets-viewer {
+            --primary-background: transparent;
+            --secondary-background: transparent;
+            --match-background: #fff;
+            --font-color: #2c3e50;
+            --line-color: #bdc3c7;
+            --round-margin: 100px;
+            --match-margin: 20px;
+        }
+
+        .brackets-viewer .participant {
+            border: 2px solid #3498db;
+            border-radius: 6px;
+            padding: 8px 12px;
+            background: white;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .brackets-viewer .participant-name {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .brackets-viewer .match {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            border: 1px solid #ecf0f1;
+        }
+
+        .brackets-viewer .round {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        .brackets-viewer .round-title {
+            color: #7f8c8d;
+            font-weight: 600;
+            margin-bottom: 15px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .info-box {
+            background: #e8f4f8;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .info-box code {
+            background: #fff;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            color: #e74c3c;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+        }
+
+        .error {
+            background: #ffe6e6;
+            border-left: 4px solid #e74c3c;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            color: #c0392b;
+        }
+
+        .success {
+            background: #e8f8f5;
+            border-left: 4px solid #27ae60;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            color: #229954;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-card h3 {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-bottom: 10px;
+        }
+
+        .stat-card p {
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .code-example {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            overflow-x: auto;
+            margin: 20px 0;
+        }
+
+        .code-example .keyword {
+            color: #e74c3c;
+        }
+
+        .code-example .string {
+            color: #27ae60;
+        }
+
+        .code-example .number {
+            color: #f39c12;
+        }
+
+        .code-example .comment {
+            color: #95a5a6;
+        }
+
+        .code-example .property {
+            color: #3498db;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏆 Bracket Manager & Viewer 测试</h1>
+            <p>使用 bracket-manager 创建对阵图，使用 bracket-viewer 显示分区循环赛、单败淘汰赛和双败淘汰赛</p>
+            
+            <div class="button-group">
+                <button class="btn btn-danger" onclick="clearTestData()">
+                    🗑️ 清理测试数据
+                </button>
+                <button class="btn btn-primary" onclick="createPoolStage()">
+                    🎯 创建分区循环赛（Pool Stage）
+                </button>
+                <button class="btn btn-success" onclick="createSingleElimination()">
+                    🏁 创建单败淘汰赛（Single Elimination）
+                </button>
+                <button class="btn btn-warning" onclick="createDoubleElimination()">
+                    🔄 创建双败淘汰赛（Double Elimination）
+                </button>
+                <button class="btn btn-info" onclick="clearAll()">
+                    🗑️ 清空显示
+                </button>
+            </div>
+        </div>
+
+        <div class="bracket-section" id="poolSection" style="display: none;">
+            <h2>🎯 分区循环赛（Pool Stage）</h2>
+            <div class="info-box">
+                <strong>代码示例：</strong>
+                <div class="code-example">
+                    <span class="keyword">await</span> manager.create.stage({<br>
+                    &nbsp;&nbsp;tournamentId: <span class="number">999</span>,<br>
+                    &nbsp;&nbsp;name: <span class="string">'Groups'</span>,<br>
+                    &nbsp;&nbsp;type: <span class="string">'round_robin'</span>,<br>
+                    &nbsp;&nbsp;seeding: [<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;<span class="string">'Alpha'</span>,<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;<span class="string">'Bravo'</span>,<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;<span class="string">'Charlie'</span>,<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;<span class="string">'Delta'</span>,<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;<span class="string">'Echo'</span>,<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;<span class="string">'Foxtrot'</span>,<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;<span class="string">'Golf'</span>,<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;<span class="string">'Hotel'</span><br>
+                    &nbsp;&nbsp;],<br>
+                    &nbsp;&nbsp;settings: {<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;groupCount: <span class="number">2</span>,<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;seedOrdering: [<span class="string">'groups.effort_balanced'</span>]<br>
+                    &nbsp;&nbsp;}<br>
+                    });
+                </div>
+            </div>
+            <div class="bracket-container" id="poolBracket"></div>
+        </div>
+
+        <div class="bracket-section" id="singleSection" style="display: none;">
+            <h2>🏁 单败淘汰赛（Single Elimination）</h2>
+            <div class="info-box">
+                <strong>赛制说明：</strong>
+                <p>8名选手进行单败淘汰赛，最终产生1名冠军</p>
+                <p>对阵图结构：1/4决赛（4场）→ 半决赛（2场）→ 决赛（1场）</p>
+            </div>
+            <div class="bracket-container" id="singleBracket"></div>
+        </div>
+
+        <div class="bracket-section" id="doubleSection" style="display: none;">
+            <h2>🔄 双败淘汰赛（Double Elimination）</h2>
+            <div class="info-box">
+                <strong>赛制说明：</strong>
+                <p>4支队伍进行双败淘汰赛，失败两次被淘汰</p>
+                <p>最终产生1名冠军和1名亚军</p>
+            </div>
+            <div class="bracket-container" id="doubleBracket"></div>
+        </div>
+    </div>
+
+    <script type="text/javascript" src="/node_modules/brackets-viewer/dist/brackets-viewer.min.js"></script>
+    <script>
+        const API_BASE = '/api/test';
+
+        async function createPoolStage() {
+            try {
+                showLoading('poolBracket');
+                document.getElementById('poolSection').style.display = 'block';
+                
+                const response = await fetch(`${API_BASE}/create-pool-stage`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    await renderBracket('poolBracket', result.data);
+                    showSuccess('poolBracket', `分区循环赛创建成功！Tournament ID: ${result.tournamentId}`);
+                } else {
+                    showError('poolBracket', result.error);
+                }
+            } catch (err) {
+                showError('poolBracket', err.message);
+            }
+        }
+
+        async function createSingleElimination() {
+            try {
+                showLoading('singleBracket');
+                document.getElementById('singleSection').style.display = 'block';
+                
+                const response = await fetch(`${API_BASE}/create-single-elimination`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    await renderBracket('singleBracket', result.data);
+                    showSuccess('singleBracket', `单败淘汰赛创建成功！Tournament ID: ${result.tournamentId}`);
+                } else {
+                    showError('singleBracket', result.error);
+                }
+            } catch (err) {
+                showError('singleBracket', err.message);
+            }
+        }
+
+        async function createDoubleElimination() {
+            try {
+                showLoading('doubleBracket');
+                document.getElementById('doubleSection').style.display = 'block';
+                
+                const response = await fetch(`${API_BASE}/create-double-elimination`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    await renderBracket('doubleBracket', result.data);
+                    showSuccess('doubleBracket', `双败淘汰赛创建成功！Tournament ID: ${result.tournamentId}`);
+                } else {
+                    showError('doubleBracket', result.error);
+                }
+            } catch (err) {
+                showError('doubleBracket', err.message);
+            }
+        }
+
+        async function renderBracket(containerId, data) {
+            const container = document.getElementById(containerId);
+            
+            const viewerContainerId = `${containerId}-viewer`;
+            container.innerHTML = `
+                <div id="${viewerContainerId}" class="brackets-viewer" style="overflow-x:auto;padding:16px;background:#fff;border-radius:8px;"></div>
+            `;
+
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            if (window.bracketsViewer) {
+                try {
+                    await window.bracketsViewer.render(data, {
+                        selector: `#${viewerContainerId}`,
+                        clear: true,
+                        showRankingTable: data.stages.some(s => s.type === 'round_robin'),
+                        participantOriginPlacement: 'none',
+                        customRoundName: (info) => {
+                            const stageType = info.stageType || (data.stages[0] && data.stages[0].type);
+                            if (stageType === 'round_robin') {
+                                return `R${info.roundNumber}`;
+                            }
+                            if (stageType === 'double_elimination') {
+                                const isLosers = info.groupType === 'loser-bracket';
+                                if (!isLosers) {
+                                    if (info.roundNumber && info.roundCount) {
+                                        const d = Math.pow(2, info.roundCount - info.roundNumber);
+                                        if (d === 1) return 'D.Final';
+                                        return `1/${d}`;
+                                    }
+                                } else {
+                                    const totalLosersRounds = info.roundCount;
+                                    const losersRound = info.roundNumber;
+                                    if (losersRound >= totalLosersRounds) return 'D.Final';
+                                    if (losersRound === totalLosersRounds - 1) return 'Bro.m';
+                                    return `Rep.${losersRound}`;
+                                }
+                                return undefined;
+                            }
+                            if (info.roundNumber && info.roundCount) {
+                                const denominator = Math.pow(2, info.roundCount - info.roundNumber);
+                                if (denominator === 1) return 'Final';
+                                return `1/${denominator}`;
+                            }
+                            return undefined;
+                        }
+                    });
+                } catch (err) {
+                    console.error('Render error:', err);
+                    container.innerHTML = `<div class="error">❌ 渲染失败: ${err.message}</div>`;
+                }
+            } else {
+                console.error('Brackets Viewer not loaded');
+                container.innerHTML = '<div class="error">Bracket Viewer 库加载失败</div>';
+            }
+        }
+
+        function showLoading(containerId) {
+            document.getElementById(containerId).innerHTML = 
+                '<div class="loading">⏳ 加载中...</div>';
+        }
+
+        function showError(containerId, message) {
+            document.getElementById(containerId).innerHTML = 
+                `<div class="error">❌ 错误: ${message}</div>`;
+        }
+
+        function showSuccess(containerId, message) {
+            const existingMsg = document.querySelector(`#${containerId} .success`);
+            if (existingMsg) {
+                existingMsg.remove();
+            }
+            const msg = document.createElement('div');
+            msg.className = 'success';
+            msg.textContent = `✅ ${message}`;
+            document.getElementById(containerId).parentNode.insertBefore(
+                msg, 
+                document.getElementById(containerId)
+            );
+        }
+
+        async function clearTestData() {
+            try {
+                const response = await fetch(`${API_BASE}/clear-test-data`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('✅ 测试数据已清理！');
+                    clearAll();
+                } else {
+                    alert('❌ 清理失败: ' + result.error);
+                }
+            } catch (err) {
+                alert('❌ 清理失败: ' + err.message);
+            }
+        }
+
+        function clearAll() {
+            document.getElementById('poolSection').style.display = 'none';
+            document.getElementById('singleSection').style.display = 'none';
+            document.getElementById('doubleSection').style.display = 'none';
+        }
+
+        console.log('Bracket Test Page Loaded');
+        console.log('Brackets Viewer Version:', window.bracketsViewer ? 'Loaded' : 'Not Loaded');
+    </script>
+</body>
+</html>

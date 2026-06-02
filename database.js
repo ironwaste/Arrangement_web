@@ -318,26 +318,15 @@ class MySQLDatabase {
         'ALTER TABLE jiu_jitsu_matchs ADD COLUMN jiu_jitsu_match_comp_mode VARCHAR(50) DEFAULT NULL',
         'ALTER TABLE jiu_jitsu_matchs ADD COLUMN jiu_jitsu_match_zone VARCHAR(20) DEFAULT NULL',
         'ALTER TABLE jiu_jitsu_matchs ADD COLUMN jiu_jitsu_blue_prev_bracket_match_id INT DEFAULT NULL',
-        'ALTER TABLE jiu_jitsu_matchs ADD COLUMN jiu_jitsu_red_prev_bracket_match_id INT DEFAULT NULL'
+        'ALTER TABLE jiu_jitsu_matchs ADD COLUMN jiu_jitsu_red_prev_bracket_match_id INT DEFAULT NULL',
+        'ALTER TABLE jiu_jitsu_matchs ADD COLUMN jiu_jitsu_red_athlete_draw_num INT DEFAULT NULL',
+        'ALTER TABLE jiu_jitsu_matchs ADD COLUMN jiu_jitsu_blue_athlete_draw_num INT DEFAULT NULL'
       ];
       for (const sql of jjAlterColumns) {
         try { await conn.execute(sql); } catch (e) {
           const msg = e.message.toLowerCase();
           if (!msg.includes('duplicate') && !msg.includes('already exists')) {
             console.error('添加柔术比赛表列失败:', e.message);
-          }
-        }
-      }
-
-      const jjDropColumns = [
-        'ALTER TABLE jiu_jitsu_matchs DROP COLUMN jiu_jitsu_blue_athlete_draw_num',
-        'ALTER TABLE jiu_jitsu_matchs DROP COLUMN jiu_jitsu_red_athlete_draw_num'
-      ];
-      for (const sql of jjDropColumns) {
-        try { await conn.execute(sql); } catch (e) {
-          const msg = e.message.toLowerCase();
-          if (!msg.includes('check that column') && !msg.includes('can\'t drop')) {
-            console.log('删除柔术签号列:', e.message);
           }
         }
       }
@@ -359,8 +348,7 @@ class MySQLDatabase {
           id INT PRIMARY KEY AUTO_INCREMENT,
           tournament_id INT NOT NULL DEFAULT 1,
           event_id INT DEFAULT NULL,
-          category_id VARCHAR(100) DEFAULT NULL,
-          mode_category_id INT DEFAULT NULL,
+          category_id INT DEFAULT NULL,
           name VARCHAR(255) NOT NULL,
           type VARCHAR(50) NOT NULL,
           number INT NOT NULL,
@@ -373,36 +361,47 @@ class MySQLDatabase {
       await this._createIndex(conn, 'idx_stage_event', 'bracket_stage', 'event_id');
 
       try {
-        await conn.execute(
-          'ALTER TABLE bracket_stage ADD COLUMN mode_category_id INT DEFAULT NULL'
-        );
-      } catch (e) {
-        const msg = e.message.toLowerCase();
-        if (!msg.includes('duplicate') && !msg.includes('already exists')) {
-          console.error('添加 bracket_stage.mode_category_id 列失败:', e.message);
+        const [cols] = await conn.execute('SHOW COLUMNS FROM bracket_stage LIKE "category_id"');
+        let needsUpdate = false;
+        
+        if (cols.length > 0) {
+          const col = cols[0];
+          if (col.Type !== 'int(11)' && !col.Type.startsWith('int')) {
+            needsUpdate = true;
+          }
+        } else {
+          needsUpdate = true;
         }
+
+        if (needsUpdate) {
+          try {
+            await conn.execute('ALTER TABLE bracket_stage DROP COLUMN category_id');
+          } catch (e) {
+            // 忽略删除失败的错误
+          }
+          
+          await conn.execute('ALTER TABLE bracket_stage ADD COLUMN category_id INT DEFAULT NULL');
+          
+          try {
+            await conn.execute('ALTER TABLE bracket_stage DROP FOREIGN KEY fk_bracket_stage_category_mode');
+          } catch (e) {
+            // 忽略删除外键失败的错误
+          }
+          
+          try {
+            await conn.execute('ALTER TABLE bracket_stage ADD CONSTRAINT fk_bracket_stage_category_mode FOREIGN KEY (category_id) REFERENCES category_mode(category_id) ON DELETE SET NULL');
+          } catch (e) {
+            console.warn('添加外键约束失败:', e.message);
+          }
+        }
+      } catch (e) {
+        console.error('检查/更新 bracket_stage.category_id 列失败:', e.message);
       }
 
       try {
-        await conn.execute(
-          'ALTER TABLE bracket_stage DROP INDEX uk_event_category'
-        );
+        await conn.execute('ALTER TABLE bracket_stage DROP INDEX uk_event_category');
       } catch (e) {
-        const msg = e.message.toLowerCase();
-        if (!msg.includes('can\'t drop') && !msg.includes('not found') && !msg.includes('doesn\'t exist')) {
-          console.error('删除 bracket_stage 唯一键失败:', e.message);
-        }
-      }
-
-      try {
-        await conn.execute(
-          'ALTER TABLE bracket_stage ADD CONSTRAINT fk_bracket_stage_category_mode FOREIGN KEY (mode_category_id) REFERENCES category_mode(category_id) ON DELETE SET NULL'
-        );
-      } catch (e) {
-        const msg = e.message.toLowerCase();
-        if (!msg.includes('already exists') && !msg.includes('duplicate')) {
-          console.error('添加 bracket_stage 外键约束失败:', e.message);
-        }
+        // 忽略删除失败的错误
       }
 
       await conn.execute(`
@@ -437,8 +436,6 @@ class MySQLDatabase {
           stage_id INT NOT NULL,
           round_id INT DEFAULT NULL,
           group_id INT DEFAULT NULL,
-          event_id INT DEFAULT NULL,
-          category_id VARCHAR(100) DEFAULT NULL,
           number INT NOT NULL,
           child_count INT NOT NULL DEFAULT 0,
           opponent1 TEXT DEFAULT NULL,
@@ -474,15 +471,11 @@ class MySQLDatabase {
           id INT PRIMARY KEY AUTO_INCREMENT,
           stage_id INT DEFAULT NULL,
           parent_id INT DEFAULT NULL,
-          match_id INT DEFAULT NULL,
           number INT NOT NULL,
           opponent1_score INT DEFAULT NULL,
-          opponent2_score INT DEFAULT NULL,
-          FOREIGN KEY (match_id) REFERENCES bracket_match(id) ON DELETE CASCADE
+          opponent2_score INT DEFAULT NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
-
-      await this._createIndex(conn, 'idx_match_game_match', 'bracket_match_game', 'match_id');
 
       /* --- 品势相关表 --- */
       await conn.execute(`

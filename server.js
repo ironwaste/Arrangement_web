@@ -101,6 +101,8 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: 0, etag: false }));
+app.use('/test', express.static(path.join(__dirname, 'test'), { maxAge: 0, etag: false }));
+app.use('/node_modules', express.static(path.join(__dirname, 'node_modules'), { maxAge: 0, etag: false }));
 
 /* ==================== 数据库与 brackets-manager 初始化 ==================== */
 
@@ -140,6 +142,10 @@ async function initApp() {
     app.get('/api/check-auth', authMiddleware, (req, res) => {
       res.json({ success: true, user: req.user });
     });
+
+    /* --- 测试 API 路由（无需认证）--- */
+    const bracketTestRoutes = require('./test/bracket-test-server');
+    app.use('/api/test', bracketTestRoutes(db, bracketsManager));
 
     /* --- 业务 API 路由（需认证） --- */
     app.use('/api', authMiddleware);

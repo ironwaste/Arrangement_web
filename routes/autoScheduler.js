@@ -123,9 +123,22 @@ async function createBergenRoundRobinMatches(db, stageId, effectiveSeeding, part
 async function generateBracketForClass(db, manager, weightClass, athletes, event_id, forceElimination = false) {
   await deleteKyougiMatchsByClass(db, weightClass, event_id);
 
+  // 获取 category_id（从 category_mode 表）
+  let categoryId = null;
+  try {
+    const catModeRow = await db.prepare(
+      'SELECT category_id FROM category_mode WHERE event_id = ? AND weight_class = ?'
+    ).get(event_id, weightClass);
+    if (catModeRow) {
+      categoryId = catModeRow.category_id;
+    }
+  } catch (e) {
+    console.warn('获取 category_id 失败:', e.message);
+  }
+
   const stageRow = await db.get(
     'SELECT id FROM bracket_stage WHERE event_id = ? AND category_id = ?',
-    [event_id, weightClass]
+    [event_id, categoryId]
   );
 
   if (stageRow && stageRow.id) {
@@ -244,7 +257,7 @@ async function generateBracketForClass(db, manager, weightClass, athletes, event
     for (const s of deStages) {
       await db.prepare(
         'UPDATE bracket_stage SET event_id = ?, category_id = ? WHERE id = ?'
-      ).run(event_id, weightClass, s.id);
+      ).run(event_id, categoryId, s.id);
       allStageIds.push(s.id);
     }
 
@@ -315,7 +328,7 @@ async function generateBracketForClass(db, manager, weightClass, athletes, event
 
     await db.prepare(
       'UPDATE bracket_stage SET event_id = ?, category_id = ? WHERE id = ?'
-    ).run(event_id, weightClass, rrStage.id);
+    ).run(event_id, categoryId, rrStage.id);
 
     const participantList = await db.prepare(
       'SELECT id, name FROM bracket_participant WHERE tournament_id = ?'
@@ -361,7 +374,7 @@ async function generateBracketForClass(db, manager, weightClass, athletes, event
 
       await db.prepare(
         'UPDATE bracket_stage SET event_id = ?, category_id = ? WHERE id = ?'
-      ).run(event_id, weightClass, finalStage.id);
+      ).run(event_id, categoryId, finalStage.id);
 
       const participants = await db.prepare(
         'SELECT id, name FROM bracket_participant WHERE tournament_id = ?'
@@ -403,7 +416,7 @@ async function generateBracketForClass(db, manager, weightClass, athletes, event
 
       await db.prepare(
         'UPDATE bracket_stage SET event_id = ?, category_id = ? WHERE id = ?'
-      ).run(event_id, weightClass, divisionalStage.id);
+      ).run(event_id, categoryId, divisionalStage.id);
 
       const participants = await db.prepare(
         'SELECT id, name FROM bracket_participant WHERE tournament_id = ?'
@@ -435,7 +448,7 @@ async function generateBracketForClass(db, manager, weightClass, athletes, event
 
       await db.prepare(
         'UPDATE bracket_stage SET event_id = ?, category_id = ? WHERE id = ?'
-      ).run(event_id, weightClass, finalStage.id);
+      ).run(event_id, categoryId, finalStage.id);
 
       const finalMatches = await db.prepare('SELECT id FROM bracket_match WHERE stage_id = ?').all(finalStage.id);
       if (finalMatches && finalMatches.length > 0) {
@@ -498,7 +511,7 @@ async function generateBracketForClass(db, manager, weightClass, athletes, event
 
     await db.prepare(
       'UPDATE bracket_stage SET event_id = ?, category_id = ? WHERE id = ?'
-    ).run(event_id, weightClass, poolStage.id);
+    ).run(event_id, categoryId, poolStage.id);
 
     const participants = await db.prepare(
       'SELECT id, name FROM bracket_participant WHERE tournament_id = ?'
@@ -552,7 +565,7 @@ async function generateBracketForClass(db, manager, weightClass, athletes, event
     // 更新 stage 的 event_id 和 category_id
     await db.prepare(
       'UPDATE bracket_stage SET event_id = ?, category_id = ? WHERE id = ?'
-    ).run(event_id, weightClass, stage.id);
+    ).run(event_id, categoryId, stage.id);
 
     const matches = await db.prepare('SELECT id FROM bracket_match WHERE stage_id = ?').all(stage.id);
     if (matches && matches.length > 0) {

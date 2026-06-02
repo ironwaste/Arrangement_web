@@ -664,14 +664,6 @@ const JiuJitsuBrackets = {
         if (!currentEventId) { alert('请先选择赛事'); return; }
 
         try {
-            const checkRes = await fetch(`${API_BASE}/jj-brackets/matches?${getEventParam()}`);
-            const checkData = await checkRes.json();
-            if (checkData.success && checkData.data && checkData.data.length > 0) {
-                if (!confirm('当前赛事已有对阵图数据，生成新对阵图将清除原有数据，是否继续？')) return;
-            }
-        } catch (e) {}
-
-        try {
             const res = await fetch(`${API_BASE}/jj-brackets/generate`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -693,7 +685,48 @@ const JiuJitsuBrackets = {
                     loadAutoArrangeData();
                 }
             } else {
-                alert('❌ 生成失败: ' + (data.error || '未知错误'));
+                if (data.hasExistingData) {
+                    try {
+                        const checkRes = await fetch(`${API_BASE}/jj-brackets/clear`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ event_id: currentEventId, check_only: true })
+                        });
+                        const checkData = await checkRes.json();
+                        
+                        let confirmMsg = '已有对阵图数据，请先清除后再生成。';
+                        if (checkData.success && checkData.hasMatchData) {
+                            confirmMsg += `\n\n⚠️ 注意：原有对阵表数据（${checkData.matchCount}场）将会被清除！`;
+                        }
+                        confirmMsg += '\n\n是否立即清除所有对阵图和对阵表数据？';
+                        
+                        const shouldClear = confirm(confirmMsg);
+                        if (shouldClear) {
+                            try {
+                                const clearRes = await fetch(`${API_BASE}/jj-brackets/clear`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ event_id: currentEventId, clear_bracket: true })
+                                });
+                                const clearData = await clearRes.json();
+                                if (clearData.success) {
+                                    alert('✅ 数据已清除，请重新点击生成对阵图');
+                                    if (typeof loadAutoArrangeData === 'function') {
+                                        loadAutoArrangeData();
+                                    }
+                                } else {
+                                    alert('❌ 清除失败: ' + (clearData.error || '未知错误'));
+                                }
+                            } catch (e) {
+                                alert('❌ 清除请求失败: ' + e.message);
+                            }
+                        }
+                    } catch (e) {
+                        alert('❌ 检查数据失败: ' + e.message);
+                    }
+                } else {
+                    alert('❌ 生成失败: ' + (data.error || '未知错误'));
+                }
             }
         } catch (e) {
             alert('❌ 生成请求失败: ' + e.message);

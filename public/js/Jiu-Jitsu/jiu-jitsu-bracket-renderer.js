@@ -44,7 +44,7 @@ const JJBracketRenderer = {
         for (const m of jjMatches) {
             const vn = (m.jiu_jitsu_match_venue !== null && m.jiu_jitsu_match_id !== null)
                 ? (String(m.jiu_jitsu_match_venue) + String(m.jiu_jitsu_match_id)) : '';
-            if (m.id && vn) venueMap.set(String(m.id), vn);
+            if (m.jiu_jitsu_bracket_match_id && vn) venueMap.set(String(m.jiu_jitsu_bracket_match_id), vn);
         }
         if (venueMap.size === 0) return;
         container.querySelectorAll('.match').forEach(matchEl => {
@@ -72,18 +72,26 @@ const JJBracketRenderer = {
 
         const participantMap = new Map();
         let pid = 1;
-        const getPid = (name, team) => {
+        const getPid = (name, team, drawNum) => {
             if (!name) return null;
             const key = name + '|' + (team || '');
             if (!participantMap.has(key)) {
-                participantMap.set(key, { id: pid++, name: team ? `${name} (${team})` : name });
+                let displayName = name;
+                if (drawNum != null && drawNum !== '') {
+                    displayName = `${drawNum}. ${name}`;
+                }
+                participantMap.set(key, { 
+                    id: pid++, 
+                    name: team ? `${displayName} (${team})` : displayName,
+                    drawNum: drawNum
+                });
             }
             return participantMap.get(key).id;
         };
 
         jjMatches.forEach(m => {
-            if (m.jiu_jitsu_blue_athlete_name) getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team);
-            if (m.jiu_jitsu_red_athlete_name) getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team);
+            if (m.jiu_jitsu_blue_athlete_name) getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, m.jiu_jitsu_blue_athlete_draw_num);
+            if (m.jiu_jitsu_red_athlete_name) getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, m.jiu_jitsu_red_athlete_draw_num);
         });
 
         const participants = Array.from(participantMap.values());
@@ -235,18 +243,26 @@ const JJBracketRenderer = {
     _renderElimination: async function(weightClass, jjMatches, compMode) {
         const participantMap = new Map();
         let pid = 1;
-        const getPid = (name, team) => {
+        const getPid = (name, team, drawNum) => {
             if (!name || name === '上区第一' || name === '下区第一') return null;
             const key = name + '|' + (team || '');
             if (!participantMap.has(key)) {
-                participantMap.set(key, { id: pid++, name: team ? `${name} (${team})` : name });
+                let displayName = name;
+                if (drawNum != null && drawNum !== '') {
+                    displayName = `${drawNum}. ${name}`;
+                }
+                participantMap.set(key, { 
+                    id: pid++, 
+                    name: team ? `${displayName} (${team})` : displayName,
+                    drawNum: drawNum
+                });
             }
             return participantMap.get(key).id;
         };
 
         jjMatches.forEach(m => {
-            if (m.jiu_jitsu_blue_athlete_name) getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team);
-            if (m.jiu_jitsu_red_athlete_name) getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team);
+            if (m.jiu_jitsu_blue_athlete_name) getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, m.jiu_jitsu_blue_athlete_draw_num);
+            if (m.jiu_jitsu_red_athlete_name) getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, m.jiu_jitsu_red_athlete_draw_num);
         });
 
         const participants = Array.from(participantMap.values());
@@ -264,8 +280,8 @@ const JJBracketRenderer = {
         };
 
         const buildOpponents = (m) => {
-            const redId = m.jiu_jitsu_red_athlete_name ? getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team) : null;
-            const blueId = m.jiu_jitsu_blue_athlete_name ? getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team) : null;
+            const redId = m.jiu_jitsu_red_athlete_name ? getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, m.jiu_jitsu_red_athlete_draw_num) : null;
+            const blueId = m.jiu_jitsu_blue_athlete_name ? getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, m.jiu_jitsu_blue_athlete_draw_num) : null;
 
             let status = 2;
             if (m.jiu_jitsu_match_status === 'bye') status = 4;
@@ -446,17 +462,25 @@ const JJBracketRenderer = {
 
         const participantMap = new Map();
         let pid = 1;
-        const getPid = (name, team) => {
+        const getPid = (name, team, drawNum) => {
             if (!name) return null;
             const key = name + '|' + (team || '');
             if (!participantMap.has(key)) {
-                participantMap.set(key, { id: pid++, name: team ? `${name} (${team})` : name });
+                let displayName = name;
+                if (drawNum != null && drawNum !== '') {
+                    displayName = `${drawNum}. ${name}`;
+                }
+                participantMap.set(key, { 
+                    id: pid++, 
+                    name: team ? `${displayName} (${team})` : displayName,
+                    drawNum: drawNum
+                });
             }
             return participantMap.get(key).id;
         };
         jjMatches.forEach(m => {
-            if (m.jiu_jitsu_blue_athlete_name) getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team);
-            if (m.jiu_jitsu_red_athlete_name) getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team);
+            if (m.jiu_jitsu_blue_athlete_name) getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, m.jiu_jitsu_blue_athlete_draw_num);
+            if (m.jiu_jitsu_red_athlete_name) getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, m.jiu_jitsu_red_athlete_draw_num);
         });
         const participants = Array.from(participantMap.values());
         if (participants.length === 0) return;
@@ -487,8 +511,8 @@ const JJBracketRenderer = {
         const matches = [];
         const matchGames = [];
         jjMatches.forEach((m, idx) => {
-            const redId = m.jiu_jitsu_red_athlete_name ? getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team) : null;
-            const blueId = m.jiu_jitsu_blue_athlete_name ? getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team) : null;
+            const redId = m.jiu_jitsu_red_athlete_name ? getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, m.jiu_jitsu_red_athlete_draw_num) : null;
+            const blueId = m.jiu_jitsu_blue_athlete_name ? getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, m.jiu_jitsu_blue_athlete_draw_num) : null;
             let status = 2;
             if (m.jiu_jitsu_match_status === '已结束') status = 4;
             if (m.jiu_jitsu_match_status === '进行中') status = 3;
@@ -520,17 +544,25 @@ const JJBracketRenderer = {
 
         const participantMap = new Map();
         let pid = 1;
-        const getPid = (name, team) => {
+        const getPid = (name, team, drawNum) => {
             if (!name || name === '上区第一' || name === '下区第一') return null;
             const key = name + '|' + (team || '');
             if (!participantMap.has(key)) {
-                participantMap.set(key, { id: pid++, name: team ? `${name} (${team})` : name });
+                let displayName = name;
+                if (drawNum != null && drawNum !== '') {
+                    displayName = `${drawNum}. ${name}`;
+                }
+                participantMap.set(key, { 
+                    id: pid++, 
+                    name: team ? `${displayName} (${team})` : displayName,
+                    drawNum: drawNum
+                });
             }
             return participantMap.get(key).id;
         };
         jjMatches.forEach(m => {
-            if (m.jiu_jitsu_blue_athlete_name) getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team);
-            if (m.jiu_jitsu_red_athlete_name) getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team);
+            if (m.jiu_jitsu_blue_athlete_name) getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, m.jiu_jitsu_blue_athlete_draw_num);
+            if (m.jiu_jitsu_red_athlete_name) getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, m.jiu_jitsu_red_athlete_draw_num);
         });
         if (participantMap.size === 0) return;
 
@@ -556,15 +588,15 @@ const JJBracketRenderer = {
 
         const upperPids = new Set();
         upperMatches.forEach(m => {
-            const rId = m.jiu_jitsu_red_athlete_name ? getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team) : null;
-            const bId = m.jiu_jitsu_blue_athlete_name ? getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team) : null;
+            const rId = m.jiu_jitsu_red_athlete_name ? getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, m.jiu_jitsu_red_athlete_draw_num) : null;
+            const bId = m.jiu_jitsu_blue_athlete_name ? getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, m.jiu_jitsu_blue_athlete_draw_num) : null;
             if (rId) upperPids.add(rId);
             if (bId) upperPids.add(bId);
         });
         const lowerPids = new Set();
         lowerMatches.forEach(m => {
-            const rId = m.jiu_jitsu_red_athlete_name ? getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team) : null;
-            const bId = m.jiu_jitsu_blue_athlete_name ? getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team) : null;
+            const rId = m.jiu_jitsu_red_athlete_name ? getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, m.jiu_jitsu_red_athlete_draw_num) : null;
+            const bId = m.jiu_jitsu_blue_athlete_name ? getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, m.jiu_jitsu_blue_athlete_draw_num) : null;
             if (rId) lowerPids.add(rId);
             if (bId) lowerPids.add(bId);
         });
@@ -591,8 +623,8 @@ const JJBracketRenderer = {
             }
 
             zoneMatches.forEach(m => {
-                const redId = m.jiu_jitsu_red_athlete_name ? getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team) : null;
-                const blueId = m.jiu_jitsu_blue_athlete_name ? getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team) : null;
+                const redId = m.jiu_jitsu_red_athlete_name ? getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, m.jiu_jitsu_red_athlete_draw_num) : null;
+                const blueId = m.jiu_jitsu_blue_athlete_name ? getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, m.jiu_jitsu_blue_athlete_draw_num) : null;
                 let status = 2;
                 if (m.jiu_jitsu_match_status === '已结束') status = 4;
                 if (m.jiu_jitsu_match_status === '进行中') status = 3;
@@ -624,14 +656,14 @@ const JJBracketRenderer = {
             finalMatches.forEach(m => {
                 let redId, blueId;
                 if (m.jiu_jitsu_red_athlete_name && m.jiu_jitsu_red_athlete_name !== '上区第一' && m.jiu_jitsu_red_athlete_name !== '下区第一') {
-                    redId = getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team);
+                    redId = getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, m.jiu_jitsu_red_athlete_draw_num);
                 } else if (m.jiu_jitsu_red_athlete_name === '上区第一') {
                     redId = upperFirstPid;
                 } else if (m.jiu_jitsu_red_athlete_name === '下区第一') {
                     redId = lowerFirstPid;
                 }
                 if (m.jiu_jitsu_blue_athlete_name && m.jiu_jitsu_blue_athlete_name !== '上区第一' && m.jiu_jitsu_blue_athlete_name !== '下区第一') {
-                    blueId = getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team);
+                    blueId = getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, m.jiu_jitsu_blue_athlete_draw_num);
                 } else if (m.jiu_jitsu_blue_athlete_name === '下区第一') {
                     blueId = lowerFirstPid;
                 } else if (m.jiu_jitsu_blue_athlete_name === '上区第一') {
@@ -678,17 +710,25 @@ const JJBracketRenderer = {
 
         const participantMap = new Map();
         let pid = 1;
-        const getPid = (name, team) => {
+        const getPid = (name, team, drawNum) => {
             if (!name) return null;
             const key = name + '|' + (team || '');
             if (!participantMap.has(key)) {
-                participantMap.set(key, { id: pid++, name: team ? `${name} (${team})` : name });
+                let displayName = name;
+                if (drawNum != null && drawNum !== '') {
+                    displayName = `${drawNum}. ${name}`;
+                }
+                participantMap.set(key, { 
+                    id: pid++, 
+                    name: team ? `${displayName} (${team})` : displayName,
+                    drawNum: drawNum
+                });
             }
             return participantMap.get(key).id;
         };
         jjMatches.forEach(m => {
-            if (m.jiu_jitsu_blue_athlete_name) getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team);
-            if (m.jiu_jitsu_red_athlete_name) getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team);
+            if (m.jiu_jitsu_blue_athlete_name) getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, m.jiu_jitsu_blue_athlete_draw_num);
+            if (m.jiu_jitsu_red_athlete_name) getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, m.jiu_jitsu_red_athlete_draw_num);
         });
         const participants = Array.from(participantMap.values());
         if (participants.length === 0) return;
@@ -702,8 +742,8 @@ const JJBracketRenderer = {
         };
 
         const buildOpponents = (m) => {
-            const redId = m.jiu_jitsu_red_athlete_name ? getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team) : null;
-            const blueId = m.jiu_jitsu_blue_athlete_name ? getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team) : null;
+            const redId = m.jiu_jitsu_red_athlete_name ? getPid(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, m.jiu_jitsu_red_athlete_draw_num) : null;
+            const blueId = m.jiu_jitsu_blue_athlete_name ? getPid(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, m.jiu_jitsu_blue_athlete_draw_num) : null;
             let status = 2;
             if (m.jiu_jitsu_match_status === '已结束') status = 4;
             if (m.jiu_jitsu_match_status === '进行中') status = 3;
