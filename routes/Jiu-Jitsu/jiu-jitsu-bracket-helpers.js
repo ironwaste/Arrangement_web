@@ -147,9 +147,15 @@ async function createJJRoundRobinBracketMatches(db, stageId, effectiveSeeding, p
 }
 
 async function clearJJBracketStageData(db, event_id, weightClass) {
+    const categoryRow = await db.get(
+        'SELECT category_id FROM category_mode WHERE event_id = ? AND weight_class = ?',
+        [event_id, weightClass]
+    );
+    const categoryId = categoryRow ? categoryRow.category_id : null;
+
     const stageRows = await db.all(
         'SELECT id FROM bracket_stage WHERE (event_id = ? AND category_id = ?) OR (tournament_id = ? AND name LIKE ?)',
-        [event_id, weightClass, Number(event_id), weightClass + '%']
+        [event_id, categoryId, Number(event_id), weightClass + '%']
     );
     for (const row of stageRows) {
         const sid = row.id;
@@ -165,7 +171,7 @@ async function clearJJBracketStageData(db, event_id, weightClass) {
     }
 }
 
-async function generateJJBracketForEvent(db, manager, event_id, weight_class) {
+async function generateJJBracketForEvent(db, manager, event_id, weight_class, classesToGenerate = null) {
     const athletes = await db.all(
         'SELECT * FROM athletes WHERE event_id = ? AND athlete_type = ? ORDER BY athlete_category, athlete_draw_num',
         [event_id, 'jiu_jitsu']
@@ -216,6 +222,45 @@ async function generateJJBracketForEvent(db, manager, event_id, weight_class) {
             errors: [],
             results: [`${weight_class}: ${count}人, ${MODE_NAME_MAP[mode] || mode}, ${totalMatches}场`]
         };
+    }
+
+    if (classesToGenerate && classesToGenerate.length > 0) {
+        let generated = 0;
+        let skipped = 0;
+        const errors = [];
+        const results = [];
+
+        for (const wc of classesToGenerate) {
+            try {
+                const classAthletes = classMap.get(wc);
+                if (!classAthletes || classAthletes.length === 0) {
+                    results.push(`${wc}: 没有运动员数据，跳过`);
+                    skipped++;
+                    continue;
+                }
+
+                await clearJJBracketStageData(db, event_id, wc);
+
+                const mode = modeMap[wc] || 'single_elimination';
+                const count = classAthletes.length;
+
+                if (count < 2) {
+                    results.push(`${wc}: 仅${count}人，跳过`);
+                    skipped++;
+                    continue;
+                }
+
+                const result = await generateJJBracketForClass(db, manager, wc, classAthletes, event_id, mode, categoryIdMap[wc]);
+
+                generated++;
+                const totalMatches = result.matchCount || 0;
+                results.push(`${wc}: ${count}人, ${MODE_NAME_MAP[mode] || mode}, ${totalMatches}场`);
+            } catch (err) {
+                errors.push(`${wc}: ${err.message}`);
+            }
+        }
+
+        return { generated, skipped, errors, results };
     }
 
     for (const [wc] of classMap) {
@@ -296,8 +341,8 @@ async function generateJJBracketForClass(db, manager, weightClass, athletes, eve
         const allStageIds = [];
         if (deStage?.id) {
             await db.run(
-                'UPDATE bracket_stage SET event_id = ?, category_id = ?, mode_category_id = ? WHERE id = ?',
-                [event_id, weightClass, categoryId ? Number(categoryId) : null, deStage.id]
+                'UPDATE bracket_stage SET event_id = ?, category_id = ? WHERE id = ?',
+                [event_id, categoryId ? Number(categoryId) : null, deStage.id]
             );
             allStageIds.push(deStage.id);
         }
@@ -308,8 +353,8 @@ async function generateJJBracketForClass(db, manager, weightClass, athletes, eve
         );
         for (const s of otherStages) {
             await db.run(
-                'UPDATE bracket_stage SET event_id = ?, category_id = ?, mode_category_id = ? WHERE id = ?',
-                [event_id, weightClass, categoryId ? Number(categoryId) : null, s.id]
+                'UPDATE bracket_stage SET event_id = ?, category_id = ? WHERE id = ?',
+                [event_id, categoryId ? Number(categoryId) : null, s.id]
             );
             allStageIds.push(s.id);
         }
@@ -400,8 +445,8 @@ async function generateJJBracketForClass(db, manager, weightClass, athletes, eve
         });
 
         await db.run(
-            'UPDATE bracket_stage SET event_id = ?, category_id = ?, mode_category_id = ? WHERE id = ?',
-            [event_id, weightClass, categoryId ? Number(categoryId) : null, rrStage.id]
+            'UPDATE bracket_stage SET event_id = ?, category_id = ? WHERE id = ?',
+            [event_id, categoryId ? Number(categoryId) : null, rrStage.id]
         );
 
         const participantList = await db.all(
@@ -461,8 +506,8 @@ async function generateJJBracketForClass(db, manager, weightClass, athletes, eve
         });
 
         await db.run(
-            'UPDATE bracket_stage SET event_id = ?, category_id = ?, mode_category_id = ? WHERE id = ?',
-            [event_id, weightClass, categoryId ? Number(categoryId) : null, divisionalStage.id]
+            'UPDATE bracket_stage SET event_id = ?, category_id = ? WHERE id = ?',
+            [event_id, categoryId ? Number(categoryId) : null, divisionalStage.id]
         );
 
         const participantList = await db.all(
@@ -502,8 +547,8 @@ async function generateJJBracketForClass(db, manager, weightClass, athletes, eve
         });
 
         await db.run(
-            'UPDATE bracket_stage SET event_id = ?, category_id = ?, mode_category_id = ? WHERE id = ?',
-            [event_id, weightClass, categoryId ? Number(categoryId) : null, finalStage.id]
+            'UPDATE bracket_stage SET event_id = ?, category_id = ? WHERE id = ?',
+            [event_id, categoryId ? Number(categoryId) : null, finalStage.id]
         );
 
         const finalMatches = await db.all('SELECT id FROM bracket_match WHERE stage_id = ?', [finalStage.id]);
@@ -546,8 +591,8 @@ async function generateJJBracketForClass(db, manager, weightClass, athletes, eve
         });
 
         await db.run(
-            'UPDATE bracket_stage SET event_id = ?, category_id = ?, mode_category_id = ? WHERE id = ?',
-            [event_id, weightClass, categoryId ? Number(categoryId) : null, stage.id]
+            'UPDATE bracket_stage SET event_id = ?, category_id = ? WHERE id = ?',
+            [event_id, categoryId ? Number(categoryId) : null, stage.id]
         );
 
         const matches = await db.all('SELECT id FROM bracket_match WHERE stage_id = ?', [stage.id]);
@@ -842,9 +887,15 @@ function roundRobinSchedule(n) {
 }
 
 async function syncJJMatchesFromBracket(db, event_id, weightClass, compMode) {
+    const categoryRow = await db.get(
+        'SELECT category_id FROM category_mode WHERE event_id = ? AND weight_class = ?',
+        [event_id, weightClass]
+    );
+    const categoryId = categoryRow ? categoryRow.category_id : null;
+
     const stageMapRows = await db.all(
         'SELECT id AS stage_id, type AS stage_type, name AS stage_name FROM bracket_stage WHERE event_id = ? AND category_id = ?',
-        [event_id, weightClass]
+        [event_id, categoryId]
     );
 
     if (!stageMapRows || stageMapRows.length === 0) return 0;
@@ -1090,6 +1141,7 @@ async function syncJJMatchesFromBracket(db, event_id, weightClass, compMode) {
         let blueName = '', redName = '';
         let blueAthleteId = null, redAthleteId = null;
         let blueUnit = '', redUnit = '';
+        let blueDrawNum = null, redDrawNum = null;
         let zone = '';
         let redOppName = '', blueOppName = '';
 
@@ -1102,6 +1154,7 @@ async function syncJJMatchesFromBracket(db, event_id, weightClass, compMode) {
                         redName = info.name || '';
                         redAthleteId = info.id;
                         redUnit = info.unit || '';
+                        redDrawNum = info.athlete_draw_num;
                         zone = info.zone || '';
                     }
                 }
@@ -1121,6 +1174,7 @@ async function syncJJMatchesFromBracket(db, event_id, weightClass, compMode) {
                         blueName = info.name || '';
                         blueAthleteId = info.id;
                         blueUnit = info.unit || '';
+                        blueDrawNum = info.athlete_draw_num;
                         if (!zone) zone = info.zone || '';
                     }
                 }
@@ -1221,18 +1275,18 @@ async function syncJJMatchesFromBracket(db, event_id, weightClass, compMode) {
             (event_id, jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_categroy,
              jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_category_total_rounds,
              jiu_jitsu_bracket_match_id,
-             jiu_jitsu_red_athlete_id, jiu_jitsu_red_athlete_name, jiu_jitsu_red_athlete_team,
-             jiu_jitsu_blue_athlete_id, jiu_jitsu_blue_athlete_name, jiu_jitsu_blue_athlete_team,
+             jiu_jitsu_red_athlete_id, jiu_jitsu_red_athlete_name, jiu_jitsu_red_athlete_team, jiu_jitsu_red_athlete_draw_num,
+             jiu_jitsu_blue_athlete_id, jiu_jitsu_blue_athlete_name, jiu_jitsu_blue_athlete_team, jiu_jitsu_blue_athlete_draw_num,
              jiu_jitsu_match_comp_mode, jiu_jitsu_match_zone,
              jiu_jitsu_blue_prev_bracket_match_id, jiu_jitsu_red_prev_bracket_match_id,
              jiu_jitsu_match_status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 event_id, preservedVenue, preservedMatchId, weightClass,
                 roundNum, rn, maxRoundNumber,
                 bm.id,
-                redAthleteId, redName, redUnit,
-                blueAthleteId, blueName, blueUnit,
+                redAthleteId, redName, redUnit, redDrawNum,
+                blueAthleteId, blueName, blueUnit, blueDrawNum,
                 effectiveCompMode || null, zone || null,
                 bluePrevBracketMatchId, redPrevBracketMatchId,
                 matchStatus

@@ -2577,6 +2577,7 @@ function getGroupOrderFromClass(cls) {
 }
 
 function getGenderFromClass(cls) {
+    if (typeof cls !== 'string') cls = String(cls || '');
     return cls.includes('女') ? '女' : '男';
 }
 
@@ -2885,11 +2886,29 @@ async function generateAllBrackets() {
         if (resp.success) {
             const data = resp.data || {};
             clearBracketCache();
-            alert(`全部对阵图生成完成！成功: ${data.generated || 0}个级别${data.errors && data.errors.length > 0 ? '，失败: ' + data.errors.length + '个' : ''}`);
+            
+            let message = '';
+            if (data.skipped && data.skipped > 0) {
+                message = `对阵图生成完成！\n成功: ${data.generated || 0}个级别\n跳过: ${data.skipped}个级别（已存在）`;
+            } else {
+                message = `全部对阵图生成完成！成功: ${data.generated || 0}个级别`;
+            }
+            
+            if (data.errors && data.errors.length > 0) {
+                message += `\n失败: ${data.errors.length}个`;
+            }
+            
+            if (data.results && data.results.length > 0) {
+                message += '\n\n详细信息：\n' + data.results.join('\n');
+            }
+            
+            alert(message);
             await loadBracketClassList();
             await viewBracketTree();
         } else {
-            if (resp.hasExistingData) {
+            if (resp.allLevelsExist) {
+                alert(resp.error || '所有级别对阵图已经存在，如需重新生成，请点击清除全部级别对阵图');
+            } else if (resp.hasExistingData) {
                 try {
                     const checkRes = await apiPost('/jj-brackets/clear', { event_id: currentEventId, check_only: true });
                     
