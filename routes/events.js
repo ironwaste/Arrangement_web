@@ -2148,7 +2148,10 @@ module.exports = (db, bracketsManager) => {
       }
 
       const stageRows = await db.all(
-        'SELECT category_id AS class_name FROM bracket_stage WHERE event_id = ?',
+        `SELECT cm.weight_class AS class_name
+         FROM bracket_stage bs
+         LEFT JOIN category_mode cm ON cm.event_id = bs.event_id AND cm.category_id = bs.category_id
+         WHERE bs.event_id = ?`,
         [eventIdNum]
       );
       const bracketClasses = new Set(stageRows.map(s => s.class_name).filter(Boolean));

@@ -2134,7 +2134,75 @@ function calculatePoolEliminationRounds(count) {
     return rounds;
 }
 
-async function generateBrackets() {
+async function generateBracket() {
+    if (!currentEventId) { alert('请先选择赛事'); return; }
+
+    const tbody = document.getElementById('autoArrangeTableBody');
+    const rows = tbody ? tbody.querySelectorAll('tr') : [];
+    if (rows.length === 0) { alert('暂无编排数据，请先添加运动员'); return; }
+
+    try {
+        const genRes = await fetch(`${API_BASE}/auto-arrange/generate-bracket`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(getEventParamObj())
+        });
+        const genData = await genRes.json();
+        
+        if (!genData.success) {
+            if (genData.allLevelsExist) {
+                alert('所有级别对阵图已存在');
+            } else if (genData.hasExistingData) {
+                const shouldClear = confirm('已有对阵图数据，请先清除后再生成。是否立即清除？');
+                if (shouldClear) {
+                    try {
+                        await fetch(`${API_BASE}/brackets/clear`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ event_id: currentEventId })
+                        });
+                        await generateBracket();
+                    } catch (e) {
+                        alert('清除失败: ' + e.message);
+                    }
+                }
+            } else {
+                const failedClasses = genData.data?.failedClasses || [];
+                if (failedClasses.length > 0) {
+                    showBracketGenerateFailedModal(failedClasses, genData.error || '对阵图无法生成');
+                } else {
+                    alert('❌ 生成对阵图失败: ' + (genData.error || '未知错误'));
+                }
+            }
+            return;
+        }
+
+        const genResult = genData.data;
+        const failedClasses = genResult.failedClasses || [];
+        let msg = '✅ 对阵图生成完成！\n\n成功: ' + genResult.generated + ' 个级别';
+        if (genResult.skipped > 0) {
+            msg += '\n跳过: ' + genResult.skipped + ' 个级别';
+        }
+        if (genResult.errors && genResult.errors.length > 0) {
+            msg += '\n\n警告:\n' + genResult.errors.join('\n');
+        }
+        if (genResult.results && genResult.results.length > 0) {
+            msg += '\n\n详情:\n' + genResult.results.join('\n');
+        }
+
+        if (failedClasses.length > 0) {
+            showBracketGeneratePartialModal(genResult.generated, failedClasses, genResult.results);
+        } else {
+            alert(msg);
+        }
+
+        await loadAutoArrangeData();
+    } catch (e) {
+        alert('❌ 生成对阵图请求失败: ' + e.message);
+    }
+}
+
+async function generateMatches() {
     if (!currentEventId) { alert('请先选择赛事'); return; }
 
     const tbody = document.getElementById('autoArrangeTableBody');
@@ -2193,62 +2261,28 @@ async function generateBrackets() {
     } catch (e) {}
 
     try {
-        const genRes = await fetch(`${API_BASE}/auto-arrange/generate-bracket`, {
+        const syncRes = await fetch(`${API_BASE}/brackets/generate-matches`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(getEventParamObj())
         });
-        const genData = await genRes.json();
-        if (!genData.success) {
-            const failedClasses = genData.data?.failedClasses || [];
-            if (failedClasses.length > 0) {
-                showBracketGenerateFailedModal(failedClasses, genData.error || '对阵图无法生成');
-            } else {
-                alert('❌ 生成对阵图失败: ' + (genData.error || '未知错误'));
+        const syncData = await syncRes.json();
+        
+        if (syncData.success && syncData.data) {
+            let msg = '✅ 对阵表生成完成！\n\n已同步: ' + syncData.data.generated + ' 个级别';
+            if (syncData.data.errors && syncData.data.errors.length > 0) {
+                msg += '\n\n警告:\n' + syncData.data.errors.join('\n');
             }
-            return;
-        }
-
-        const genResult = genData.data;
-        const failedClasses = genResult.failedClasses || [];
-        let msg = '✅ 对阵图生成完成！\n\n成功: ' + genResult.generated + ' 个级别';
-        if (genResult.skipped > 0) {
-            msg += '\n跳过: ' + genResult.skipped + ' 个级别';
-        }
-        if (genResult.errors && genResult.errors.length > 0) {
-            msg += '\n\n警告:\n' + genResult.errors.join('\n');
-        }
-
-        try {
-            const syncRes = await fetch(`${API_BASE}/brackets/generate-matches`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(getEventParamObj())
-            });
-            const syncData = await syncRes.json();
-            if (syncData.success && syncData.data) {
-                msg += '\n\n比赛场次同步: ' + syncData.data.generated + ' 个级别';
-                if (syncData.data.errors && syncData.data.errors.length > 0) {
-                    msg += '\n同步警告:\n' + syncData.data.errors.join('\n');
-                }
+            if (syncData.data.results && syncData.data.results.length > 0) {
+                msg += '\n\n详情:\n' + syncData.data.results.join('\n');
             }
-        } catch (syncErr) {
-            console.warn('同步比赛场次失败:', syncErr);
-        }
-
-        if (genResult.results && genResult.results.length > 0) {
-            msg += '\n\n详情:\n' + genResult.results.join('\n');
-        }
-
-        if (failedClasses.length > 0) {
-            showBracketGeneratePartialModal(genResult.generated, failedClasses, genResult.results);
-        } else {
             alert(msg);
+            await loadAutoArrangeData();
+        } else {
+            alert('❌ 生成对阵表失败: ' + (syncData.error || '未知错误'));
         }
-
-        await loadAutoArrangeData();
     } catch (e) {
-        alert('❌ 生成请求失败: ' + e.message);
+        alert('❌ 生成对阵表请求失败: ' + e.message);
     }
 }
 
