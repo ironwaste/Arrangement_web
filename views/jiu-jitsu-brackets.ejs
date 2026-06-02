@@ -8,6 +8,10 @@
             <button class="btn btn-primary" onclick="saveAutoArrange()">💾 保存</button>
             <button class="btn btn-success" onclick="JiuJitsuBrackets.generateJJBrackets()">🏆 生成对阵图</button>
             <button class="btn" style="background:#27ae60;color:white;" onclick="JiuJitsuBrackets.assignMatchIds()">📋 生成对阵表</button>
+            <select id="jjSortMode" style="padding:6px 10px;border:1px solid #dcdfe6;border-radius:4px;font-size:13px;cursor:pointer;" title="编排排序模式">
+                <option value="default">默认排序（决赛优先）</option>
+                <option value="forward">正序编排排序</option>
+            </select>
             <button class="btn" style="background:#8e44ad;color:white;" onclick="JiuJitsuBrackets.showCompModeConfigModal()">⚙️ 竞赛方式配置</button>
         </div>
     </div>

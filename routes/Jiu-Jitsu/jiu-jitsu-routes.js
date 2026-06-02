@@ -183,6 +183,35 @@ module.exports = (db, manager) => {
                         }
                     }
                 }
+
+                if (savedScheduleMap.size > 0) {
+                    try {
+                        const newRows = await db.all(
+                            'SELECT id, jiu_jitsu_match_categroy, jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_zone, jiu_jitsu_red_athlete_id, jiu_jitsu_blue_athlete_id FROM jiu_jitsu_matchs WHERE event_id = ?',
+                            [eventIdNum]
+                        );
+                        for (const nr of newRows) {
+                            const key = `${nr.jiu_jitsu_match_categroy || ''}|${nr.jiu_jitsu_match_round_num || 0}|${nr.jiu_jitsu_match_round_name || ''}|${nr.jiu_jitsu_match_zone || ''}|${nr.jiu_jitsu_red_athlete_id || ''}|${nr.jiu_jitsu_blue_athlete_id || ''}`;
+                            const saved = savedScheduleMap.get(key);
+                            if (saved) {
+                                const updates = [];
+                                const params = [];
+                                if (saved.venue != null) { updates.push('jiu_jitsu_match_venue = ?'); params.push(saved.venue); }
+                                if (saved.matchId != null) { updates.push('jiu_jitsu_match_id = ?'); params.push(saved.matchId); }
+                                if (saved.scores != null) { updates.push('jiu_jitsu_match_scores = ?'); params.push(saved.scores); }
+                                if (saved.winner != null) { updates.push('jiu_jitsu_winner = ?'); params.push(saved.winner); }
+                                if (saved.win_method != null) { updates.push('jiu_jitsu_win_method = ?'); params.push(saved.win_method); }
+                                if (saved.match_status != null && saved.match_status !== 'bye' && saved.match_status !== '未开始') { updates.push('jiu_jitsu_match_status = ?'); params.push(saved.match_status); }
+                                if (updates.length > 0) {
+                                    params.push(nr.id);
+                                    await db.run(`UPDATE jiu_jitsu_matchs SET ${updates.join(', ')} WHERE id = ?`, params);
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('[jj-generate] 恢复编排数据失败:', e.message);
+                    }
+                }
             }
 
             res.json({ success: true, data: result });
@@ -193,7 +222,7 @@ module.exports = (db, manager) => {
 
     router.post('/jj-brackets/generate-matches', async (req, res) => {
         try {
-            const { event_id, weight_class } = req.body;
+            const { event_id, weight_class, sort_mode } = req.body;
             if (!event_id) {
                 return res.status(400).json({ success: false, error: '缺少event_id参数' });
             }
@@ -287,35 +316,69 @@ module.exports = (db, manager) => {
                 return 0;
             }
 
-            matches.sort((a, b) => {
-                const sa = schemeMap.get(a.jiu_jitsu_match_categroy) || { category_venue: '', category_date_num: '', category_order: '' };
-                const sb = schemeMap.get(b.jiu_jitsu_match_categroy) || { category_venue: '', category_date_num: '', category_order: '' };
+            if (sort_mode === 'forward') {
+                matches.sort((a, b) => {
+                    const sa = schemeMap.get(a.jiu_jitsu_match_categroy) || { category_venue: '', category_date_num: '', category_order: '' };
+                    const sb = schemeMap.get(b.jiu_jitsu_match_categroy) || { category_venue: '', category_date_num: '', category_order: '' };
 
-                const unitA = parseFloat(sa.category_date_num) || 0;
-                const unitB = parseFloat(sb.category_date_num) || 0;
-                if (unitA !== unitB) return unitA - unitB;
+                    const unitA = parseFloat(sa.category_date_num) || 0;
+                    const unitB = parseFloat(sb.category_date_num) || 0;
+                    if (unitA !== unitB) return unitA - unitB;
 
-                const venueCmp = (sa.category_venue || '').localeCompare(sb.category_venue || '');
-                if (venueCmp !== 0) return venueCmp;
+                    const venueCmp = (sa.category_venue || '').localeCompare(sb.category_venue || '');
+                    if (venueCmp !== 0) return venueCmp;
 
-                const roundNumA = a.jiu_jitsu_match_round_num || 0;
-                const roundNumB = b.jiu_jitsu_match_round_num || 0;
-                const isFinalA = roundNumA >= 999 ? 1 : 0;
-                const isFinalB = roundNumB >= 999 ? 1 : 0;
-                if (isFinalA !== isFinalB) return isFinalA - isFinalB;
+                    const compModeA = a.jiu_jitsu_match_comp_mode || '';
+                    const compModeB = b.jiu_jitsu_match_comp_mode || '';
+                    const roundNumA = a.jiu_jitsu_match_round_num || 0;
+                    const roundNumB = b.jiu_jitsu_match_round_num || 0;
+                    const isPoolFinalA = (compModeA === 'pool_elimination' && roundNumA >= 999) ? 1 : 0;
+                    const isPoolFinalB = (compModeB === 'pool_elimination' && roundNumB >= 999) ? 1 : 0;
+                    if (isPoolFinalA !== isPoolFinalB) return isPoolFinalA - isPoolFinalB;
 
-                if (roundNumA !== roundNumB) return roundNumA - roundNumB;
+                    if (roundNumA !== roundNumB) return roundNumA - roundNumB;
 
-                const orderA = parseFloat(sa.category_order) || 0;
-                const orderB = parseFloat(sb.category_order) || 0;
-                if (orderA !== orderB) return orderA - orderB;
+                    const orderA = parseFloat(sa.category_order) || 0;
+                    const orderB = parseFloat(sb.category_order) || 0;
+                    if (orderA !== orderB) return orderA - orderB;
 
-                const zoneA = getZoneSortValue(a);
-                const zoneB = getZoneSortValue(b);
-                if (zoneA !== zoneB) return zoneA - zoneB;
+                    const zoneA = getZoneSortValue(a);
+                    const zoneB = getZoneSortValue(b);
+                    if (zoneA !== zoneB) return zoneA - zoneB;
 
-                return (a.jiu_jitsu_bracket_match_id || 0) - (b.jiu_jitsu_bracket_match_id || 0);
-            });
+                    return (a.jiu_jitsu_bracket_match_id || 0) - (b.jiu_jitsu_bracket_match_id || 0);
+                });
+            } else {
+                matches.sort((a, b) => {
+                    const sa = schemeMap.get(a.jiu_jitsu_match_categroy) || { category_venue: '', category_date_num: '', category_order: '' };
+                    const sb = schemeMap.get(b.jiu_jitsu_match_categroy) || { category_venue: '', category_date_num: '', category_order: '' };
+
+                    const unitA = parseFloat(sa.category_date_num) || 0;
+                    const unitB = parseFloat(sb.category_date_num) || 0;
+                    if (unitA !== unitB) return unitA - unitB;
+
+                    const venueCmp = (sa.category_venue || '').localeCompare(sb.category_venue || '');
+                    if (venueCmp !== 0) return venueCmp;
+
+                    const roundNumA = a.jiu_jitsu_match_round_num || 0;
+                    const roundNumB = b.jiu_jitsu_match_round_num || 0;
+                    const isFinalA = roundNumA >= 999 ? 1 : 0;
+                    const isFinalB = roundNumB >= 999 ? 1 : 0;
+                    if (isFinalA !== isFinalB) return isFinalA - isFinalB;
+
+                    if (roundNumA !== roundNumB) return roundNumA - roundNumB;
+
+                    const orderA = parseFloat(sa.category_order) || 0;
+                    const orderB = parseFloat(sb.category_order) || 0;
+                    if (orderA !== orderB) return orderA - orderB;
+
+                    const zoneA = getZoneSortValue(a);
+                    const zoneB = getZoneSortValue(b);
+                    if (zoneA !== zoneB) return zoneA - zoneB;
+
+                    return (a.jiu_jitsu_bracket_match_id || 0) - (b.jiu_jitsu_bracket_match_id || 0);
+                });
+            }
 
             const byeMatchIds = new Set();
             const nonByeMatches = matches.filter(m => {
@@ -567,6 +630,33 @@ module.exports = (db, manager) => {
             }
 
             console.log('[jj-generate-single] 开始生成:', { event_id, weight_class });
+
+            const eventIdNum = Number(event_id);
+
+            const savedScheduleData = new Map();
+            try {
+                const oldRows = await db.all(
+                    'SELECT jiu_jitsu_match_venue, jiu_jitsu_match_id, jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_zone, jiu_jitsu_red_athlete_id, jiu_jitsu_blue_athlete_id, jiu_jitsu_match_scores, jiu_jitsu_winner, jiu_jitsu_win_method, jiu_jitsu_match_status FROM jiu_jitsu_matchs WHERE event_id = ? AND jiu_jitsu_match_categroy = ?',
+                    [eventIdNum, weight_class]
+                );
+                if (oldRows && oldRows.length > 0) {
+                    for (const r of oldRows) {
+                        if (r.jiu_jitsu_match_venue == null && r.jiu_jitsu_match_id == null) continue;
+                        const key = `${r.jiu_jitsu_match_round_num || 0}|${r.jiu_jitsu_match_round_name || ''}|${r.jiu_jitsu_match_zone || ''}|${r.jiu_jitsu_red_athlete_id || ''}|${r.jiu_jitsu_blue_athlete_id || ''}`;
+                        savedScheduleData.set(key, {
+                            venue: r.jiu_jitsu_match_venue,
+                            matchId: r.jiu_jitsu_match_id,
+                            scores: r.jiu_jitsu_match_scores,
+                            winner: r.jiu_jitsu_winner,
+                            win_method: r.jiu_jitsu_win_method,
+                            match_status: r.jiu_jitsu_match_status
+                        });
+                    }
+                }
+            } catch (e) {
+                console.warn('[jj-generate-single] 保存编排数据失败:', e.message);
+            }
+
             const result = await generateJJBracketForEvent(db, manager, event_id, weight_class);
             console.log('[jj-generate-single] 生成完成:', result);
 
@@ -576,6 +666,38 @@ module.exports = (db, manager) => {
                     [eventIdNum, weight_class]
                 );
                 await syncJJMatchesFromBracket(db, eventIdNum, weight_class);
+<<<<<<< Updated upstream
+=======
+
+                if (savedScheduleData.size > 0) {
+                    try {
+                        const newRows = await db.all(
+                            'SELECT id, jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_zone, jiu_jitsu_red_athlete_id, jiu_jitsu_blue_athlete_id FROM jiu_jitsu_matchs WHERE event_id = ? AND jiu_jitsu_match_categroy = ?',
+                            [eventIdNum, weight_class]
+                        );
+                        for (const nr of newRows) {
+                            const key = `${nr.jiu_jitsu_match_round_num || 0}|${nr.jiu_jitsu_match_round_name || ''}|${nr.jiu_jitsu_match_zone || ''}|${nr.jiu_jitsu_red_athlete_id || ''}|${nr.jiu_jitsu_blue_athlete_id || ''}`;
+                            const saved = savedScheduleData.get(key);
+                            if (saved) {
+                                const updates = [];
+                                const params = [];
+                                if (saved.venue != null) { updates.push('jiu_jitsu_match_venue = ?'); params.push(saved.venue); }
+                                if (saved.matchId != null) { updates.push('jiu_jitsu_match_id = ?'); params.push(saved.matchId); }
+                                if (saved.scores != null) { updates.push('jiu_jitsu_match_scores = ?'); params.push(saved.scores); }
+                                if (saved.winner != null) { updates.push('jiu_jitsu_winner = ?'); params.push(saved.winner); }
+                                if (saved.win_method != null) { updates.push('jiu_jitsu_win_method = ?'); params.push(saved.win_method); }
+                                if (saved.match_status != null && saved.match_status !== 'bye' && saved.match_status !== '未开始') { updates.push('jiu_jitsu_match_status = ?'); params.push(saved.match_status); }
+                                if (updates.length > 0) {
+                                    params.push(nr.id);
+                                    await db.run(`UPDATE jiu_jitsu_matchs SET ${updates.join(', ')} WHERE id = ?`, params);
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('[jj-generate-single] 恢复编排数据失败:', e.message);
+                    }
+                }
+>>>>>>> Stashed changes
             }
 
             res.json({ success: true, data: result });

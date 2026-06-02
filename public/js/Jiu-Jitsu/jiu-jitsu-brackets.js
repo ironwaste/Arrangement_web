@@ -800,10 +800,12 @@ const JiuJitsuBrackets = {
         } catch (e) {}
 
         try {
+            const sortModeEl = document.getElementById('jjSortMode');
+            const sortMode = sortModeEl ? sortModeEl.value : 'default';
             const res = await fetch(`${API_BASE}/jj-brackets/generate-matches`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ event_id: currentEventId })
+                body: JSON.stringify({ event_id: currentEventId, sort_mode: sortMode })
             });
             const data = await res.json();
             if (data.success) {
