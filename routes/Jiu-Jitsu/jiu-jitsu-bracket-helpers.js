@@ -152,10 +152,13 @@ async function clearJJBracketStageData(db, event_id, weightClass) {
         [event_id, weightClass]
     );
     const categoryId = categoryRow ? categoryRow.category_id : null;
+    const escapedWeightClass = String(weightClass || '').replace(/[\\%_]/g, ch => '\\' + ch);
 
     const stageRows = await db.all(
-        'SELECT id FROM bracket_stage WHERE (event_id = ? AND category_id = ?) OR (tournament_id = ? AND name LIKE ?)',
-        [event_id, categoryId, Number(event_id), weightClass + '%']
+        `SELECT id FROM bracket_stage
+         WHERE (event_id = ? AND category_id = ?)
+            OR (tournament_id = ? AND (name = ? OR name LIKE ? ESCAPE '\\\\'))`,
+        [event_id, categoryId, Number(event_id), weightClass, escapedWeightClass + '\\_%']
     );
 
     const participantIdsToDelete = new Set();
@@ -561,7 +564,7 @@ async function generateJJBracketForClass(db, manager, weightClass, athletes, eve
             'SELECT id FROM bracket_match WHERE stage_id = ?',
             [divisionalStage.id]
         );
-        let matchCount = poolMatches.length;
+        matchCount = poolMatches.length;
 
         const finalStage = await manager.create.stage({
             tournamentId: Number(event_id),

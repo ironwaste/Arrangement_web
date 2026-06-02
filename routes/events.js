@@ -5,6 +5,8 @@
  */
 const express = require('express');
 const router = express.Router();
+const { BracketsManager } = require('brackets-manager');
+const { MySQLStorage } = require('../storage');
 const {
   generateStandardSeedOrder,
   generateRoundRobinMatches,
@@ -30,6 +32,10 @@ const {
 
 module.exports = (db, bracketsManager) => {
   const manager = bracketsManager;
+
+  function createRequestBracketManager() {
+    return db.pool ? new BracketsManager(new MySQLStorage(db.pool)) : manager;
+  }
 
   /** 根据赛事时间自动计算赛事状态 */
   function calcEventStatus(event, now) {
@@ -1768,25 +1774,18 @@ module.exports = (db, bracketsManager) => {
       let categoryIdNum = category_id ? Number(category_id) : null;
       let weightClassValue = weight_class;
 
-      console.log('[generate-bracket] 接收参数:', { event_id, weight_class, category_id, force });
-      console.log('[generate-bracket] 初始值:', { eventIdNum, categoryIdNum, weightClassValue });
-
       if (!categoryIdNum && weightClassValue) {
-        console.log('[generate-bracket] 尝试通过weight_class查询category_id:', weightClassValue);
         const categoryRow = await db.get(
           'SELECT category_id, weight_class FROM category_mode WHERE event_id = ? AND weight_class = ?',
           [eventIdNum, weightClassValue]
         );
-        console.log('[generate-bracket] 查询结果:', categoryRow);
         categoryIdNum = categoryRow ? categoryRow.category_id : null;
         
         if (!categoryIdNum) {
-          console.log('[generate-bracket] 精确匹配失败，尝试模糊匹配');
           const likeRow = await db.get(
             'SELECT category_id, weight_class FROM category_mode WHERE event_id = ? AND weight_class LIKE ?',
             [eventIdNum, weightClassValue + '%']
           );
-          console.log('[generate-bracket] 模糊匹配结果:', likeRow);
           if (likeRow) {
             categoryIdNum = likeRow.category_id;
             weightClassValue = likeRow.weight_class;
@@ -1815,16 +1814,11 @@ module.exports = (db, bracketsManager) => {
 
       if (weightClassValue) {
         if (!force) {
-          console.log('[generate-bracket] 检查现有数据:', { eventIdNum, categoryIdNum, weightClassValue });
-          
-          if (!categoryIdNum) {
-            console.log('[generate-bracket] categoryIdNum 为空，跳过现有数据检查');
-          } else {
+          if (categoryIdNum) {
             const existingStage = await db.get(
               'SELECT id, category_id FROM bracket_stage WHERE event_id = ? AND category_id = ?',
               [eventIdNum, categoryIdNum]
             );
-            console.log('[generate-bracket] 查询结果:', existingStage);
             if (existingStage) {
               return res.json({
                 success: false,
@@ -1901,6 +1895,7 @@ module.exports = (db, bracketsManager) => {
       const failedClasses = [];
       let generated = 0;
       let skipped = 0;
+      const generationManager = createRequestBracketManager();
 
       for (const wc of classesToGenerateList) {
         try {
@@ -1919,7 +1914,19 @@ module.exports = (db, bracketsManager) => {
             return drawNumA - drawNumB;
           });
 
-          await generateBracketForClass(db, manager, wc, sortedAthletes, event_id);
+          let classCategoryId = null;
+          if (weightClassValue && wc === weightClassValue) {
+            classCategoryId = categoryIdNum;
+          }
+          if (!classCategoryId) {
+            const classCategoryRow = await db.get(
+              'SELECT category_id FROM category_mode WHERE event_id = ? AND weight_class = ?',
+              [eventIdNum, wc]
+            );
+            classCategoryId = classCategoryRow ? classCategoryRow.category_id : null;
+          }
+
+          await generateBracketForClass(db, generationManager, wc, sortedAthletes, eventIdNum, classCategoryId);
 
           generated++;
           results.push(`${wc}: ${classAthletes.length}人，对阵图已生成`);
@@ -2210,7 +2217,7 @@ module.exports = (db, bracketsManager) => {
 
   router.post('/brackets/generate', async (req, res) => {
     try {
-      const { weight_class, event_id } = req.body;
+      const { weight_class, event_id, category_id } = req.body;
       if (!weight_class || !event_id) {
         return res.status(400).json({ success: false, error: '缺少weight_class或event_id参数' });
       }
@@ -2224,7 +2231,7 @@ module.exports = (db, bracketsManager) => {
         return res.json({ success: false, error: '该级别运动员不足2人' });
       }
 
-      await generateBracketForClass(db, manager, weight_class, updatedAthletes, event_id);
+      await generateBracketForClass(db, manager, weight_class, updatedAthletes, event_id, category_id || null);
 
       res.json({ success: true, message: `${weight_class} 对阵图生成成功` });
     } catch (err) {
@@ -2336,7 +2343,10 @@ module.exports = (db, bracketsManager) => {
       const eventIdNum = Number(event_id);
 
       const stageRows = await db.all(
-        'SELECT id AS stage_id, category_id AS class_name, type AS stage_type FROM bracket_stage WHERE event_id = ?',
+        `SELECT bs.id AS stage_id, cm.weight_class AS class_name, bs.type AS stage_type
+         FROM bracket_stage bs
+         LEFT JOIN category_mode cm ON cm.event_id = bs.event_id AND cm.category_id = bs.category_id
+         WHERE bs.event_id = ?`,
         [eventIdNum]
       );
 
@@ -2372,7 +2382,10 @@ module.exports = (db, bracketsManager) => {
       }
 
       const updatedStageRows = await db.all(
-        'SELECT category_id AS class_name, id AS stage_id, type AS stage_type FROM bracket_stage WHERE event_id = ?',
+        `SELECT cm.weight_class AS class_name, bs.id AS stage_id, bs.type AS stage_type
+         FROM bracket_stage bs
+         LEFT JOIN category_mode cm ON cm.event_id = bs.event_id AND cm.category_id = bs.category_id
+         WHERE bs.event_id = ?`,
         [eventIdNum]
       );
 

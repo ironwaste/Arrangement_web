@@ -760,7 +760,10 @@ const JiuJitsuBrackets = {
             const stageData = await stageRes.json();
             const bracketClasses = new Set();
             if (stageData.success && stageData.data) {
-                stageData.data.forEach(s => { if (s.category_id) bracketClasses.add(s.category_id); });
+                stageData.data.forEach(s => {
+                    const className = s.weight_class || s.class_name;
+                    if (className) bracketClasses.add(String(className));
+                });
             }
 
             const noBracket = [];

@@ -159,7 +159,39 @@ module.exports = (db, manager) => {
                 req.body.classes_to_generate = classesToGenerate;
             }
 
-            const result = await generateJJBracketForEvent(db, manager, event_id, weight_class || null, req.body.classes_to_generate);
+            const savedScheduleMap = new Map();
+            try {
+                const savedParams = [eventIdNum];
+                let savedWhere = 'WHERE event_id = ?';
+                if (weight_class) {
+                    savedWhere += ' AND jiu_jitsu_match_categroy = ?';
+                    savedParams.push(weight_class);
+                }
+                const oldRows = await db.all(
+                    `SELECT jiu_jitsu_match_categroy, jiu_jitsu_match_venue, jiu_jitsu_match_id,
+                            jiu_jitsu_match_round_num, jiu_jitsu_match_round_name, jiu_jitsu_match_zone,
+                            jiu_jitsu_red_athlete_id, jiu_jitsu_blue_athlete_id,
+                            jiu_jitsu_match_scores, jiu_jitsu_winner, jiu_jitsu_win_method, jiu_jitsu_match_status
+                     FROM jiu_jitsu_matchs ${savedWhere}`,
+                    savedParams
+                );
+                for (const r of oldRows || []) {
+                    if (r.jiu_jitsu_match_venue == null && r.jiu_jitsu_match_id == null && r.jiu_jitsu_match_scores == null && r.jiu_jitsu_winner == null) continue;
+                    const key = `${r.jiu_jitsu_match_categroy || ''}|${r.jiu_jitsu_match_round_num || 0}|${r.jiu_jitsu_match_round_name || ''}|${r.jiu_jitsu_match_zone || ''}|${r.jiu_jitsu_red_athlete_id || ''}|${r.jiu_jitsu_blue_athlete_id || ''}`;
+                    savedScheduleMap.set(key, {
+                        venue: r.jiu_jitsu_match_venue,
+                        matchId: r.jiu_jitsu_match_id,
+                        scores: r.jiu_jitsu_match_scores,
+                        winner: r.jiu_jitsu_winner,
+                        win_method: r.jiu_jitsu_win_method,
+                        match_status: r.jiu_jitsu_match_status
+                    });
+                }
+            } catch (e) {
+                console.warn('[jj-generate] 保存编排数据失败:', e.message);
+            }
+
+            const result = await generateJJBracketForEvent(db, manager, eventIdNum, weight_class || null, req.body.classes_to_generate);
 
             if (result && result.generated > 0) {
                 if (weight_class) {
@@ -238,10 +270,15 @@ module.exports = (db, manager) => {
             });
 
             const stageMapRows = await db.all(
-                'SELECT DISTINCT category_id FROM bracket_stage WHERE event_id = ?',
+                `SELECT DISTINCT cm.weight_class
+                 FROM bracket_stage bs
+                 JOIN category_mode cm
+                   ON cm.event_id = bs.event_id
+                  AND cm.category_id = bs.category_id
+                 WHERE bs.event_id = ?`,
                 [eventIdNum]
             );
-            const bracketClasses = new Set(stageMapRows.map(r => r.category_id).filter(Boolean));
+            const bracketClasses = new Set(stageMapRows.map(r => r.weight_class).filter(Boolean));
 
             const noBracket = [];
             const unassigned = [];
@@ -730,7 +767,12 @@ module.exports = (db, manager) => {
                 return res.json({ success: true, data: [] });
             }
             const rows = await db.all(
-                'SELECT id, category_id, name, type FROM bracket_stage WHERE event_id = ?',
+                `SELECT bs.id, bs.category_id, cm.weight_class, bs.name, bs.type
+                 FROM bracket_stage bs
+                 LEFT JOIN category_mode cm
+                   ON cm.event_id = bs.event_id
+                  AND cm.category_id = bs.category_id
+                 WHERE bs.event_id = ?`,
                 [Number(event_id)]
             );
             res.json({ success: true, data: rows });

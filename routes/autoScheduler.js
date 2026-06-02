@@ -120,20 +120,27 @@ async function createBergenRoundRobinMatches(db, stageId, effectiveSeeding, part
 }
 
 /** 为单个级别生成对阵图（支持淘汰赛/循环赛/分区赛） */
-async function generateBracketForClass(db, manager, weightClass, athletes, event_id, forceElimination = false) {
+async function generateBracketForClass(db, manager, weightClass, athletes, event_id, categoryIdOverride = null, forceElimination = false) {
+  if (typeof categoryIdOverride === 'boolean') {
+    forceElimination = categoryIdOverride;
+    categoryIdOverride = null;
+  }
+
   await deleteKyougiMatchsByClass(db, weightClass, event_id);
 
   // 获取 category_id（从 category_mode 表）
-  let categoryId = null;
-  try {
-    const catModeRow = await db.prepare(
-      'SELECT category_id FROM category_mode WHERE event_id = ? AND weight_class = ?'
-    ).get(event_id, weightClass);
-    if (catModeRow) {
-      categoryId = catModeRow.category_id;
+  let categoryId = categoryIdOverride ? Number(categoryIdOverride) : null;
+  if (!categoryId) {
+    try {
+      const catModeRow = await db.prepare(
+        'SELECT category_id FROM category_mode WHERE event_id = ? AND weight_class = ?'
+      ).get(event_id, weightClass);
+      if (catModeRow) {
+        categoryId = catModeRow.category_id;
+      }
+    } catch (e) {
+      console.warn('获取 category_id 失败:', e.message);
     }
-  } catch (e) {
-    console.warn('获取 category_id 失败:', e.message);
   }
 
   const stageRow = await db.get(

@@ -961,6 +961,10 @@ async function viewBracketTree() {
                 _autoGenerateAttempted = false;
                 return;
             }
+            if (await hasGeneratedBracketForClass(weightClass)) {
+                document.getElementById('bracketDisplay').innerHTML = '<p style="text-align: center; color: #909399; padding: 40px 0;">该级别已有对阵图数据，如需重新生成请先清除当前级别对阵图</p>';
+                return;
+            }
             console.log(`[自动生成] 级别「${weightClass}」尚未生成对阵图，开始自动生成...`);
             try {
                 const resp = await apiPost('/jj-brackets/generate-single', { event_id: currentEventId, category_id: selectedCategoryId, weight_class: weightClass });
@@ -1029,6 +1033,10 @@ async function viewBracketTree() {
             console.warn(`[自动生成] 级别「${weightClass}」已尝试自动生成但未产生数据，停止重试`);
             document.getElementById('bracketDisplay').innerHTML = '<p style="text-align: center; color: #909399; padding: 40px 0;">自动生成未产生对阵数据，请检查运动员和竞赛方式配置</p>';
             _autoGenerateAttempted = false;
+            return;
+        }
+        if (await hasGeneratedBracketForClass(weightClass)) {
+            document.getElementById('bracketDisplay').innerHTML = '<p style="text-align: center; color: #909399; padding: 40px 0;">该级别已有对阵图数据，如需重新生成请先清除当前级别对阵图</p>';
             return;
         }
         console.log(`[自动生成] 级别「${weightClass}」尚未生成对阵图，开始自动生成...`);
@@ -1986,20 +1994,20 @@ async function renderJJBracketFromMatches(weightClass, jjMatches, overrideCompMo
 
     const participantMap = new Map();
     let pid = 1;
-    const getParticipantId = (name, team, isBlue) => {
+    const getParticipantId = (name, team, isBlue, drawNum) => {
         if (!name || name === '上区第一' || name === '下区第一') return null;
         const key = name + '|' + (team || '');
         if (!participantMap.has(key)) {
-            const nameWithUnit = team ? `${name || '待定'} (${team})` : (name || '待定');
-            const displayName = `${nameWithUnit}`;
-            participantMap.set(key, { id: pid++, name: displayName });
+            const displayName = drawNum != null && drawNum !== '' ? `${drawNum}. ${name || '待定'}` : (name || '待定');
+            const nameWithUnit = team ? `${displayName} (${team})` : displayName;
+            participantMap.set(key, { id: pid++, name: nameWithUnit });
         }
         return participantMap.get(key).id;
     };
 
     jjMatches.forEach(m => {
-        if (m.jiu_jitsu_blue_athlete_name) getParticipantId(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, true);
-        if (m.jiu_jitsu_red_athlete_name) getParticipantId(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, false);
+        if (m.jiu_jitsu_blue_athlete_name) getParticipantId(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, true, m.jiu_jitsu_blue_athlete_draw_num);
+        if (m.jiu_jitsu_red_athlete_name) getParticipantId(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, false, m.jiu_jitsu_red_athlete_draw_num);
         if (m.jiu_jitsu_blue_prev_winner) {
             const prevName = m.jiu_jitsu_blue_prev_winner.replace(/胜者$/, '').replace(/负者$/, '');
             if (!participantMap.has(prevName + '|')) {
@@ -2043,15 +2051,15 @@ async function renderJJBracketFromMatches(weightClass, jjMatches, overrideCompMo
 
         const upperPids = new Set();
         upperMatches.forEach(m => {
-            const rId = m.jiu_jitsu_red_athlete_name ? getParticipantId(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, false) : null;
-            const bId = m.jiu_jitsu_blue_athlete_name ? getParticipantId(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, true) : null;
+            const rId = m.jiu_jitsu_red_athlete_name ? getParticipantId(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, false, m.jiu_jitsu_red_athlete_draw_num) : null;
+            const bId = m.jiu_jitsu_blue_athlete_name ? getParticipantId(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, true, m.jiu_jitsu_blue_athlete_draw_num) : null;
             if (rId) upperPids.add(rId);
             if (bId) upperPids.add(bId);
         });
         const lowerPids = new Set();
         lowerMatches.forEach(m => {
-            const rId = m.jiu_jitsu_red_athlete_name ? getParticipantId(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, false) : null;
-            const bId = m.jiu_jitsu_blue_athlete_name ? getParticipantId(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, true) : null;
+            const rId = m.jiu_jitsu_red_athlete_name ? getParticipantId(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, false, m.jiu_jitsu_red_athlete_draw_num) : null;
+            const bId = m.jiu_jitsu_blue_athlete_name ? getParticipantId(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, true, m.jiu_jitsu_blue_athlete_draw_num) : null;
             if (rId) lowerPids.add(rId);
             if (bId) lowerPids.add(bId);
         });
@@ -2078,8 +2086,8 @@ async function renderJJBracketFromMatches(weightClass, jjMatches, overrideCompMo
             }
 
             zoneMatches.forEach(m => {
-                const redId = m.jiu_jitsu_red_athlete_name ? getParticipantId(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, false) : null;
-                const blueId = m.jiu_jitsu_blue_athlete_name ? getParticipantId(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, true) : null;
+                const redId = m.jiu_jitsu_red_athlete_name ? getParticipantId(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, false, m.jiu_jitsu_red_athlete_draw_num) : null;
+                const blueId = m.jiu_jitsu_blue_athlete_name ? getParticipantId(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, true, m.jiu_jitsu_blue_athlete_draw_num) : null;
                 let status = 2;
                 if (m.jiu_jitsu_match_status === '已结束') status = 4;
                 if (m.jiu_jitsu_match_status === '进行中') status = 3;
@@ -2111,14 +2119,14 @@ async function renderJJBracketFromMatches(weightClass, jjMatches, overrideCompMo
             finalMatches.forEach(m => {
                 let redId, blueId;
                 if (m.jiu_jitsu_red_athlete_name && m.jiu_jitsu_red_athlete_name !== '上区第一' && m.jiu_jitsu_red_athlete_name !== '下区第一') {
-                    redId = getParticipantId(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, false);
+                    redId = getParticipantId(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, false, m.jiu_jitsu_red_athlete_draw_num);
                 } else if (m.jiu_jitsu_red_athlete_name === '上区第一') {
                     redId = upperFirstPid;
                 } else if (m.jiu_jitsu_red_athlete_name === '下区第一') {
                     redId = lowerFirstPid;
                 }
                 if (m.jiu_jitsu_blue_athlete_name && m.jiu_jitsu_blue_athlete_name !== '上区第一' && m.jiu_jitsu_blue_athlete_name !== '下区第一') {
-                    blueId = getParticipantId(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, true);
+                    blueId = getParticipantId(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, true, m.jiu_jitsu_blue_athlete_draw_num);
                 } else if (m.jiu_jitsu_blue_athlete_name === '下区第一') {
                     blueId = lowerFirstPid;
                 } else if (m.jiu_jitsu_blue_athlete_name === '上区第一') {
@@ -2229,8 +2237,8 @@ async function renderJJBracketFromMatches(weightClass, jjMatches, overrideCompMo
     const matchData = [];
     const matchGames = [];
     jjMatches.forEach((m, idx) => {
-        const blueId = m.jiu_jitsu_blue_athlete_name ? getParticipantId(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, true) : null;
-        const redId = m.jiu_jitsu_red_athlete_name ? getParticipantId(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, false) : null;
+        const blueId = m.jiu_jitsu_blue_athlete_name ? getParticipantId(m.jiu_jitsu_blue_athlete_name, m.jiu_jitsu_blue_athlete_team, true, m.jiu_jitsu_blue_athlete_draw_num) : null;
+        const redId = m.jiu_jitsu_red_athlete_name ? getParticipantId(m.jiu_jitsu_red_athlete_name, m.jiu_jitsu_red_athlete_team, false, m.jiu_jitsu_red_athlete_draw_num) : null;
 
         let status = 'pending';
         if (m.jiu_jitsu_match_status === 'bye') status = 'completed';
@@ -2577,6 +2585,26 @@ function getEventAndCategoryParamForClass(weightClass) {
     return eventParam;
 }
 
+async function hasGeneratedBracketForClass(weightClass) {
+    if (!currentEventId || !weightClass) return false;
+    if (generatedClasses.has(weightClass)) return true;
+
+    try {
+        const categoryId = selectedBracketClass === weightClass
+            ? (selectedCategoryId || getCategoryId(weightClass))
+            : getCategoryId(weightClass);
+        const params = getEventParam() + (categoryId ? '&category_id=' + categoryId : '');
+        const resp = await apiGet('/brackets/stage-id/' + encodeURIComponent(weightClass) + '?' + params);
+        if (resp.success && resp.data && resp.data.stage_id) {
+            generatedClasses.add(weightClass);
+            return true;
+        }
+    } catch (e) {
+        console.warn('检查已有对阵图失败:', e);
+    }
+    return false;
+}
+
 function _bracketCacheKey() {
     return `bracket_cache_${currentEventId || 'none'}`;
 }
@@ -2670,7 +2698,35 @@ function sortWeightClasses(classes) {
     });
 }
 
-async function loadBracketClassList() {
+function getBracketClassScrollPanel() {
+    const list = document.getElementById('bracketClassList');
+    return list ? list.closest('.class-list-panel') : null;
+}
+
+function restoreBracketClassListPosition(scrollTop, focusClass) {
+    const panel = getBracketClassScrollPanel();
+    if (!panel) return;
+    if (typeof scrollTop === 'number') {
+        panel.scrollTop = scrollTop;
+    }
+    if (focusClass) {
+        const activeItem = document.querySelector(`#bracketClassList li[data-class="${CSS.escape(focusClass)}"]`);
+        if (activeItem) {
+            const itemTop = activeItem.offsetTop;
+            const itemBottom = itemTop + activeItem.offsetHeight;
+            if (itemTop < panel.scrollTop) {
+                panel.scrollTop = Math.max(0, itemTop - 12);
+            } else if (itemBottom > panel.scrollTop + panel.clientHeight) {
+                panel.scrollTop = itemBottom - panel.clientHeight + 12;
+            }
+        }
+    }
+}
+
+async function loadBracketClassList(options = {}) {
+    const { preserveScroll = false, focusClass = selectedBracketClass } = options;
+    const panel = getBracketClassScrollPanel();
+    const previousScrollTop = preserveScroll && panel ? panel.scrollTop : null;
     const list = document.getElementById('bracketClassList');
     list.innerHTML = '';
     if (!currentEventId) return;
@@ -2842,10 +2898,18 @@ async function loadBracketClassList() {
             await viewBracketTree();
         }
     }
+
+    if (preserveScroll) {
+        requestAnimationFrame(() => restoreBracketClassListPosition(previousScrollTop, focusClass));
+    }
 }
 
 function selectBracketClass(cls) {
     selectedBracketClass = cls;
+    selectedCategoryId = getCategoryId(cls);
+    if (typeof CategoryModeComponent !== 'undefined') {
+        CategoryModeComponent.selectedClass = cls;
+    }
     document.querySelectorAll('#bracketClassList li').forEach(li => { li.classList.toggle('active', li.dataset.class === cls); });
 }
 
@@ -2893,6 +2957,10 @@ async function checkAthletesDrawn(weightClass) {
 async function generateSelectedBracket() {
     if (!selectedBracketClass) { alert('请先选择一个级别'); return; }
     if (!currentEventId) { alert('请先选择赛事'); return; }
+    if (await hasGeneratedBracketForClass(selectedBracketClass)) {
+        alert(`「${selectedBracketClass}」已存在对阵图。如需重新生成，请先点击“清除当前级别对阵图”。`);
+        return;
+    }
     const { drawn, hasAthletes } = await checkAthletesDrawn(selectedBracketClass);
     if (hasAthletes && !drawn) {
         alert('还没有对运动员进行抽签，暂无对阵图');
@@ -2900,17 +2968,22 @@ async function generateSelectedBracket() {
     }
 
     try {
+        const categoryId = selectedCategoryId || getCategoryId(selectedBracketClass);
         const generateUrl = isJJEvent() ? '/jj-brackets/generate-single' : '/auto-arrange/generate-bracket';
-        const resp = await apiPost(generateUrl, { event_id: currentEventId, weight_class: selectedBracketClass });
+        const resp = await apiPost(generateUrl, { event_id: currentEventId, category_id: categoryId, weight_class: selectedBracketClass });
         if (resp.success) {
             alert(`「${selectedBracketClass}」对阵图生成成功`);
             clearBracketCache();
-            await loadBracketClassList();
+            await loadBracketClassList({ preserveScroll: true, focusClass: selectedBracketClass });
             await viewBracketTree();
         } else {
             if (resp.hasExistingData) {
                 try {
-                    const checkRes = await apiPost('/jj-brackets/clear', { event_id: currentEventId, weight_class: selectedBracketClass, check_only: true });
+                    const clearUrl = isJJEvent() ? '/jj-brackets/clear' : '/brackets/clear';
+                    const clearPayload = { event_id: currentEventId, category_id: categoryId };
+                    const checkRes = isJJEvent()
+                        ? await apiPost(clearUrl, { ...clearPayload, check_only: true })
+                        : { success: true, hasMatchData: false };
                     
                     let confirmMsg = `已有对阵图数据，请先清除后再生成。`;
                     if (checkRes.success && checkRes.hasMatchData) {
@@ -2921,11 +2994,11 @@ async function generateSelectedBracket() {
                     const shouldClear = confirm(confirmMsg);
                     if (shouldClear) {
                         try {
-                            const clearRes = await apiPost('/jj-brackets/clear', { event_id: currentEventId, weight_class: selectedBracketClass, clear_bracket: true });
+                            const clearRes = await apiPost(clearUrl, { ...clearPayload, clear_bracket: true });
                             if (clearRes.success) {
                                 alert('✅ 数据已清除，请重新点击生成对阵图');
                                 clearBracketCache();
-                                await loadBracketClassList();
+                                await loadBracketClassList({ preserveScroll: true, focusClass: selectedBracketClass });
                             } else {
                                 alert('❌ 清除失败: ' + (clearRes.error || '未知错误'));
                             }
@@ -2976,7 +3049,7 @@ async function generateAllBrackets() {
             }
             
             alert(message);
-            await loadBracketClassList();
+            await loadBracketClassList({ preserveScroll: true, focusClass: selectedBracketClass });
             await viewBracketTree();
         } else {
             if (resp.allLevelsExist) {
@@ -2998,7 +3071,7 @@ async function generateAllBrackets() {
                             if (clearRes.success) {
                                 alert('✅ 数据已清除，请重新点击生成对阵图');
                                 clearBracketCache();
-                                await loadBracketClassList();
+                                await loadBracketClassList({ preserveScroll: true, focusClass: selectedBracketClass });
                             } else {
                                 alert('❌ 清除失败: ' + (clearRes.error || '未知错误'));
                             }
