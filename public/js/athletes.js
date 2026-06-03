@@ -1141,6 +1141,60 @@ function showAllAthletesColumns() {
     closeAthletesContextMenu();
 }
 
+// ==================== 导出Excel ====================
+
+async function exportAthletes() {
+    if (!currentEventId) {
+        alert('请先选择赛事');
+        return;
+    }
+
+    let url = API_BASE + '/athletes/export-excel?event_id=' + currentEventId;
+    
+    if (selectedClass) {
+        url += '&weight_class=' + encodeURIComponent(selectedClass);
+    }
+
+    try {
+        const token = localStorage.getItem('auth_token');
+        const headers = new Headers();
+        headers.set('Accept', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        if (token) {
+            headers.set('Authorization', 'Bearer ' + token);
+        }
+
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: headers
+        });
+
+        if (!response.ok) {
+            if (response.status === 401) {
+                throw new Error('请先登录');
+            }
+            throw new Error('导出失败: ' + response.statusText);
+        }
+
+        const blob = await response.blob();
+        const link = document.createElement('a');
+        const blobUrl = URL.createObjectURL(blob);
+        
+        link.href = blobUrl;
+        link.download = '运动员数据.xlsx';
+        link.style.visibility = 'hidden';
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+        
+        console.log('[导出Excel] 下载成功');
+    } catch (error) {
+        console.error('[导出Excel] 下载失败:', error);
+        alert('导出失败: ' + error.message);
+    }
+}
+
 // ==================== 初始化 ====================
 
 document.addEventListener('DOMContentLoaded', function() {

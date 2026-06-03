@@ -3,6 +3,7 @@
  */
 const express = require('express');
 const router = express.Router();
+const xlsx = require('xlsx');
 const {
   deleteKyougiMatchsByClass
 } = require('./kyougiMatchHelpers');
@@ -311,6 +312,78 @@ module.exports = (db) => {
   });
 
   /* ==================== 级别查询 ==================== */
+  router.get('/athletes/export-excel', async (req, res) => {
+    try {
+      const { event_id, weight_class, unit, gender, athlete_type } = req.query;
+      
+      if (!event_id) {
+        return res.status(400).json({ success: false, error: '请选择赛事' });
+      }
+
+      const eventIdNum = parseInt(event_id);
+      if (isNaN(eventIdNum)) {
+        return res.status(400).json({ success: false, error: '赛事ID无效' });
+      }
+
+      const event = await db.get('SELECT event_type FROM events WHERE event_id = ?', [eventIdNum]);
+      if (!event) {
+        return res.status(400).json({ success: false, error: '赛事不存在' });
+      }
+
+      const isJiuJitsu = event.event_type === 'jiu_jitsu';
+
+      let sql = 'SELECT * FROM athletes WHERE event_id = ?';
+      const params = [eventIdNum];
+
+      if (weight_class) { sql += ' AND athlete_category = ?'; params.push(weight_class); }
+      if (unit) { sql += ' AND athlete_team LIKE ?'; params.push(`%${unit}%`); }
+      if (gender) { sql += ' AND athlete_gender = ?'; params.push(gender); }
+      if (athlete_type) { sql += ' AND athlete_type = ?'; params.push(athlete_type); }
+
+      sql += ' ORDER BY CAST(athlete_id AS UNSIGNED), athlete_id';
+
+      const athletes = await db.all(sql, params);
+
+      const headers = ['签号', '运动员号', '姓名', '性别', '单位简称', '组别', '级别'];
+      if (isJiuJitsu) {
+        headers.push('段位');
+      }
+
+      const data = [headers];
+
+      for (const athlete of athletes) {
+        const row = [
+          athlete.athlete_draw_num || '',
+          athlete.athlete_id || '',
+          athlete.athlete_name || '',
+          athlete.athlete_gender || '',
+          athlete.athlete_team || '',
+          athlete.athlete_age_group || '',
+          athlete.athlete_category || ''
+        ];
+        if (isJiuJitsu) {
+          row.push(athlete.belt_level || '');
+        }
+        data.push(row);
+      }
+
+      const worksheet = xlsx.utils.aoa_to_sheet(data);
+      const workbook = xlsx.utils.book_new();
+      xlsx.utils.book_append_sheet(workbook, worksheet, '运动员数据');
+
+      const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      const encodedFileName = encodeURIComponent(`运动员数据_${eventIdNum}.xlsx`);
+      res.setHeader('Content-Disposition', `attachment; filename="${encodedFileName}"`);
+      res.send(buffer);
+
+    } catch (err) {
+      console.error('[运动员导出] 错误:', err.message);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   router.get('/weight-classes', async (req, res) => {
     try {
       const { event_id } = req.query;

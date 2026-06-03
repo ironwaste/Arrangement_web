@@ -51,14 +51,29 @@ async function importJiuJitsuExcel(db, filePath, eventId) {
     return { success: 0, failed: 0, total: 0, errors: [] };
   }
 
-  // 3. 解析表头并建立列映射
+  // 3. 获取当前赛事的最大athlete_id，用于自动生成
+  let nextAthleteId = 1000;
+  try {
+    const result = await db.get(
+      'SELECT MAX(CAST(athlete_id AS UNSIGNED)) as max_id FROM athletes WHERE event_id = ?',
+      [eventId]
+    );
+    if (result && result.max_id !== null) {
+      nextAthleteId = Math.max(1000, result.max_id) + 1;
+    }
+    console.log(`[柔术导入] 当前赛事最大athlete_id: ${result?.max_id || 0}, 下一个ID: ${nextAthleteId}`);
+  } catch (err) {
+    console.warn(`[柔术导入] 获取最大athlete_id失败: ${err.message}`);
+  }
+
+  // 4. 解析表头并建立列映射
   const headers = data[0].map(h => String(h).trim());
   console.log(`[柔术导入] 表头: ${headers.join(', ')}`);
 
   const colMap = buildColumnMap(headers);
   console.log(`[柔术导入] 列映射:`, JSON.stringify(colMap));
 
-  // 4. 解析数据行
+  // 5. 解析数据行
   const rows = data.slice(1);
   const athletes = [];
   const errors = [];
@@ -75,6 +90,12 @@ async function importJiuJitsuExcel(db, filePath, eventId) {
 
     // 解析运动员数据（包含柔术特有的段位字段）
     const athlete = parseJiuJitsuRow(row, colMap);
+
+    // 如果athlete_id为空，自动生成
+    if (!athlete.athlete_id || athlete.athlete_id.trim() === '') {
+      athlete.athlete_id = String(nextAthleteId++);
+      console.log(`[柔术导入] 第${rowNum}行自动生成athlete_id: ${athlete.athlete_id}`);
+    }
 
     // 验证必填字段
     if (!athlete.athlete_name || !athlete.athlete_gender) {
@@ -165,7 +186,7 @@ function buildColumnMap(headers) {
     if (header.includes('签号') || header.includes('序号')) {
       colMap.signNo = index;
     }
-    if (header.includes('运动员号') || header.includes('编号')) {
+    if (header.includes('运动员号') || header.includes('编号') || header.includes('序号')) {
       colMap.athleteNo = index;
     }
     if (header.includes('姓名') || header.includes('名字')) {
