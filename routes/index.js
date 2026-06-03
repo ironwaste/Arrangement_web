@@ -8,6 +8,7 @@ const poomsaeRoutes = require('./poomsae');
 const eventsRoutes = require('./events');
 const weighinRoutes = require('./weighin');
 const categoryModeRoutes = require('./category-mode');
+const excelImportRoutes = require('./excel-import');
 
 module.exports = (db, bracketsManager, upload) => {
   router.use(athletesRoutes(db));
@@ -17,5 +18,6 @@ module.exports = (db, bracketsManager, upload) => {
   router.use(eventsRoutes(db, bracketsManager));
   router.use(weighinRoutes(db, upload));
   router.use(categoryModeRoutes(db));
+  router.use(excelImportRoutes(db, upload));
   return router;
 };

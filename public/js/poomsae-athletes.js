@@ -20,15 +20,15 @@ function getTypeLabel() {
 }
 
 function buildAthleteQuery(extraParams) {
-    let url = '/athletes?' + getEventParam() + '&athlete_type=poomsae';
-    if (extraParams) {
-        for (const [key, val] of Object.entries(extraParams)) {
-            if (val !== undefined && val !== null && val !== '') {
-                url += '&' + key + '=' + encodeURIComponent(val);
-            }
-        }
+  let url = '/poomsae-athletes?' + getEventParam();
+  if (extraParams) {
+    for (const [key, val] of Object.entries(extraParams)) {
+      if (val !== undefined && val !== null && val !== '') {
+        url += '&' + key + '=' + encodeURIComponent(val);
+      }
     }
-    return url;
+  }
+  return url;
 }
 
 function applyAthleteTypeFilter(bodyOrUrl, isUrl) {
@@ -60,7 +60,6 @@ async function loadAthletes() {
         if (totalEl) totalEl.textContent = '0';
         tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#909399;padding:40px 0;">请先在「赛事列表」中选择一个赛事</td></tr>';
         document.getElementById('classList').innerHTML = '';
-        document.getElementById('drawnClassList').innerHTML = '';
         return;
     }
 
@@ -94,11 +93,6 @@ async function loadAthletes() {
             `<option value="${cls}" ${cls === a.weight_class ? 'selected' : ''}>${cls}</option>`
         ).join('');
 
-        const isUnqualified = a.is_qualified === '不合格';
-        const selectStyle = isUnqualified
-            ? 'padding:3px 6px;font-size:12px;border:1px solid #f56c6c;border-radius:4px;max-width:140px;background-color:#f56c6c;color:#fff;'
-            : 'padding:3px 6px;font-size:12px;border:1px solid #dcdfe6;border-radius:4px;max-width:140px;';
-
         let typeLabel;
         if (a.poomsae_type === '团体') typeLabel = '团品';
         else if (a.poomsae_type === '混双') typeLabel = '混双';
@@ -110,24 +104,10 @@ async function loadAthletes() {
             else typeLabel = '个品';
         }
 
-        const formatFields = [
-            { key: 'format_slot_1' },
-            { key: 'format_slot_2' },
-            { key: 'format_slot_3' },
-            { key: 'format_slot_4' },
-            { key: 'format_slot_5' },
-            { key: 'format_slot_6' }
-        ];
-
-        const formatInputs = formatFields.map(f => {
-            const val = a[f.key] || '';
-            return `<td style="text-align:center;font-size:12px;">${val}</td>`;
-        }).join('\n');
-
         tr.innerHTML = `
             <td style="text-align:center;">${index + 1}</td>
             <td style="text-align:center;">${typeLabel}</td>
-            <td style="text-align:center;">${a.athlete_no}</td>
+            <td style="text-align:center;">${a.athlete_no || ''}</td>
             <td style="white-space:nowrap;text-align:center;">
                 <input type="number" id="draw_${a.id}" value="${a.draw_no || ''}"
                     style="width:50px;padding:2px 4px;border:1px solid #dcdfe6;border-radius:3px;font-size:12px;text-align:center;"
@@ -139,12 +119,11 @@ async function loadAthletes() {
             <td style="text-align:center;">${a.group_class || '-'}</td>
             <td style="text-align:center;">${a.weight_class}</td>
             <td style="text-align:center;">
-                <select id="wc_${a.id}" style="${selectStyle}" data-unqualified="${isUnqualified}">
+                <select id="wc_${a.id}" style="padding:3px 6px;font-size:12px;border:1px solid #dcdfe6;border-radius:4px;max-width:140px;">
                     ${optionsHtml}
                 </select>
                 <button class="btn btn-primary" onclick="updateWeightClass(${a.id})" style="padding:3px 8px;font-size:11px;margin-left:4px;">✓</button>
             </td>
-            ${formatInputs}
             <td style="text-align:center;">
                 <button class="btn btn-danger" onclick="deleteAthlete(${a.id})" style="padding:5px 12px;font-size:12px;">删除</button>
             </td>
@@ -179,7 +158,6 @@ function getPoomsaeTypeLabel(pt) {
 function loadPoomsaeClassList(athletes) {
     if (!currentEventId) {
         document.getElementById('classList').innerHTML = '';
-        document.getElementById('drawnClassList').innerHTML = '';
         return;
     }
 
@@ -239,39 +217,6 @@ function loadPoomsaeClassList(athletes) {
         emptyLi.style.cssText = 'background:transparent;border:1px dashed #d9deea;color:#8a93a6;cursor:default;text-align:center;';
         emptyLi.textContent = '全部已抽签';
         leftList.appendChild(emptyLi);
-    }
-
-    const rightList = document.getElementById('drawnClassList');
-    rightList.innerHTML = '';
-
-    const hasDrawn = poomsaeTypeOrder.some(pt => typeDrawnGenderGcClsMap[pt] && Object.keys(typeDrawnGenderGcClsMap[pt]).length > 0);
-
-    if (hasDrawn) {
-        poomsaeTypeOrder.forEach(pt => {
-            const items = typeDrawnGenderGcClsMap[pt];
-            if (!items || Object.keys(items).length === 0) return;
-
-            const typeLi = document.createElement('li');
-            typeLi.className = 'class-group-title';
-            typeLi.innerHTML = `<span>${getPoomsaeTypeLabel(pt)}</span>`;
-            rightList.appendChild(typeLi);
-
-            Object.keys(items).sort().forEach(key => {
-                const [gender, gc, cls] = key.split('/');
-                const displayLabel = gender + gc + cls;
-                const li = document.createElement('li');
-                li.className = selectedDrawnClass === cls && selectedDrawnPoomsaeType === pt && selectedDrawnGroupClass === gc && selectedDrawnGender === gender ? 'active' : '';
-                li.style.paddingLeft = '24px';
-                li.innerHTML = `<span>${displayLabel}</span><span class="count">${items[key]}</span>`;
-                li.onclick = () => { selectedDrawnClass = cls; selectedDrawnGroupClass = gc; selectedDrawnGender = gender; selectedDrawnPoomsaeType = pt; selectedClass = cls; selectedGroupClass = gc; selectedGender = gender; selectedPoomsaeType = pt; loadAthletes(); };
-                rightList.appendChild(li);
-            });
-        });
-    } else {
-        const emptyLi = document.createElement('li');
-        emptyLi.style.cssText = 'background:transparent;border:1px dashed #c2e7b0;color:#8a93a6;cursor:default;text-align:center;';
-        emptyLi.textContent = '暂无已抽签';
-        rightList.appendChild(emptyLi);
     }
 }
 

@@ -64,7 +64,6 @@ async function loadAthletes() {
         if (totalEl) totalEl.textContent = '0';
         tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#909399;padding:40px 0;">请先在「赛事列表」中选择一个赛事</td></tr>';
         document.getElementById('classList').innerHTML = '';
-        document.getElementById('drawnClassList').innerHTML = '';
         return;
     }
 
@@ -732,8 +731,6 @@ async function handleExcelUpload(event) {
     const formData = new FormData();
     formData.append('file', file);
     if (currentEventId) formData.append('event_id', currentEventId);
-    const excelAthleteType = currentEventType === 'jiu_jitsu' ? 'jiu_jitsu' : currentEventType === 'chinese_wrestle' ? 'chinese_wrestle' : 'taekwondo_kyougi';
-    formData.append('athlete_type', excelAthleteType);
 
     const resultDiv = document.getElementById('batchResult');
     resultDiv.style.display = 'block';

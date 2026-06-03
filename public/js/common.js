@@ -219,26 +219,37 @@ function updateArrangeMenu() {
     const menuJJBrackets = document.getElementById('menuJJBrackets');
     const menuJJMatches = document.getElementById('menuJJMatches');
     const menuMatches = document.getElementById('menuMatches');
+    const poomsaeMenuGroup = document.getElementById('poomsaeMenuGroup');
     if (!menuBrackets || !menuBracketTest) return;
 
-    if (currentEventType === 'wrestling') {
+    if (!currentEventId) {
+        menuBrackets.style.display = '';
+        menuBracketTest.style.display = 'none';
+        if (menuJJBrackets) menuJJBrackets.style.display = 'none';
+        if (menuJJMatches) menuJJMatches.style.display = 'none';
+        if (menuMatches) menuMatches.style.display = '';
+        if (poomsaeMenuGroup) poomsaeMenuGroup.style.display = 'none';
+    } else if (currentEventType === 'wrestling') {
         menuBrackets.style.display = 'none';
         menuBracketTest.style.display = '';
         if (menuJJBrackets) menuJJBrackets.style.display = 'none';
         if (menuJJMatches) menuJJMatches.style.display = 'none';
         if (menuMatches) menuMatches.style.display = '';
+        if (poomsaeMenuGroup) poomsaeMenuGroup.style.display = 'none';
     } else if (currentEventType === 'jiu_jitsu') {
         menuBrackets.style.display = 'none';
         menuBracketTest.style.display = 'none';
         if (menuJJBrackets) menuJJBrackets.style.display = '';
         if (menuJJMatches) menuJJMatches.style.display = '';
         if (menuMatches) menuMatches.style.display = 'none';
+        if (poomsaeMenuGroup) poomsaeMenuGroup.style.display = 'none';
     } else {
         menuBrackets.style.display = '';
         menuBracketTest.style.display = 'none';
         if (menuJJBrackets) menuJJBrackets.style.display = 'none';
         if (menuJJMatches) menuJJMatches.style.display = 'none';
         if (menuMatches) menuMatches.style.display = '';
+        if (poomsaeMenuGroup) poomsaeMenuGroup.style.display = '';
     }
 }
 

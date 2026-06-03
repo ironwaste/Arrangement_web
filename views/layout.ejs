@@ -6,6 +6,7 @@
     <title><%= title %> - 跆拳道编排系统</title>
     <link rel="icon" href="/images/logo.png" type="image/png" />
     <link rel="stylesheet" href="/lib/brackets-viewer.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -1516,19 +1517,21 @@
                     <span class="text">奖牌榜</span>
                 </a>
 
-                <div class="menu-group-title">品势管理</div>
-                <a class="menu-item<%= activePage === 'poomsaeAthletes' ? ' active' : '' %>" href="/poomsae-athletes">
-                    <span class="icon">📋</span>
-                    <span class="text">品势运动员管理</span>
-                </a>
-                <a class="menu-item<%= activePage === 'poomsae' ? ' active' : '' %>" href="/poomsae">
-                    <span class="icon">🧘</span>
-                    <span class="text">品势编排</span>
-                </a>
-                <a class="menu-item<%= activePage === 'poomsaeMatches' ? ' active' : '' %>" href="/poomsae-matches">
-                    <span class="icon">📅</span>
-                    <span class="text">品势比赛查询</span>
-                </a>
+                <div id="poomsaeMenuGroup" style="display: none;">
+                    <div class="menu-group-title">品势管理</div>
+                    <a class="menu-item<%= activePage === 'poomsaeAthletes' ? ' active' : '' %>" href="/poomsae-athletes">
+                        <span class="icon">📋</span>
+                        <span class="text">品势运动员管理</span>
+                    </a>
+                    <a class="menu-item<%= activePage === 'poomsae' ? ' active' : '' %>" href="/poomsae">
+                        <span class="icon">🧘</span>
+                        <span class="text">品势编排</span>
+                    </a>
+                    <a class="menu-item<%= activePage === 'poomsaeMatches' ? ' active' : '' %>" href="/poomsae-matches">
+                        <span class="icon">📅</span>
+                        <span class="text">品势比赛查询</span>
+                    </a>
+                </div>
             </nav>
         </aside>
 
@@ -1594,6 +1597,8 @@
         })();
     </script>
     <script type="text/javascript" src="/lib/brackets-viewer.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/zh.js"></script>
     <script type="text/javascript" src="/js/Jiu-Jitsu/jiu-jitsu-bracket-renderer.js"></script>
 </body>
 </html>

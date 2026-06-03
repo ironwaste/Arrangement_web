@@ -163,10 +163,35 @@ module.exports = (db, upload) => {
         params.push(...statuses);
       }
 
-      sql += ' ORDER BY draw_no, id';
+      sql += ' ORDER BY id';
 
       const data = await db.all(sql, params);
-      res.json({ success: true, data });
+      
+      // 将数据转换为与普通运动员一致的结构
+      const convertedData = data.map(item => ({
+        id: item.id,
+        athlete_id: item.poomsae_athlete_id || '',
+        athlete_no: item.poomsae_athlete_id || '',
+        name: item.poomsae_athlete_name || '',
+        athlete_name: item.poomsae_athlete_name || '',
+        gender: item.poomsae_athlete_gender || '男',
+        athlete_gender: item.poomsae_athlete_gender || '男',
+        unit: item.poomsae_athlete_team || '',
+        athlete_team: item.poomsae_athlete_team || '',
+        draw_no: item.poomsae_athlete_draw_num || 0,
+        athlete_draw_num: item.poomsae_athlete_draw_num || 0,
+        pre_draw_no: item.poomsae_athlete_pre_draw_num || 0,
+        athlete_pre_draw_num: item.poomsae_athlete_pre_draw_num || 0,
+        group_class: item.poomsae_athlete_age_group || '少年组',
+        athlete_age_group: item.poomsae_athlete_age_group || '少年组',
+        weight_class: item.poomsae_athlete_level || '太极一章',
+        athlete_category: item.poomsae_athlete_level || '太极一章',
+        poomsae_type: item.poomsae_type || '个人',
+        athlete_type: 'taekwondo_poomsae',
+        event_id: item.event_id
+      }));
+      
+      res.json({ success: true, data: convertedData });
     } catch (err) {
       res.status(500).json({ success: false, error: err.message });
     }

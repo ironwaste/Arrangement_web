@@ -9,16 +9,14 @@ async function loadEvents() {
         const statusClass = statusMap[e.status] || 'status-pending';
         const isSelected = currentEventId === e.id;
         const eventTypeLabel = e.event_type === 'chinese_wrestle' ? '摔跤赛事' : 
-                           e.event_type === 'taekwondo_poomsae' ? '跆拳道品势赛事' : 
-                           e.event_type === 'jiu_jitsu' ? '柔术赛事' : '跆拳道竞技赛事';
+                           e.event_type === 'jiu_jitsu' ? '柔术赛事' : '跆拳道赛事';
         const eventTypeClass = e.event_type === 'chinese_wrestle' ? 'status-active' : 
-                              e.event_type === 'taekwondo_poomsae' ? 'status-reg' : 
                               e.event_type === 'jiu_jitsu' ? 'status-pass' : 'status-pending';
 
         const fmtTime = (t) => {
             if (!t) return '-';
             const d = new Date(t);
-            return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+            return `${d.getMonth()+1}/${d.getDate()}`;
         };
 
         const compTime = e.comp_start || e.comp_end ? `${fmtTime(e.comp_start)} ~ ${fmtTime(e.comp_end)}` : '-';
@@ -29,8 +27,7 @@ async function loadEvents() {
             <td data-col="checkbox"><input type="checkbox" ${isSelected ? 'checked' : ''} onclick="selectEvent(${e.id}, '${(e.name || '').replace(/'/g, "\\'")}', '${e.event_type || 'taekwondo_kyougi'}')"></td>
             <td data-col="name"><strong>${e.name}</strong></td>
             <td data-col="eventType"><select onchange="updateEventType(${e.id}, this.value)" style="padding:3px 8px;border:1px solid #dcdfe6;border-radius:4px;font-size:12px;cursor:pointer;">
-                <option value="taekwondo_kyougi" ${e.event_type === 'taekwondo_kyougi' ? 'selected' : ''}>跆拳道竞技赛事</option>
-                <option value="taekwondo_poomsae" ${e.event_type === 'taekwondo_poomsae' ? 'selected' : ''}>跆拳道品势赛事</option>
+                <option value="taekwondo" ${e.event_type === 'taekwondo_kyougi' || e.event_type === 'taekwondo_poomsae' || e.event_type === 'taekwondo' ? 'selected' : ''}>跆拳道赛事</option>
                 <option value="chinese_wrestle" ${e.event_type === 'chinese_wrestle' ? 'selected' : ''}>摔跤赛事</option>
                 <option value="jiu_jitsu" ${e.event_type === 'jiu_jitsu' ? 'selected' : ''}>柔术赛事</option>
             </select></td>
@@ -87,14 +84,14 @@ async function updateCurrentEventInfo() {
     const fmtTime2 = (t) => {
         if (!t) return '未设置';
         const d = new Date(t);
-        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     };
 
     infoDiv.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div>
                 <h3 style="color: #409EFF; margin-bottom: 5px;">🏆 ${event.name}</h3>
-                <p style="color: #606266;">赛事类型：<span class="status-badge ${event.event_type === 'chinese_wrestle' ? 'status-active' : event.event_type === 'taekwondo_poomsae' ? 'status-reg' : event.event_type === 'jiu_jitsu' ? 'status-pass' : 'status-pending'}">${event.event_type === 'chinese_wrestle' ? '摔跤赛事' : event.event_type === 'taekwondo_poomsae' ? '跆拳道品势赛事' : event.event_type === 'jiu_jitsu' ? '柔术赛事' : '跆拳道竞技赛事'}</span> | 场馆：${event.venue || '未设置'} | 状态：<span class="status-badge ${currentStatusClass}">${event.status}</span></p>
+                <p style="color: #606266;">赛事类型：<span class="status-badge ${event.event_type === 'chinese_wrestle' ? 'status-active' : event.event_type === 'jiu_jitsu' ? 'status-pass' : 'status-pending'}">${event.event_type === 'chinese_wrestle' ? '摔跤赛事' : event.event_type === 'jiu_jitsu' ? '柔术赛事' : '跆拳道赛事'}</span> | 场馆：${event.venue || '未设置'} | 状态：<span class="status-badge ${currentStatusClass}">${event.status}</span></p>
                 <p style="color: #909399; font-size: 13px; margin-top: 4px;">比赛：${fmtTime2(event.comp_start)} ~ ${fmtTime2(event.comp_end)}</p>
             </div>
             <div style="display: flex; gap: 10px;">
@@ -106,15 +103,40 @@ async function updateCurrentEventInfo() {
     `;
 }
 
+let flatpickrStart = null;
+let flatpickrEnd = null;
+
+function initFlatpickr() {
+    if (typeof flatpickr !== 'undefined') {
+        const startInput = document.getElementById('newCompStart');
+        const endInput = document.getElementById('newCompEnd');
+        const flatpickrOptions = {
+            dateFormat: 'Y-m-d',
+            placeholder: '选择日期',
+            locale: 'zh',
+            onClose: function(selectedDates, dateStr, instance) {
+                instance.inputElement.blur();
+            }
+        };
+        if (startInput && !flatpickrStart) {
+            flatpickrStart = flatpickr(startInput, flatpickrOptions);
+        }
+        if (endInput && !flatpickrEnd) {
+            flatpickrEnd = flatpickr(endInput, flatpickrOptions);
+        }
+    }
+}
+
 function showEventModal() {
     document.getElementById('eventModalTitle').textContent = '新增赛事';
     document.getElementById('editEventId').value = '';
     document.getElementById('eventModal').classList.add('active');
     document.getElementById('newEventName').value = '';
-    document.getElementById('newEventType').value = 'taekwondo_kyougi';
+    document.getElementById('newEventType').value = 'taekwondo';
     document.getElementById('newEventVenue').value = '';
     document.getElementById('newCompStart').value = '';
     document.getElementById('newCompEnd').value = '';
+    setTimeout(initFlatpickr, 100);
 }
 
 function closeEventModal() { document.getElementById('eventModal').classList.remove('active'); }
@@ -128,10 +150,11 @@ async function showEditEventModal(eventId) {
     document.getElementById('editEventId').value = eventId;
     document.getElementById('eventModal').classList.add('active');
     document.getElementById('newEventName').value = event.name || '';
-    document.getElementById('newEventType').value = event.event_type || 'taekwondo_kyougi';
+    document.getElementById('newEventType').value = event.event_type || 'taekwondo';
     document.getElementById('newEventVenue').value = event.venue || '';
-    document.getElementById('newCompStart').value = event.comp_start ? event.comp_start.slice(0, 16) : '';
-    document.getElementById('newCompEnd').value = event.comp_end ? event.comp_end.slice(0, 16) : '';
+    document.getElementById('newCompStart').value = event.comp_start ? event.comp_start.slice(0, 10) : '';
+    document.getElementById('newCompEnd').value = event.comp_end ? event.comp_end.slice(0, 10) : '';
+    setTimeout(initFlatpickr, 100);
 }
 
 async function saveEvent() {

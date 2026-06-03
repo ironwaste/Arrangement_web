@@ -76,7 +76,7 @@ module.exports = (db, bracketsManager) => {
       const status = calcEventStatus({ reg_start, reg_end, comp_start, comp_end }, now);
       const result = await db.run(
         'INSERT INTO events (event_name, event_venue, event_date, reg_start, reg_end, comp_start, comp_end, event_status, event_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [name, venue, event_date || null, reg_start || null, reg_end || null, comp_start || null, comp_end || null, status, event_type || 'taekwondo_kyougi']
+        [name, venue, event_date || null, reg_start || null, reg_end || null, comp_start || null, comp_end || null, status, event_type || 'taekwondo']
       );
       res.json({ success: true, id: result.id });
     } catch (err) {
@@ -101,7 +101,7 @@ module.exports = (db, bracketsManager) => {
       const status = calcEventStatus({ reg_start, reg_end, comp_start, comp_end }, now);
       await db.run(
         'UPDATE events SET event_name = ?, event_venue = ?, event_date = ?, reg_start = ?, reg_end = ?, comp_start = ?, comp_end = ?, event_status = ?, event_type = ? WHERE event_id = ?',
-        [name, venue, event_date || null, reg_start || null, reg_end || null, comp_start || null, comp_end || null, status, event_type || 'taekwondo_kyougi', id]
+        [name, venue, event_date || null, reg_start || null, reg_end || null, comp_start || null, comp_end || null, status, event_type || 'taekwondo', id]
       );
       res.json({ success: true });
     } catch (err) {
@@ -1780,17 +1780,6 @@ module.exports = (db, bracketsManager) => {
           [eventIdNum, weightClassValue]
         );
         categoryIdNum = categoryRow ? categoryRow.category_id : null;
-        
-        if (!categoryIdNum) {
-          const likeRow = await db.get(
-            'SELECT category_id, weight_class FROM category_mode WHERE event_id = ? AND weight_class LIKE ?',
-            [eventIdNum, weightClassValue + '%']
-          );
-          if (likeRow) {
-            categoryIdNum = likeRow.category_id;
-            weightClassValue = likeRow.weight_class;
-          }
-        }
       }
 
       if (!weightClassValue && categoryIdNum) {

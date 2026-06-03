@@ -60,7 +60,7 @@ class MySQLDatabase {
       });
 
       await createConn.query(
-        `CREATE DATABASE IF NOT EXISTS \`${DB_CONFIG.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+        `CREATE DATABASE IF NOT EXISTS \`${DB_CONFIG.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_bin`
       );
       await createConn.end();
 
@@ -145,14 +145,14 @@ class MySQLDatabase {
           event_name VARCHAR(255) NOT NULL,
           event_venue VARCHAR(255) DEFAULT NULL,
           event_date VARCHAR(50) DEFAULT NULL,
-          event_type VARCHAR(50) DEFAULT 'taekwondo_kyougi',
+          event_type VARCHAR(50) DEFAULT 'taekwondo',
           event_status VARCHAR(50) DEFAULT '报名中',
           comp_start VARCHAR(50) DEFAULT NULL,
           comp_end VARCHAR(50) DEFAULT NULL,
           reg_start VARCHAR(50) DEFAULT NULL,
           reg_end VARCHAR(50) DEFAULT NULL,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
       `);
 
       await conn.execute(`
@@ -168,7 +168,7 @@ class MySQLDatabase {
           eventconfig_venue_count INT DEFAULT 1,
           eventconfig_date_count INT DEFAULT 1,
           FOREIGN KEY (event_id) REFERENCES events(event_id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
       `);
 
       /* --- 运动员相关表 --- */
@@ -180,17 +180,17 @@ class MySQLDatabase {
           athlete_name VARCHAR(255) NOT NULL,
           athlete_gender VARCHAR(10) DEFAULT NULL,
           athlete_team VARCHAR(255) DEFAULT NULL,
-          athlete_draw_num INT DEFAULT 0,
-          athlete_pre_draw_num INT DEFAULT 0,
+          athlete_draw_num INT DEFAULT NULL,
+          athlete_pre_draw_num INT DEFAULT NULL,
           athlete_age_group VARCHAR(100) DEFAULT NULL,
           athlete_category VARCHAR(255) DEFAULT NULL,
-          athlete_rank INT DEFAULT 0,
-          same_team INT DEFAULT 0,
-          athlete_type VARCHAR(20) DEFAULT 'taekwondo_kyougi',
+          athlete_rank INT DEFAULT NULL,
+          athlete_type VARCHAR(50) DEFAULT NULL,
+          belt_level VARCHAR(50) DEFAULT NULL,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (event_id) REFERENCES events(event_id),
           UNIQUE KEY uk_event_athlete (event_id, athlete_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
       `);
 
       await this._createIndex(conn, 'idx_athletes_category', 'athletes', 'athlete_category');
@@ -211,7 +211,7 @@ class MySQLDatabase {
           record_time DATETIME DEFAULT NULL,
           FOREIGN KEY (event_id) REFERENCES events(event_id),
           UNIQUE KEY uk_weighing_event_athlete (event_id, athlete_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
       `);
 
       /* --- 级别模式配置表 --- */
@@ -234,7 +234,7 @@ class MySQLDatabase {
           FOREIGN KEY (event_id) REFERENCES events(event_id),
           UNIQUE KEY uk_event_weight_class (event_id, weight_class),
           UNIQUE KEY uk_category_event (category_id, event_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
       `);
 
 
@@ -266,7 +266,7 @@ class MySQLDatabase {
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           FOREIGN KEY (event_id) REFERENCES events(event_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
       `);
 
       await this._createIndex(conn, 'uk_event_venue_match', 'taekwondo_kyougi_matchs', ['event_id', 'kyougi_match_venue', 'kyougi_match_id'], true);
@@ -305,7 +305,7 @@ class MySQLDatabase {
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           FOREIGN KEY (event_id) REFERENCES events(event_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
       `);
 
       await this._createIndex(conn, 'uk_jj_event_venue_match', 'jiu_jitsu_matchs', ['event_id', 'jiu_jitsu_match_venue', 'jiu_jitsu_match_id'], true);
@@ -340,7 +340,7 @@ class MySQLDatabase {
           category_id VARCHAR(100) DEFAULT NULL,
           name VARCHAR(255) NOT NULL,
           custom_data TEXT DEFAULT NULL
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
       `);
 
       await conn.execute(`
@@ -355,7 +355,7 @@ class MySQLDatabase {
           settings TEXT DEFAULT NULL,
           seeding TEXT DEFAULT NULL,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
       `);
 
       await this._createIndex(conn, 'idx_stage_event', 'bracket_stage', 'event_id');
@@ -411,7 +411,7 @@ class MySQLDatabase {
           name VARCHAR(255) NOT NULL DEFAULT '',
           number INT NOT NULL,
           FOREIGN KEY (stage_id) REFERENCES bracket_stage(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
       `);
 
       await this._createIndex(conn, 'idx_group_stage', 'bracket_group', 'stage_id');
@@ -425,7 +425,7 @@ class MySQLDatabase {
           number INT NOT NULL,
           FOREIGN KEY (stage_id) REFERENCES bracket_stage(id) ON DELETE CASCADE,
           FOREIGN KEY (group_id) REFERENCES bracket_group(id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
       `);
 
       await this._createIndex(conn, 'idx_round_stage', 'bracket_round', 'stage_id');
@@ -446,7 +446,7 @@ class MySQLDatabase {
           FOREIGN KEY (stage_id) REFERENCES bracket_stage(id) ON DELETE CASCADE,
           FOREIGN KEY (round_id) REFERENCES bracket_round(id),
           FOREIGN KEY (group_id) REFERENCES bracket_group(id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
       `);
 
       await this._createIndex(conn, 'idx_match_stage', 'bracket_match', 'stage_id');
@@ -474,7 +474,7 @@ class MySQLDatabase {
           number INT NOT NULL,
           opponent1_score INT DEFAULT NULL,
           opponent2_score INT DEFAULT NULL
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
       `);
 
       /* --- 品势相关表 --- */
@@ -504,7 +504,7 @@ class MySQLDatabase {
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (event_id) REFERENCES events(event_id),
           UNIQUE KEY uk_poomsae_group (event_id, poomsae_group_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
       `);
 
       await this._createIndex(conn, 'idx_poomsae_groups_event', 'poomsae_groups', 'event_id');
@@ -520,7 +520,7 @@ class MySQLDatabase {
           poomsae_athlete_draw_num INT DEFAULT 0,
           poomsae_athlete_colored_belt VARCHAR(50) DEFAULT NULL,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
       `);
 
       await conn.execute(`
@@ -562,7 +562,7 @@ class MySQLDatabase {
           advance_rank INT DEFAULT NULL,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           FOREIGN KEY (event_id) REFERENCES events(event_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
       `);
 
       await this._createIndex(conn, 'idx_poomsae_match_event', 'poomsae_matchs', 'event_id');
@@ -594,7 +594,7 @@ class MySQLDatabase {
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           UNIQUE KEY uk_poomsae_scores_judge (match_id, judge_no)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
       `);
 
       await this._createIndex(conn, 'idx_poomsae_scores_match', 'poomsae_scores', 'match_id');
@@ -608,7 +608,7 @@ class MySQLDatabase {
           role VARCHAR(50) DEFAULT 'admin',
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           UNIQUE KEY uk_username (username)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
       `);
 
       // 创建默认管理员账户（不存在时插入）

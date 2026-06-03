@@ -2,24 +2,13 @@
     <div class="card-header">
         <h2>品势运动员管理</h2>
         <div class="toolbar" style="margin: 0;">
+            <button class="btn btn-primary" onclick="showAddAthleteModal()">➕ 添加运动员</button>
             <button class="btn btn-success" onclick="showBatchPoomsaeModal()">📥 批量添加</button>
             <button class="btn btn-warning" onclick="doDraw(selectedClass)">🎲 抽签</button>
             <button class="btn btn-danger" onclick="clearDraw()">🗑️ 清除签号</button>
             <button class="btn btn-danger" onclick="clearAllAthletes()" style="background: #909399; border-color: #909399;">⚠️ 全部清除</button>
             <button class="btn btn-info" onclick="printAllAthletes()">🖨️ 打印全部名单</button>
             <button class="btn btn-default" onclick="loadAthletes()">🔄 刷新</button>
-            <button class="btn btn-primary" onclick="showFormatConfigModal()">⚙️ 配置品势套路</button>
-        </div>
-        <div style="margin-top: 8px; display: flex; gap: 10px; align-items: center;">
-            <span style="color: #606266; font-size: 13px;">赛制：</span>
-            <select id="competitionFormat" onchange="changeCompetitionFormat(this.value)" style="padding: 4px 8px; border: 1px solid #dcdfe6; border-radius: 4px; font-size: 13px; min-width: 260px;">
-                <option value="final_1">1、决赛（1套品势）</option>
-                <option value="final_2">2、决赛（2套品势）</option>
-                <option value="prelim_final_1">3、预赛-决赛（1套品势）</option>
-                <option value="prelim_final_2">4、预赛-决赛（2套品势）</option>
-                <option value="prelim_semi_final_1">5、预赛-复赛-决赛（1套品势）</option>
-                <option value="prelim_semi_final_2">6、预赛-复赛-决赛（2套品势）</option>
-            </select>
         </div>
     </div>
     <div class="athlete-layout">
@@ -27,28 +16,9 @@
             <div class="class-list-title">📋 待抽签</div>
             <ul class="class-list" id="classList"></ul>
         </aside>
-        <div class="athlete-main">
+        <div class="athlete-main" style="flex: 1;">
             <div class="table-container" style="max-height: calc(100vh - 300px); overflow-y: auto;">
-                <table id="poomsaeAthleteTable" style="text-align: center; background: #C7EDCC; table-layout: fixed; width: 100%; border-collapse: collapse;">
-                    <colgroup>
-                        <col style="width:40px;">
-                        <col style="width:55px;">
-                        <col style="width:65px;">
-                        <col style="width:55px;">
-                        <col style="width:120px;">
-                        <col style="width:40px;">
-                        <col style="width:80px;">
-                        <col style="width:55px;">
-                        <col style="width:80px;">
-                        <col style="width:120px;">
-                        <col style="width:80px;">
-                        <col style="width:80px;">
-                        <col style="width:80px;">
-                        <col style="width:80px;">
-                        <col style="width:80px;">
-                        <col style="width:80px;">
-                        <col style="width:55px;">
-                    </colgroup>
+                <table style="text-align: center; background: #C7EDCC;">
                     <thead style="position: sticky; top: 0; z-index: 1; background: linear-gradient(to right, #8B0000, #00008B);">
                         <tr>
                             <th style="text-align: center; color: #fff; background: transparent;">序号</th>
@@ -61,12 +31,6 @@
                             <th style="text-align: center; color: #fff; background: transparent;">组别</th>
                             <th style="text-align: center; color: #fff; background: transparent;">级别</th>
                             <th style="text-align: center; color: #fff; background: transparent;">修改级别</th>
-                            <th style="text-align: center; color: #fff; background: transparent; font-size:11px;">第1套</th>
-                            <th style="text-align: center; color: #fff; background: transparent; font-size:11px;">第2套</th>
-                            <th style="text-align: center; color: #fff; background: transparent; font-size:11px;">第3套</th>
-                            <th style="text-align: center; color: #fff; background: transparent; font-size:11px;">第4套</th>
-                            <th style="text-align: center; color: #fff; background: transparent; font-size:11px;">第5套</th>
-                            <th style="text-align: center; color: #fff; background: transparent; font-size:11px;">第6套</th>
                             <th style="text-align: center; color: #fff; background: transparent;">操作</th>
                         </tr>
                     </thead>
@@ -74,10 +38,6 @@
                 </table>
             </div>
         </div>
-        <aside class="class-list-panel class-list-panel-right">
-            <div class="class-list-title">✅ 已抽签</div>
-            <ul class="class-list" id="drawnClassList"></ul>
-        </aside>
     </div>
 </div>
 

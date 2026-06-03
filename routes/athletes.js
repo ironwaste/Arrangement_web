@@ -7,6 +7,20 @@ const {
   deleteKyougiMatchsByClass
 } = require('./kyougiMatchHelpers');
 
+async function checkColumnExists(db, tableName, columnName) {
+  try {
+    const result = await db.get(
+      `SELECT COUNT(*) as count FROM INFORMATION_SCHEMA.COLUMNS 
+       WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`,
+      [tableName, columnName]
+    );
+    return result && result.count > 0;
+  } catch (err) {
+    console.error(`[检查字段] 检查 ${tableName}.${columnName} 失败:`, err.message);
+    return false;
+  }
+}
+
 module.exports = (db) => {
   /** 查找或创建品势组别 */
   async function findOrCreatePoomsaeGroup(eventId, groupName, type, gender, groupClass, beltLevel) {
@@ -27,7 +41,7 @@ module.exports = (db) => {
   /* ==================== 运动员 CRUD ==================== */
   router.get('/athletes', async (req, res) => {
     try {
-      const { weight_class, unit, gender, event_id, athlete_type, category_id } = req.query;
+      const { weight_class, unit, gender, event_id, category_id, athlete_type } = req.query;
       let sql = 'SELECT * FROM athletes WHERE 1=1';
       const params = [];
 
@@ -36,10 +50,16 @@ module.exports = (db) => {
         params.push(event_id); 
         
         const event = await db.get('SELECT event_type FROM events WHERE event_id = ?', [event_id]);
-        if (event && event.event_type === 'taekwondo_poomsae') {
-          res.json({ success: true, data: [] });
-          return;
+        if (event) {
+          if (event.event_type === 'taekwondo_poomsae') {
+            res.json({ success: true, data: [] });
+            return;
+          }
         }
+      }
+
+      if (athlete_type) {
+        console.log(`[运动员查询] athlete_type: ${athlete_type}`);
       }
 
       let weightClassValue = weight_class;
@@ -56,7 +76,6 @@ module.exports = (db) => {
       if (weightClassValue) { sql += ' AND athlete_category = ?'; params.push(weightClassValue); }
       if (unit) { sql += ' AND athlete_team LIKE ?'; params.push(`%${unit}%`); }
       if (gender) { sql += ' AND athlete_gender = ?'; params.push(gender); }
-      if (athlete_type) { sql += ' AND athlete_type = ?'; params.push(athlete_type); }
 
       sql += ' ORDER BY CAST(athlete_id AS UNSIGNED), athlete_id';
 
@@ -69,7 +88,7 @@ module.exports = (db) => {
 
   router.post('/athletes', async (req, res) => {
     try {
-      const { athlete_id, athlete_name, athlete_gender, athlete_team, athlete_age_group, athlete_category, athlete_draw_num, athlete_pre_draw_num, event_id } = req.body;
+      const { athlete_id, athlete_name, athlete_gender, athlete_team, athlete_age_group, athlete_category, athlete_draw_num, athlete_pre_draw_num, event_id, belt_level } = req.body;
 
       if (athlete_id) {
         const existing = await db.get('SELECT id FROM athletes WHERE athlete_id = ? AND event_id = ?', [athlete_id, event_id]);
@@ -78,27 +97,30 @@ module.exports = (db) => {
         }
       }
 
-      let athlete_type = 'taekwondo_kyougi';
       let event_type = null;
       if (event_id) {
         const event = await db.get('SELECT event_type FROM events WHERE event_id = ?', [event_id]);
         if (event) {
           event_type = event.event_type;
-          if (event.event_type === 'chinese_wrestle') {
-            athlete_type = 'chinese_wrestle';
-          } else if (event.event_type === 'taekwondo_poomsae') {
-            athlete_type = 'poomsae';
-          } else if (event.event_type === 'jiu_jitsu') {
-            athlete_type = 'jiu_jitsu';
-          }
         }
       }
 
-      const result = await db.run(
-        `INSERT INTO athletes (athlete_id, athlete_name, athlete_gender, athlete_team, athlete_age_group, athlete_category, athlete_draw_num, athlete_pre_draw_num, event_id, athlete_type)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [athlete_id, athlete_name, athlete_gender, athlete_team, athlete_age_group || null, athlete_category, athlete_draw_num || 0, athlete_pre_draw_num || 0, event_id || null, athlete_type]
-      );
+      const hasBeltLevel = await checkColumnExists(db, 'athletes', 'belt_level');
+      
+      let result;
+      if (hasBeltLevel) {
+        result = await db.run(
+          `INSERT INTO athletes (athlete_id, athlete_name, athlete_gender, athlete_team, athlete_age_group, athlete_category, athlete_draw_num, athlete_pre_draw_num, event_id, belt_level)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [athlete_id, athlete_name, athlete_gender, athlete_team, athlete_age_group || null, athlete_category, athlete_draw_num || null, athlete_pre_draw_num || null, event_id || null, belt_level || null]
+        );
+      } else {
+        result = await db.run(
+          `INSERT INTO athletes (athlete_id, athlete_name, athlete_gender, athlete_team, athlete_age_group, athlete_category, athlete_draw_num, athlete_pre_draw_num, event_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [athlete_id, athlete_name, athlete_gender, athlete_team, athlete_age_group || null, athlete_category, athlete_draw_num || null, athlete_pre_draw_num || null, event_id || null]
+        );
+      }
 
       if (event_type === 'taekwondo_poomsae' && event_id) {
         await db.run(
@@ -119,7 +141,7 @@ module.exports = (db) => {
       const { id } = req.params;
       const fields = [];
       const values = [];
-      const allowed = ['athlete_id', 'athlete_name', 'athlete_gender', 'athlete_team', 'athlete_age_group', 'athlete_category', 'athlete_draw_num', 'athlete_pre_draw_num', 'event_id', 'athlete_type'];
+      const allowed = ['athlete_id', 'athlete_name', 'athlete_gender', 'athlete_team', 'athlete_age_group', 'athlete_category', 'athlete_draw_num', 'athlete_pre_draw_num', 'event_id'];
 
       let drawNumChanged = false;
       if (req.body.athlete_draw_num !== undefined) {
@@ -139,6 +161,13 @@ module.exports = (db) => {
           values.push(req.body[key]);
         }
       }
+
+      const hasBeltLevel = await checkColumnExists(db, 'athletes', 'belt_level');
+      if (hasBeltLevel && req.body.belt_level !== undefined) {
+        fields.push('belt_level = ?');
+        values.push(req.body.belt_level);
+      }
+
       if (fields.length === 0) return res.json({ success: true });
       values.push(id);
       await db.run(`UPDATE athletes SET ${fields.join(', ')} WHERE id = ?`, values);
@@ -196,10 +225,7 @@ module.exports = (db) => {
 
         res.json({ success: true, data: { deleted: deletedCount } });
       } else {
-        let sql = 'DELETE FROM athletes WHERE 1=1';
-        const params = [];
-        if (athlete_type) { sql += ' AND athlete_type = ?'; params.push(athlete_type); }
-        const result = await db.run(sql, params);
+        const result = await db.run('DELETE FROM athletes');
         deletedCount += result.changes || 0;
 
         await db.run('DELETE FROM athletes_weighing');
@@ -227,24 +253,16 @@ module.exports = (db) => {
 
   router.post('/athletes/batch', async (req, res) => {
     try {
-      const { athletes, event_id, athlete_type } = req.body;
+      const { athletes, event_id } = req.body;
       if (!Array.isArray(athletes) || athletes.length === 0) {
         return res.status(400).json({ success: false, error: '运动员数据不能为空' });
       }
 
-      let aType = athlete_type || 'taekwondo_kyougi';
       let event_type = null;
       if (event_id) {
         const event = await db.get('SELECT event_type FROM events WHERE event_id = ?', [event_id]);
         if (event) {
           event_type = event.event_type;
-          if (event.event_type === 'chinese_wrestle') {
-            aType = 'chinese_wrestle';
-          } else if (event.event_type === 'taekwondo_poomsae') {
-            aType = 'poomsae';
-          } else if (event.event_type === 'jiu_jitsu') {
-            aType = 'jiu_jitsu';
-          }
         }
       }
 
@@ -254,7 +272,7 @@ module.exports = (db) => {
 
       for (const a of athletes) {
         try {
-          if (aType === 'poomsae' || event_type === 'taekwondo_poomsae' && event_id) {
+          if (event_type === 'taekwondo_poomsae' && event_id) {
             await db.run(
               `INSERT INTO athletes_poomsae (event_id, poomsae_athlete_id, poomsae_athlete_name, poomsae_athlete_team)
                VALUES (?, ?, ?, ?)`,
@@ -262,11 +280,23 @@ module.exports = (db) => {
             );
           }
 
-          const result = await db.run(
-            `INSERT INTO athletes (athlete_id, athlete_name, athlete_gender, athlete_team, athlete_age_group, athlete_category, athlete_draw_num, athlete_pre_draw_num, event_id, athlete_type)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [a.athlete_id || '', a.athlete_name, a.athlete_gender, a.athlete_team, a.athlete_age_group || null, a.athlete_category, a.athlete_draw_num || 0, a.athlete_pre_draw_num || 0, event_id || null, aType]
-          );
+          const hasBeltLevel = await checkColumnExists(db, 'athletes', 'belt_level');
+          const hasAthleteBeltLevel = a.belt_level !== undefined && a.belt_level !== null && a.belt_level !== '';
+          
+          let result;
+          if (hasBeltLevel && hasAthleteBeltLevel) {
+            result = await db.run(
+              `INSERT INTO athletes (athlete_id, athlete_name, athlete_gender, athlete_team, athlete_age_group, athlete_category, athlete_draw_num, athlete_pre_draw_num, event_id, belt_level)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [a.athlete_id || '', a.athlete_name, a.athlete_gender, a.athlete_team, a.athlete_age_group || null, a.athlete_category, a.athlete_draw_num || null, a.athlete_pre_draw_num || null, event_id || null, a.belt_level]
+            );
+          } else {
+            result = await db.run(
+              `INSERT INTO athletes (athlete_id, athlete_name, athlete_gender, athlete_team, athlete_age_group, athlete_category, athlete_draw_num, athlete_pre_draw_num, event_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [a.athlete_id || '', a.athlete_name, a.athlete_gender, a.athlete_team, a.athlete_age_group || null, a.athlete_category, a.athlete_draw_num || null, a.athlete_pre_draw_num || null, event_id || null]
+            );
+          }
           inserted.push({ id: result.id, ...a });
           success++;
         } catch (err) {
@@ -393,7 +423,7 @@ module.exports = (db) => {
 
   router.post('/athletes/draw', async (req, res) => {
     try {
-      const { weight_class, event_id, athlete_type, athlete_gender, group_class } = req.body;
+      const { weight_class, event_id, athlete_gender, group_class } = req.body;
 
       let sql = 'SELECT * FROM athletes WHERE 1=1';
       const params = [];
@@ -404,15 +434,6 @@ module.exports = (db) => {
       if (event_id) {
         sql += ' AND event_id = ?';
         params.push(event_id);
-      }
-      if (athlete_type) {
-        if (athlete_type === 'taekwondo_kyougi') {
-          sql += ' AND athlete_type = ?';
-          params.push('taekwondo_kyougi');
-        } else {
-          sql += ' AND athlete_type = ?';
-          params.push(athlete_type);
-        }
       }
       if (athlete_gender) {
         sql += ' AND athlete_gender = ?';
@@ -432,12 +453,7 @@ module.exports = (db) => {
       if (!weight_class) {
         const classGroups = {};
         athletes.forEach(a => {
-          let groupKey;
-          if (a.athlete_type === 'poomsae') {
-            groupKey = 'poomsae|' + (a.athlete_gender || '未知') + '|' + (a.athlete_age_group || '未分组') + '|' + (a.athlete_category || '未分级');
-          } else {
-            groupKey = a.athlete_category || '未分组';
-          }
+          const groupKey = a.athlete_category || '未分组';
           if (!classGroups[groupKey]) classGroups[groupKey] = [];
           classGroups[groupKey].push(a);
         });
@@ -470,7 +486,7 @@ module.exports = (db) => {
 
   router.post('/athletes/clear-draw', async (req, res) => {
     try {
-      const { weight_class, event_id, athlete_type, poomsae_type, athlete_gender, group_class } = req.body;
+      const { weight_class, event_id, athlete_gender, group_class } = req.body;
       let sql = 'UPDATE athletes SET athlete_draw_num = 0 WHERE 1=1';
       const params = [];
       if (weight_class) {
@@ -480,19 +496,6 @@ module.exports = (db) => {
       if (event_id) {
         sql += ' AND event_id = ?';
         params.push(event_id);
-      }
-      if (athlete_type) {
-        if (athlete_type === 'taekwondo_kyougi') {
-          sql += ' AND athlete_type = ?';
-          params.push('taekwondo_kyougi');
-        } else {
-          sql += ' AND athlete_type = ?';
-          params.push(athlete_type);
-        }
-      }
-      if (poomsae_type) {
-        sql += ' AND poomsae_type = ?';
-        params.push(poomsae_type);
       }
       if (athlete_gender) {
         sql += ' AND athlete_gender = ?';

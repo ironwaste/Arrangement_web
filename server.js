@@ -1,37 +1,30 @@
-/**
- * 跆拳道编排系统 - 主入口文件
- *
- * 职责：
- * 1. Express 应用初始化与中间件配置
- * 2. 页面路由（EJS 渲染）
- * 3. 数据库连接与 brackets-manager 初始化
- * 4. API 路由挂载（认证 + 业务路由）
- * 5. WebSocket 服务启动
- */
-
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
-const { authMiddleware, generateToken } = require('./auth');
 
-const MySQLDatabase = require('./database');
-const routes = require('./routes/index');
-const jjRoutes = require('./routes/Jiu-Jitsu/jiu-jitsu-routes');
+const { authMiddleware, generateToken } = require('./auth');
+const MySQLDatabase = require('./backend/database/database');
 const { MySQLStorage } = require('./storage');
 const { BracketsManager } = require('brackets-manager');
+
+const TournamentService = require('./backend/services/tournamentService');
+const BracketService = require('./backend/services/bracketService');
+const ExportService = require('./backend/services/exportService');
+const MatchRepository = require('./backend/database/repositories/matchRepository');
+
+const TournamentController = require('./backend/controllers/tournamentController');
+const ExportController = require('./backend/controllers/exportController');
+const backendRoutes = require('./backend/routes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-/* ==================== 视图引擎配置 ==================== */
+const upload = multer({ dest: 'uploads/' });
 
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
-
-/* ==================== 页面配置表 ==================== */
-/* 每个页面的标题、脚本、初始化函数、对应的 EJS 模板文件 */
 
 const pageConfig = {
   dashboard:      { title: '仪表盘',       scripts: '',                                                                                                                  init: 'loadDashboard();',           view: 'dashboard.ejs' },
@@ -51,8 +44,6 @@ const pageConfig = {
   poomsaeMatches: { title: '品势比赛查询', scripts: `<script src="/js/poomsae-matches.js?v=${Date.now()}"></script>`,                                                    init: 'loadPoomsaeMatches();',      view: 'poomsae-matches.ejs' }
 };
 
-/* ==================== URL 路径 → 页面键名映射 ==================== */
-
 const urlPageMap = {
   '/':               'dashboard',
   '/events':         'events',
@@ -70,8 +61,6 @@ const urlPageMap = {
   '/poomsae-athletes':'poomsaeAthletes',
   '/poomsae-matches':'poomsaeMatches'
 };
-
-/* ==================== 通用页面渲染 ==================== */
 
 function renderPage(req, res, pageKey) {
   const config = pageConfig[pageKey];
@@ -93,34 +82,33 @@ for (const [urlPath, pageKey] of Object.entries(urlPageMap)) {
   app.get(urlPath, (req, res) => renderPage(req, res, pageKey));
 }
 
-/* ==================== 中间件配置 ==================== */
-
-const upload = multer({ dest: 'uploads/' });
-
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: 0, etag: false }));
+app.use(express.static(path.join(__dirname, 'frontend'), { maxAge: 0, etag: false }));
 app.use('/test', express.static(path.join(__dirname, 'test'), { maxAge: 0, etag: false }));
 app.use('/node_modules', express.static(path.join(__dirname, 'node_modules'), { maxAge: 0, etag: false }));
 
-/* ==================== 数据库与 brackets-manager 初始化 ==================== */
-
-const db = new MySQLDatabase();
-
+let db = null;
 let storage = null;
-let bracketsManager = null;
-
-/* ==================== 应用启动 ==================== */
 
 async function initApp() {
   try {
+    db = new MySQLDatabase();
     await db.connect();
 
     storage = new MySQLStorage(db.pool);
-    bracketsManager = new BracketsManager(storage);
+    const bracketsManager = new BracketsManager(storage);
 
-    /* --- 认证相关 API（无需 authMiddleware） --- */
+    const tournamentService = new TournamentService(db);
+    const bracketService = new BracketService(db, storage);
+    const matchRepository = new MatchRepository(db);
+    const exportService = new ExportService(tournamentService, matchRepository);
+
+    const tournamentController = new TournamentController(tournamentService, bracketService);
+    const exportController = new ExportController(exportService);
+
     app.post('/api/login', async (req, res) => {
       const { username, password } = req.body;
 
@@ -143,35 +131,32 @@ async function initApp() {
       res.json({ success: true, user: req.user });
     });
 
-    /* --- 测试 API 路由（无需认证）--- */
-    const bracketTestRoutes = require('./test/bracket-test-server');
-    app.use('/api/test', bracketTestRoutes(db, bracketsManager));
+    app.use('/api/v1', authMiddleware);
+    app.use('/api/v1', backendRoutes(tournamentController, exportController));
 
-    /* --- 业务 API 路由（需认证） --- */
+    const routes = require('./routes/index');
     app.use('/api', authMiddleware);
     app.use('/api', routes(db, bracketsManager, upload));
-    app.use('/api', jjRoutes(db, bracketsManager));
 
-    /* --- 启动 HTTP 服务 --- */
     const server = app.listen(PORT, () => {
       console.log(`🥋 跆拳道编排系统服务器运行在 http://localhost:${PORT}`);
     });
 
-    /* --- 启动 WebSocket 服务 --- */
     const WebSocketManager = require('./websocket');
     new WebSocketManager(server, db);
   } catch (err) {
     console.error('❌ 系统启动失败:', err.message);
+    console.error(err.stack);
     process.exit(1);
   }
 }
 
 initApp();
 
-/* ==================== 优雅关闭 ==================== */
-
 process.on('SIGINT', async () => {
   console.log('\n正在关闭服务器...');
-  await db.close();
+  if (db) {
+    await db.close();
+  }
   process.exit(0);
 });
