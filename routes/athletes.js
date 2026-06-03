@@ -59,7 +59,8 @@ module.exports = (db) => {
       }
 
       if (athlete_type) {
-        console.log(`[运动员查询] athlete_type: ${athlete_type}`);
+        sql += ' AND athlete_type = ?';
+        params.push(athlete_type);
       }
 
       let weightClassValue = weight_class;

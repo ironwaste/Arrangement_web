@@ -103,8 +103,8 @@ async function importJiuJitsuExcel(db, filePath, eventId) {
         result = await db.run(
           `INSERT INTO athletes (
             athlete_id, athlete_name, athlete_gender, athlete_team, 
-            athlete_age_group, athlete_category, belt_level, event_id
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            athlete_age_group, athlete_category, belt_level, event_id, athlete_type
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             athlete.athlete_id,
             athlete.athlete_name,
@@ -113,15 +113,16 @@ async function importJiuJitsuExcel(db, filePath, eventId) {
             athlete.athlete_age_group || null,
             athlete.athlete_category,
             athlete.belt_level || null,
-            eventId
+            eventId,
+            'jiu_jitsu'
           ]
         );
       } else {
         result = await db.run(
           `INSERT INTO athletes (
             athlete_id, athlete_name, athlete_gender, athlete_team, 
-            athlete_age_group, athlete_category, event_id
-          ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            athlete_age_group, athlete_category, event_id, athlete_type
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             athlete.athlete_id,
             athlete.athlete_name,
@@ -129,7 +130,8 @@ async function importJiuJitsuExcel(db, filePath, eventId) {
             athlete.athlete_team,
             athlete.athlete_age_group || null,
             athlete.athlete_category,
-            eventId
+            eventId,
+            'jiu_jitsu'
           ]
         );
       }
