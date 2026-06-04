@@ -114,8 +114,14 @@ function initFlatpickr() {
             dateFormat: 'Y-m-d',
             placeholder: '选择日期',
             locale: 'zh',
+            allowInput: true,
+            disableMobile: true,
             onClose: function(selectedDates, dateStr, instance) {
-                instance.inputElement.blur();
+                if (instance.inputElement) {
+                    instance.inputElement.blur();
+                } else if (instance._input) {
+                    instance._input.blur();
+                }
             }
         };
         if (startInput && !flatpickrStart) {

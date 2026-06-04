@@ -2134,12 +2134,55 @@ function calculatePoolEliminationRounds(count) {
     return rounds;
 }
 
+async function checkAthletesDrawnForAllClasses() {
+    try {
+        const resp = await apiGet('/athletes?' + getEventParam());
+        if (!resp.success || !resp.data || resp.data.length === 0) {
+            return { drawnClasses: [], undrawnClasses: [], hasAthletes: false };
+        }
+
+        const classMap = {};
+        resp.data.forEach(a => {
+            const weightClass = a.athlete_category || '未分组';
+            if (!classMap[weightClass]) {
+                classMap[weightClass] = { drawn: false, count: 0 };
+            }
+            classMap[weightClass].count++;
+            const drawNo = a.draw_no || a.drawNo || a.athlete_draw_num;
+            if (drawNo && drawNo > 0) {
+                classMap[weightClass].drawn = true;
+            }
+        });
+
+        const drawnClasses = [];
+        const undrawnClasses = [];
+        Object.keys(classMap).forEach(cls => {
+            if (classMap[cls].drawn) {
+                drawnClasses.push(cls);
+            } else {
+                undrawnClasses.push(cls);
+            }
+        });
+
+        return { drawnClasses, undrawnClasses, hasAthletes: true };
+    } catch (e) {
+        return { drawnClasses: [], undrawnClasses: [], hasAthletes: false };
+    }
+}
+
 async function generateBracket() {
     if (!currentEventId) { alert('请先选择赛事'); return; }
 
     const tbody = document.getElementById('autoArrangeTableBody');
     const rows = tbody ? tbody.querySelectorAll('tr') : [];
     if (rows.length === 0) { alert('暂无编排数据，请先添加运动员'); return; }
+
+    const { drawnClasses, undrawnClasses, hasAthletes } = await checkAthletesDrawnForAllClasses();
+    if (hasAthletes && undrawnClasses.length > 0) {
+        const msg = `以下级别尚未进行抽签，无法生成对阵图：\n\n${undrawnClasses.join('\n')}\n\n请先对这些级别进行抽签后再生成对阵图。`;
+        alert(msg);
+        return;
+    }
 
     try {
         const genRes = await fetch(`${API_BASE}/auto-arrange/generate-bracket`, {

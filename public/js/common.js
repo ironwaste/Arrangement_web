@@ -570,8 +570,61 @@ function safeCall(fnName) {
  * 提供级别过滤、HTML生成等功能
  */
 const WeightClassSelector = {
+    _cachedCategories: null,
+    _cachedEventId: null,
+
     /**
-     * 获取可用的级别列表
+     * 从 category_mode 表获取可用的级别列表
+     * @param {string} eventId - 赛事ID
+     * @param {string} gender - 性别过滤条件
+     * @param {string} ageGroup - 年龄组过滤条件（可选）
+     * @returns {array} - 排序后的级别列表
+     */
+    async getAvailableClassesFromCategoryMode(eventId, gender, ageGroup = null) {
+        if (!eventId) return [];
+
+        if (this._cachedEventId === eventId && this._cachedCategories) {
+            let filtered = this._cachedCategories;
+            if (gender) {
+                filtered = filtered.filter(c => c.group_gender === gender);
+            }
+            if (ageGroup) {
+                filtered = filtered.filter(c => !c.group_name || c.group_name === ageGroup);
+            }
+            return filtered.map(c => c.weight_class).sort();
+        }
+
+        try {
+            const resp = await apiGet(`/category-mode?event_id=${eventId}`);
+            if (resp.success && resp.data) {
+                this._cachedEventId = eventId;
+                this._cachedCategories = resp.data;
+                
+                let filtered = resp.data;
+                if (gender) {
+                    filtered = filtered.filter(c => c.group_gender === gender);
+                }
+                if (ageGroup) {
+                    filtered = filtered.filter(c => !c.group_name || c.group_name === ageGroup);
+                }
+                return filtered.map(c => c.weight_class).sort();
+            }
+        } catch (err) {
+            console.error('[WeightClassSelector] 获取category_mode失败:', err);
+        }
+        return [];
+    },
+
+    /**
+     * 刷新缓存
+     */
+    refreshCache() {
+        this._cachedCategories = null;
+        this._cachedEventId = null;
+    },
+
+    /**
+     * 获取可用的级别列表（兼容旧接口）
      * @param {array} athletesList - 运动员列表
      * @param {string} ageGroup - 年龄组过滤条件
      * @param {string} gender - 性别过滤条件

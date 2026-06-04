@@ -70,6 +70,11 @@ async function loadAthletes() {
     _cachedAllAthletes = null;
     const allAthletesList = await fetchAllAthletes(true);
 
+    let categoryModes = [];
+    if (typeof WeightClassSelector !== 'undefined') {
+        categoryModes = await WeightClassSelector.getAvailableClassesFromCategoryMode(currentEventId);
+    }
+
     let displayList = allAthletesList;
     if (selectedClass) {
         displayList = allAthletesList.filter(a => a.athlete_category === selectedClass);
@@ -79,9 +84,23 @@ async function loadAthletes() {
         const tr = document.createElement('tr');
         if (index % 2 === 1) tr.style.background = '#A8D8B9';
 
-        const availableClasses = typeof WeightClassSelector !== 'undefined'
-            ? WeightClassSelector.getAvailableClasses(allAthletesList, a.athlete_age_group, a.athlete_gender, a.athlete_type)
-            : [];
+        let availableClasses = [];
+        if (typeof WeightClassSelector !== 'undefined' && categoryModes.length > 0) {
+            availableClasses = categoryModes.filter(cls => {
+                const categoryMode = WeightClassSelector._cachedCategories?.find(c => c.weight_class === cls);
+                if (!categoryMode) return true;
+                if (categoryMode.group_gender && categoryMode.group_gender !== a.athlete_gender) {
+                    return false;
+                }
+                if (categoryMode.group_name && a.athlete_age_group && categoryMode.group_name !== a.athlete_age_group) {
+                    return false;
+                }
+                return true;
+            });
+        } else {
+            availableClasses = WeightClassSelector?.getAvailableClasses(allAthletesList, a.athlete_age_group, a.athlete_gender, a.athlete_type) || [];
+        }
+
         const isUnqualified = a.is_qualified === '不合格';
         const weightClassHtml = typeof WeightClassSelector !== 'undefined'
             ? WeightClassSelector.generateSelectWithButton('wc_' + a.id, a.athlete_category, availableClasses, 'updateWeightClass(' + a.id + ')', 'data-unqualified="' + isUnqualified + '"', isUnqualified)
@@ -422,14 +441,97 @@ async function doDraw(weightClass) {
     const otherClasses = Object.keys(classMap).filter(cls => classMap[cls].length > 1).sort();
 
     if (singlePersonClasses.length > 0) {
-        showMergeClassModal(singlePersonClasses, otherClasses, weightClass);
+        let categoryModes = [];
+        if (typeof WeightClassSelector !== 'undefined') {
+            await WeightClassSelector.getAvailableClassesFromCategoryMode(currentEventId);
+            categoryModes = WeightClassSelector._cachedCategories || [];
+        }
+        showMergeClassModal(singlePersonClasses, otherClasses, weightClass, categoryModes);
         return;
     }
 
     proceedDraw(weightClass);
 }
 
-function showMergeClassModal(singlePersonClasses, otherClasses, drawWeightClass) {
+function suggestTargetClass(currentCls, athlete, otherClasses, categoryModes) {
+    const currentNumMatch = currentCls.match(/[\d.]+/);
+    if (!currentNumMatch) {
+        return otherClasses.length > 0 ? otherClasses[0] : '';
+    }
+
+    const currentNum = parseFloat(currentNumMatch[0]);
+    const athleteGender = athlete.athlete_gender;
+    const athleteAgeGroup = athlete.athlete_age_group;
+
+    let filteredClasses = [...otherClasses];
+
+    if (categoryModes.length > 0) {
+        filteredClasses = otherClasses.filter(cls => {
+            const mode = categoryModes.find(m => m.weight_class === cls);
+            if (!mode) return true;
+
+            if (mode.group_gender && mode.group_gender !== athleteGender) {
+                return false;
+            }
+
+            if (mode.group_name && athleteAgeGroup && mode.group_name !== athleteAgeGroup) {
+                return false;
+            }
+
+            return true;
+        });
+    }
+
+    if (filteredClasses.length === 0) {
+        filteredClasses = [...otherClasses];
+    }
+
+    filteredClasses.sort((a, b) => {
+        const numA = parseFloat((a.match(/[\d.]+/) || ['0'])[0]);
+        const numB = parseFloat((b.match(/[\d.]+/) || ['0'])[0]);
+        return numA - numB;
+    });
+
+    let candidates = filteredClasses.filter(cls => {
+        const numMatch = cls.match(/[\d.]+/);
+        if (!numMatch) return false;
+        return parseFloat(numMatch[0]) > currentNum;
+    });
+
+    if (candidates.length > 0) {
+        const hasPlusClass = candidates.find(cls => /\+/.test(cls));
+        if (hasPlusClass) {
+            const plusClasses = candidates.filter(cls => /\+/.test(cls));
+            plusClasses.sort((a, b) => {
+                const numA = parseFloat((a.match(/[\d.]+/) || ['0'])[0]);
+                const numB = parseFloat((b.match(/[\d.]+/) || ['0'])[0]);
+                return numA - numB;
+            });
+            return plusClasses[0];
+        }
+        return candidates[0];
+    }
+
+    const sameNumPlusClasses = filteredClasses.filter(cls => {
+        const numMatch = cls.match(/[\d.]+/);
+        if (!numMatch) return false;
+        const clsNum = parseFloat(numMatch[0]);
+        return clsNum === currentNum && /\+/.test(cls);
+    });
+
+    if (sameNumPlusClasses.length > 0) {
+        sameNumPlusClasses.sort((a, b) => {
+            const numA = parseFloat((a.match(/[\d.]+/) || ['0'])[0]);
+            const numB = parseFloat((b.match(/[\d.]+/) || ['0'])[0]);
+            return numA - numB;
+        });
+        return sameNumPlusClasses[0];
+    }
+
+    return '';
+}
+
+function showMergeClassModal(singlePersonClasses, otherClasses, drawWeightClass, categoryModes = []) {
     const listDiv = document.getElementById('mergeClassList');
     listDiv.innerHTML = '';
 
@@ -438,36 +540,28 @@ function showMergeClassModal(singlePersonClasses, otherClasses, drawWeightClass)
         const row = document.createElement('div');
         row.style.cssText = 'display:flex;align-items:center;padding:8px 12px;border-bottom:1px solid #ebeef5;';
 
-        let suggestClass = '';
         const currentCls = item.athlete_category;
-        const numMatch = currentCls.match(/[\d.]+/);
-        if (numMatch) {
-            const currentNum = parseFloat(numMatch[0]);
-            let closest = null;
-            let minDiff = Infinity;
-            otherClasses.forEach(cls => {
-                const m = cls.match(/[\d.]+/);
-                if (m) {
-                    const diff = Math.abs(parseFloat(m[0]) - currentNum);
-                    if (diff < minDiff) { minDiff = diff; closest = cls; }
-                }
-            });
-            if (closest) suggestClass = closest;
-        } else if (otherClasses.length > 0) {
-            suggestClass = otherClasses[0];
-        }
+        const suggestClass = suggestTargetClass(currentCls, a, otherClasses, categoryModes);
+
+        const isMaxLevel = suggestClass === '';
+        const selectedClass = isMaxLevel ? currentCls : suggestClass;
 
         const allOptions = [...otherClasses, currentCls].sort().map(cls =>
-            `<option value="${cls}" ${cls === suggestClass ? 'selected' : ''}>${cls}</option>`
+            `<option value="${cls}" ${cls === selectedClass ? 'selected' : ''}>${cls}</option>`
         ).join('');
+
+        const statusBadge = isMaxLevel 
+            ? '<span style="color:#67c23a;font-size:12px;margin-left:4px;">✓ 已是最大级别</span>'
+            : '';
 
         row.innerHTML = `
             <span style="flex:1;color:#f56c6c;font-weight:600;">${currentCls}</span>
             <span style="flex:1;">${a.athlete_name}（${a.athlete_team || '-'}）</span>
             <span style="flex:1;">
-                <select id="mergeTarget_${idx}" style="padding:4px 8px;border:1px solid #dcdfe6;border-radius:4px;font-size:13px;width:90%;">
+                <select id="mergeTarget_${idx}" style="padding:4px 8px;border:1px solid #dcdfe6;border-radius:4px;font-size:13px;width:70%;">
                     ${allOptions}
                 </select>
+                ${statusBadge}
             </span>
             <input type="hidden" id="mergeAthleteId_${idx}" value="${a.id}">
         `;
