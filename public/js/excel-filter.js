@@ -139,6 +139,7 @@ const ExcelFilter = (function() {
     }
 
     function renderConditions(conditions, operators, tableId, colIndex) {
+        if (!conditions) conditions = [{ operator: 'equals', value: '' }];
         return conditions.map((cond, idx) => `
             <div class="efm-condition-row" data-index="${idx}">
                 <select class="efm-operator-select" data-condition="${idx}"
@@ -348,7 +349,22 @@ const ExcelFilter = (function() {
             filterStates[tableId][colIndex].sort = null;
         }
         updateSortButtons(tableId, colIndex);
+        restoreOriginalOrder(tableId);
         applyFilterOperation(tableId);
+    }
+
+    function restoreOriginalOrder(tableId) {
+        const table = document.getElementById(tableId);
+        if (!table) return;
+
+        const tbody = table.querySelector('tbody');
+        if (!tbody) return;
+
+        if (!filterStates[tableId] || !filterStates[tableId].originalOrder) return;
+
+        filterStates[tableId].originalOrder.forEach(row => {
+            tbody.appendChild(row);
+        });
     }
 
     function updateSortButtons(tableId, colIndex) {
@@ -600,6 +616,11 @@ const ExcelFilter = (function() {
 
         const tbody = table.querySelector('tbody');
         if (!tbody) return;
+
+        if (!filterStates[tableId]) filterStates[tableId] = {};
+        if (!filterStates[tableId].originalOrder) {
+            filterStates[tableId].originalOrder = Array.from(tbody.querySelectorAll('tr'));
+        }
 
         const rows = Array.from(tbody.querySelectorAll('tr'));
         const visibleRows = rows.filter(row => row.style.display !== 'none');
