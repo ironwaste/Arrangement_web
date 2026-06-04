@@ -4,7 +4,7 @@
  * 职责：处理跆拳道竞技和中国式摔跤项目的Excel导入
  * 
  * Excel格式要求(竞技类通用)：
- * 第1行(表头)：签号/序号、运动员号/编号、姓名/名字、性别、单位、组别、级别/体重
+ * 第1行(表头)：签号、运动员号/编号/序号、姓名/名字、性别、单位、组别、级别/体重
  * 第2行开始：数据行
  */
 
@@ -196,7 +196,7 @@ function buildColumnMap(headers) {
   const colMap = {};
 
   headers.forEach((header, index) => {
-    if (header.includes('签号') || header.includes('序号')) {
+    if (header.includes('签号')|| header.includes('种子号')|| header.includes('种子')) {
       colMap.signNo = index;
     }
     if (header.includes('运动员号') || header.includes('编号') || header.includes('序号')) {
@@ -208,7 +208,8 @@ function buildColumnMap(headers) {
     if (header.includes('性别')) {
       colMap.gender = index;
     }
-    if (header.includes('单位')) {
+    if (header.includes('单位') || header.includes('代表队') || header.includes('团队')
+    || header.includes('区县') ) {
       colMap.unit = index;
     }
     if (header.includes('组别')) {
@@ -232,7 +233,7 @@ function buildWeighinColumnMap(headers) {
   const colMap = {};
 
   headers.forEach((header, index) => {
-    if (header.includes('运动员号') || header.includes('编号') || header.includes('签号')) {
+    if (header.includes('运动员号') || header.includes('编号') || header.includes('序号')) {
       colMap.athleteNo = index;
     }
     if (header.includes('体重') || header.includes('重量')) {

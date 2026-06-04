@@ -1,8 +1,8 @@
 /**
  * Excel导入模块 - 主入口文件
- * 
+ *
  * 职责:统一管理所有Excel导入功能，根据运动员类型分发到相应的导入处理器
- * 
+ *
  * 导入类型支持:
  * - taekwondo_kyougi: 跆拳道竞技
  * - jiu_jitsu: 柔术
@@ -111,11 +111,11 @@ module.exports = (db, upload) => {
 
       // 6. 返回结果
       console.log(`[Excel导入] 完成: ${result.success}成功, ${result.failed}失败, 总行数=${result.total}`);
-      
+
       if (result.total === 0) {
-        return res.status(400).json({ 
-          success: false, 
-          error: '文件数据不足或表头无法识别，请检查Excel格式' 
+        return res.status(400).json({
+          success: false,
+          error: '文件数据不足或表头无法识别，请检查Excel格式'
         });
       }
 

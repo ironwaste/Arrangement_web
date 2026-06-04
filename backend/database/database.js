@@ -23,7 +23,8 @@ const DB_CONFIG = {
   connectionLimit: 10,
   queueLimit: 0,
   enableKeepAlive: true,
-  keepAliveInitialDelay: 10000
+  keepAliveInitialDelay: 10000,
+  multipleStatements: true
 };
 
 class MySQLDatabase {
@@ -121,9 +122,11 @@ class MySQLDatabase {
 
   /** 执行多条 SQL（分号分隔） */
   async exec(sql) {
-    const statements = sql.split(';').filter(s => s.trim());
-    for (const stmt of statements) {
-      await this.pool.execute(stmt);
+    const conn = await this.pool.getConnection();
+    try {
+      await conn.query(sql);
+    } finally {
+      conn.release();
     }
   }
 
@@ -230,6 +233,8 @@ class MySQLDatabase {
           mode VARCHAR(50) DEFAULT 'single_elimination',
           mode_name VARCHAR(100) DEFAULT NULL,
           description TEXT DEFAULT NULL,
+          group_gender VARCHAR(20) DEFAULT NULL COMMENT '性别组别：男、女、混双、团体',
+          group_name VARCHAR(100) DEFAULT NULL COMMENT '组别名称',
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           FOREIGN KEY (event_id) REFERENCES events(event_id),
           UNIQUE KEY uk_event_weight_class (event_id, weight_class),
@@ -616,6 +621,101 @@ class MySQLDatabase {
         INSERT INTO test_user (username, password, role)
         SELECT 'root', '123456', 'admin'
         WHERE NOT EXISTS (SELECT 1 FROM test_user WHERE username = 'root')
+      `);
+
+      /* --- 创建触发器（自动同步 category_mode 表） --- */
+      // 删除已存在的触发器（确保幂等性）
+      await conn.query('DROP TRIGGER IF EXISTS trg_athletes_after_insert');
+      await conn.query('DROP TRIGGER IF EXISTS trg_athletes_after_update');
+      await conn.query('DROP TRIGGER IF EXISTS trg_athletes_after_delete');
+
+      // AFTER INSERT 触发器：新增运动员时同步 category_mode
+      await conn.query(`
+        CREATE TRIGGER trg_athletes_after_insert
+        AFTER INSERT ON athletes
+        FOR EACH ROW
+        BEGIN
+          DECLARE existing_count INT DEFAULT 0;
+
+          IF NEW.athlete_category IS NOT NULL AND NEW.athlete_category != '' AND NEW.event_id IS NOT NULL THEN
+            SELECT COUNT(*) INTO existing_count FROM category_mode
+            WHERE event_id = NEW.event_id AND weight_class = NEW.athlete_category;
+
+            IF existing_count > 0 THEN
+              UPDATE category_mode SET
+                categroy_count = categroy_count + 1,
+                group_gender = NEW.athlete_gender,
+                group_name = NEW.athlete_age_group,
+                updated_at = CURRENT_TIMESTAMP
+              WHERE event_id = NEW.event_id AND weight_class = NEW.athlete_category;
+            ELSE
+              INSERT INTO category_mode (event_id, weight_class, categroy_count, group_gender, group_name)
+              VALUES (NEW.event_id, NEW.athlete_category, 1, NEW.athlete_gender, NEW.athlete_age_group);
+            END IF;
+          END IF;
+        END
+      `);
+
+      // AFTER UPDATE 触发器：更新运动员时同步 category_mode
+      await conn.query(`
+        CREATE TRIGGER trg_athletes_after_update
+        AFTER UPDATE ON athletes
+        FOR EACH ROW
+        BEGIN
+          DECLARE existing_count INT DEFAULT 0;
+
+          IF OLD.athlete_category != NEW.athlete_category OR OLD.event_id != NEW.event_id THEN
+            -- 旧级别：减少计数
+            IF OLD.athlete_category IS NOT NULL AND OLD.athlete_category != '' AND OLD.event_id IS NOT NULL THEN
+              UPDATE category_mode SET
+                categroy_count = GREATEST(categroy_count - 1, 0),
+                updated_at = CURRENT_TIMESTAMP
+              WHERE event_id = OLD.event_id AND weight_class = OLD.athlete_category;
+            END IF;
+
+            -- 新级别：增加计数或新增
+            IF NEW.athlete_category IS NOT NULL AND NEW.athlete_category != '' AND NEW.event_id IS NOT NULL THEN
+              SELECT COUNT(*) INTO existing_count FROM category_mode
+              WHERE event_id = NEW.event_id AND weight_class = NEW.athlete_category;
+
+              IF existing_count > 0 THEN
+                UPDATE category_mode SET
+                  categroy_count = categroy_count + 1,
+                  group_gender = NEW.athlete_gender,
+                  group_name = NEW.athlete_age_group,
+                  updated_at = CURRENT_TIMESTAMP
+                WHERE event_id = NEW.event_id AND weight_class = NEW.athlete_category;
+              ELSE
+                INSERT INTO category_mode (event_id, weight_class, categroy_count, group_gender, group_name)
+                VALUES (NEW.event_id, NEW.athlete_category, 1, NEW.athlete_gender, NEW.athlete_age_group);
+              END IF;
+            END IF;
+          ELSE
+            -- 同级别更新：只更新性别和组别
+            IF NEW.athlete_category IS NOT NULL AND NEW.athlete_category != '' AND NEW.event_id IS NOT NULL THEN
+              UPDATE category_mode SET
+                group_gender = NEW.athlete_gender,
+                group_name = NEW.athlete_age_group,
+                updated_at = CURRENT_TIMESTAMP
+              WHERE event_id = NEW.event_id AND weight_class = NEW.athlete_category;
+            END IF;
+          END IF;
+        END
+      `);
+
+      // AFTER DELETE 触发器：删除运动员时同步 category_mode
+      await conn.query(`
+        CREATE TRIGGER trg_athletes_after_delete
+        AFTER DELETE ON athletes
+        FOR EACH ROW
+        BEGIN
+          IF OLD.athlete_category IS NOT NULL AND OLD.athlete_category != '' AND OLD.event_id IS NOT NULL THEN
+            UPDATE category_mode SET
+              categroy_count = GREATEST(categroy_count - 1, 0),
+              updated_at = CURRENT_TIMESTAMP
+            WHERE event_id = OLD.event_id AND weight_class = OLD.athlete_category;
+          END IF;
+        END
       `);
 
       await conn.commit();

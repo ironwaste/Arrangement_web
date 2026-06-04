@@ -48,8 +48,16 @@ module.exports = (db) => {
       const syncEventType = eventRow ? eventRow.event_type : 'taekwondo_kyougi';
       const syncAthleteType = syncEventType === 'jiu_jitsu' ? 'jiu_jitsu' : syncEventType === 'taekwondo_poomsae' ? 'poomsae' : syncEventType === 'chinese_wrestle' ? 'chinese_wrestle' : 'taekwondo_kyougi';
 
+      // 查询运动员数据，同时获取性别和组别信息
       const athletes = await db.all(
-        'SELECT athlete_category, COUNT(*) as cnt FROM athletes WHERE event_id = ? AND athlete_type = ? AND athlete_category IS NOT NULL AND athlete_category != "" GROUP BY athlete_category',
+        `SELECT 
+          athlete_category, 
+          athlete_gender,
+          athlete_age_group,
+          COUNT(*) as cnt 
+        FROM athletes 
+        WHERE event_id = ? AND athlete_type = ? AND athlete_category IS NOT NULL AND athlete_category != "" 
+        GROUP BY athlete_category, athlete_gender, athlete_age_group`,
         [event_id, syncAthleteType]
       );
 
@@ -64,15 +72,17 @@ module.exports = (db) => {
           await db.run(
             `UPDATE category_mode SET
              categroy_count = ?,
+             group_gender = ?,
+             group_name = ?,
              updated_at = CURRENT_TIMESTAMP
              WHERE category_id = ?`,
-            [a.cnt, existing.category_id]
+            [a.cnt, a.athlete_gender, a.athlete_age_group, existing.category_id]
           );
         } else {
           await db.run(
-            `INSERT INTO category_mode (event_id, weight_class, categroy_count)
-             VALUES (?, ?, ?)`,
-            [event_id, a.athlete_category, a.cnt]
+            `INSERT INTO category_mode (event_id, weight_class, categroy_count, group_gender, group_name)
+             VALUES (?, ?, ?, ?, ?)`,
+            [event_id, a.athlete_category, a.cnt, a.athlete_gender, a.athlete_age_group]
           );
         }
         synced++;
@@ -123,7 +133,8 @@ module.exports = (db) => {
       const { id } = req.params;
       const allowedFields = [
         'category_venue', 'category_date_num', 'categroy_mode_num',
-        'categroy_mode_name', 'category_mode_description', 'mode', 'mode_name', 'description'
+        'categroy_mode_name', 'category_mode_description', 'mode', 'mode_name', 'description',
+        'group_gender', 'group_name'
       ];
       const fields = [];
       const values = [];
@@ -158,7 +169,8 @@ module.exports = (db) => {
 
       const allowedFields = [
         'category_venue', 'category_date_num', 'categroy_mode_num',
-        'categroy_mode_name', 'category_mode_description', 'mode', 'mode_name', 'description'
+        'categroy_mode_name', 'category_mode_description', 'mode', 'mode_name', 'description',
+        'group_gender', 'group_name'
       ];
 
       for (const item of items) {
