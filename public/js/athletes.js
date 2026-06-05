@@ -1,5 +1,47 @@
 // ==================== 运动员管理页面 ====================
 
+// 滚动条状态管理
+const SCROLL_STORAGE_KEY = 'athletes_scroll_position';
+
+// 保存滚动位置到 localStorage
+function saveScrollPosition() {
+    const container = document.querySelector('.table-container');
+    if (container) {
+        const position = {
+            scrollTop: container.scrollTop,
+            scrollLeft: container.scrollLeft
+        };
+        localStorage.setItem(SCROLL_STORAGE_KEY, JSON.stringify(position));
+    }
+}
+
+// 从 localStorage 恢复滚动位置
+function restoreScrollPosition() {
+    const container = document.querySelector('.table-container');
+    if (container) {
+        const saved = localStorage.getItem(SCROLL_STORAGE_KEY);
+        if (saved) {
+            try {
+                const position = JSON.parse(saved);
+                if (position && (position.scrollTop > 0 || position.scrollLeft > 0)) {
+                    // 使用 requestAnimationFrame 确保DOM更新完成后再滚动
+                    requestAnimationFrame(() => {
+                        container.scrollTop = position.scrollTop;
+                        container.scrollLeft = position.scrollLeft;
+                    });
+                }
+            } catch (e) {
+                console.error('恢复滚动位置失败:', e);
+            }
+        }
+    }
+}
+
+// 清除滚动位置
+function clearScrollPosition() {
+    localStorage.removeItem(SCROLL_STORAGE_KEY);
+}
+
 // ==================== 工具函数 ====================
 
 function isPoomsaeEvent() {
@@ -56,13 +98,16 @@ async function fetchAllAthletes(forceRefresh) {
 }
 
 async function loadAthletes() {
+    // 保存当前滚动位置
+    saveScrollPosition();
+    
     const tbody = document.getElementById('athletesTable');
     tbody.innerHTML = '';
 
     if (!currentEventId) {
         const totalEl = document.getElementById('totalAthletes');
         if (totalEl) totalEl.textContent = '0';
-        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#909399;padding:40px 0;">请先在「赛事列表」中选择一个赛事</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:#909399;padding:40px 0;">请先在「赛事列表」中选择一个赛事</td></tr>';
         document.getElementById('classList').innerHTML = '';
         return;
     }
@@ -101,6 +146,23 @@ async function loadAthletes() {
             availableClasses = WeightClassSelector?.getAvailableClasses(allAthletesList, a.athlete_age_group, a.athlete_gender, a.athlete_type) || [];
         }
 
+        // 获取可用组别列表
+        const availableAgeGroups = [...new Set(allAthletesList.map(athlete => athlete.athlete_age_group).filter(Boolean))].sort();
+        
+        // 生成组别选择器HTML
+        let ageGroupHtml = '';
+        if (availableAgeGroups.length > 0) {
+            let selectHtml = `<select id="ag_${a.id}" style="padding:3px 6px;font-size:12px;border:1px solid #dcdfe6;border-radius:4px;max-width:140px;">`;
+            availableAgeGroups.forEach(ag => {
+                const selected = ag === a.athlete_age_group ? 'selected' : '';
+                selectHtml += `<option value="${ag}" ${selected}>${ag}</option>`;
+            });
+            selectHtml += '</select>';
+            ageGroupHtml = selectHtml + `<button class="btn btn-primary" onclick="updateAgeGroup(${a.id})" style="padding:3px 8px;font-size:11px;margin-left:4px;">✓</button>`;
+        } else {
+            ageGroupHtml = `<span style="color:#909399;font-size:12px;">-</span>`;
+        }
+
         const isUnqualified = a.is_qualified === '不合格';
         const weightClassHtml = typeof WeightClassSelector !== 'undefined'
             ? WeightClassSelector.generateSelectWithButton('wc_' + a.id, a.athlete_category, availableClasses, 'updateWeightClass(' + a.id + ')', 'data-unqualified="' + isUnqualified + '"', isUnqualified)
@@ -121,6 +183,7 @@ async function loadAthletes() {
             <td data-col="gender" style="text-align:center;">${a.athlete_gender}</td>
             <td data-col="unit" style="text-align:center;">${a.athlete_team || '-'}</td>
             <td data-col="ageGroup" style="text-align:center;">${a.athlete_age_group || '-'}</td>
+            <td data-col="ageGroupSelect" style="text-align:center;">${ageGroupHtml}</td>
             <td data-col="category" style="text-align:center;">${a.athlete_category}</td>
             <td data-col="weightClassSelect" style="text-align:center;">
                 ${weightClassHtml}
@@ -137,38 +200,41 @@ async function loadAthletes() {
     loadClassList(allAthletesList);
 
     if (typeof ExcelFilter !== 'undefined') {
-        const table = document.querySelector('.athlete-main table');
-        if (table && !table.id) {
-            table.id = 'athletesMainTable';
-            
-            const thead = table.querySelector('thead');
-            if (thead) {
-                const headers = thead.querySelectorAll('th');
-                const colKeys = ['index', 'type', 'athleteId', 'drawNo', 'name', 'gender', 'unit', 'ageGroup', 'category', 'weightClassSelect', 'action'];
-                headers.forEach((th, idx) => {
-                    if (colKeys[idx]) {
-                        th.setAttribute('data-col', colKeys[idx]);
-                        th.style.cursor = 'pointer';
-                    }
+            const table = document.querySelector('.athlete-main table');
+            if (table && !table.id) {
+                table.id = 'athletesMainTable';
+                
+                const thead = table.querySelector('thead');
+                if (thead) {
+                    const headers = thead.querySelectorAll('th');
+                    const colKeys = ['index', 'type', 'athleteId', 'drawNo', 'name', 'gender', 'unit', 'ageGroup', 'ageGroupSelect', 'category', 'weightClassSelect', 'action'];
+                    headers.forEach((th, idx) => {
+                        if (colKeys[idx]) {
+                            th.setAttribute('data-col', colKeys[idx]);
+                            th.style.cursor = 'pointer';
+                        }
+                    });
+                    
+                    thead.style.cssText = 'position:sticky;top:0;z-index:10;background:linear-gradient(to right,#8B0000,#00008B);';
+                    headers.forEach(th => {
+                        th.style.cssText = th.getAttribute('style') + ';position:sticky;top:0;z-index:10;background:transparent;';
+                    });
+                }
+                
+                ExcelFilter.init('athletesMainTable', {
+                    excludeColumns: [10, 11]
                 });
                 
-                thead.style.cssText = 'position:sticky;top:0;z-index:10;background:linear-gradient(to right,#8B0000,#00008B);';
-                headers.forEach(th => {
-                    th.style.cssText = th.getAttribute('style') + ';position:sticky;top:0;z-index:10;background:transparent;';
-                });
+                initAthletesColumnVisibility();
+                initAthletesColumnSelection();
+                initAthletesContextMenu();
             }
-            
-            ExcelFilter.init('athletesMainTable', {
-                excludeColumns: [9, 10]
-            });
-            
-            initAthletesColumnVisibility();
-            initAthletesColumnSelection();
-            initAthletesContextMenu();
         }
-    }
 
     applyAthletesColumnVisibility(getAthletesColumnVisibility());
+    
+    // 恢复滚动位置
+    restoreScrollPosition();
 }
 
 function parseWeightFromClass(cls) {
@@ -271,7 +337,7 @@ function loadClassList(allAthletes) {
     const allItem = document.createElement('li');
     allItem.className = 'all-item' + (selectedClass === '' ? ' active' : '');
     allItem.innerHTML = `<span>全部</span><span class="count">${athletes.length}</span>`;
-    allItem.onclick = () => { selectedClass = ''; loadAthletes(); };
+    allItem.onclick = () => { selectedClass = ''; saveScrollPosition(); loadAthletes(); };
     listEl.appendChild(allItem);
 
     groups.forEach(group => {
@@ -321,6 +387,7 @@ function loadClassList(allAthletes) {
             li.onclick = (e) => {
                 e.stopPropagation();
                 selectedClass = cls;
+                saveScrollPosition();
                 loadAthletes();
             };
             classList.appendChild(li);
@@ -336,6 +403,7 @@ function loadClassList(allAthletes) {
 function filterByType(type) {
     currentAthleteType = type;
     selectedClass = '';
+    saveScrollPosition();
     loadAthletes();
 }
 
@@ -352,6 +420,8 @@ function closeModal() {
 
 async function saveAthlete() {
     if (!currentEventId) { alert('请先选择赛事'); return; }
+    
+    saveScrollPosition();
 
     if (isPoomsaeEvent()) {
         const data = {
@@ -386,6 +456,7 @@ async function saveAthlete() {
 
 async function deleteAthlete(id) {
     if (!confirm('确定删除该运动员？')) return;
+    saveScrollPosition();
     const url = isPoomsaeEvent() ? '/poomsae-athletes/' + id : '/athletes/' + id;
     await fetch(API_BASE + url, { method: 'DELETE' });
     loadAthletes();
@@ -395,6 +466,7 @@ async function updateWeightClass(id) {
     const select = document.getElementById('wc_' + id);
     const newClass = select.value.trim();
     if (!newClass) { alert('级别不能为空'); return; }
+    saveScrollPosition();
     const resp = await fetch(API_BASE + '/athletes/' + id, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -404,9 +476,24 @@ async function updateWeightClass(id) {
     if (data.success) { loadAthletes(); } else { alert('修改失败: ' + data.error); }
 }
 
+async function updateAgeGroup(id) {
+    const select = document.getElementById('ag_' + id);
+    const newAgeGroup = select.value.trim();
+    if (!newAgeGroup) { alert('组别不能为空'); return; }
+    saveScrollPosition();
+    const resp = await fetch(API_BASE + '/athletes/' + id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ athlete_age_group: newAgeGroup })
+    });
+    const data = await resp.json();
+    if (data.success) { loadAthletes(); } else { alert('修改失败: ' + data.error); }
+}
+
 async function updateDrawNo(id) {
     const input = document.getElementById('draw_' + id);
     const newDrawNo = parseInt(input.value) || 0;
+    saveScrollPosition();
     const resp = await fetch(API_BASE + '/athletes/' + id, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -578,6 +665,7 @@ function closeMergeClassModal() {
 }
 
 async function applyMergeAndDraw() {
+    saveScrollPosition();
     const count = window._mergeSingleCount || 0;
     let successCount = 0;
 
@@ -605,6 +693,8 @@ async function applyMergeAndDraw() {
 async function proceedDraw(weightClass) {
     const msg = weightClass ? `确定对「${weightClass}」进行抽签？` : '确定对所有级别进行抽签？';
     if (!confirm(msg)) return;
+    
+    saveScrollPosition();
 
     if (typeof currentEventType !== 'undefined' && currentEventType === 'jiu_jitsu' && currentEventId) {
         try {
@@ -664,6 +754,8 @@ async function executeDraw() {
     const weightClass = scope === 'class' ? document.getElementById('drawClassInput').value.trim() : '';
 
     if (scope === 'class' && !weightClass) { alert('请输入级别'); return; }
+    
+    saveScrollPosition();
 
     const resultDiv = document.getElementById('drawResult');
     resultDiv.style.display = 'block';
@@ -713,6 +805,8 @@ async function clearDraw() {
         ? `确定清除「${cls}」的签号？`
         : `确定清除${typeLabel || '所有'}运动员的签号？`;
     if (!confirm(msg)) return;
+    
+    saveScrollPosition();
 
     const body = { event_id: currentEventId };
     if (cls) body.weight_class = cls;
@@ -733,6 +827,8 @@ async function clearAllAthletes() {
     const typeLabel = getTypeLabel();
     if (!confirm(`⚠️ 确定清除当前赛事的${typeLabel || '所有'}运动员？此操作不可恢复！`)) return;
     if (!confirm('再次确认：将删除运动员数据，是否继续？')) return;
+    
+    saveScrollPosition();
 
     let url = API_BASE + '/athletes/all?event_id=' + currentEventId;
     url = applyAthleteTypeFilter(url, true);
@@ -742,6 +838,7 @@ async function clearAllAthletes() {
 
     if (data.success) {
         alert(`✅ 已清除 ${data.data.deleted} 名运动员`);
+        clearScrollPosition(); // 清除所有运动员后应该清除滚动位置
         loadAthletes();
     } else {
         alert('❌ 清除失败: ' + data.error);
@@ -763,6 +860,8 @@ function closeBatchModal() {
 
 async function saveBatchAthletes(type) {
     if (!currentEventId) { alert('请先选择赛事'); return; }
+    
+    saveScrollPosition();
 
     const rawText = document.getElementById('batchAthleteData').value.trim();
     if (!rawText) { alert('请输入运动员数据'); return; }
@@ -819,6 +918,8 @@ async function handleExcelUpload(event) {
         document.getElementById('excelFileInput').value = '';
         return;
     }
+    
+    saveScrollPosition();
 
     document.getElementById('excelFileName').textContent = '已选择: ' + file.name;
 
@@ -963,7 +1064,7 @@ async function printAllAthletes() {
 
 // ==================== 搜索 ====================
 
-function searchAthletes() { loadAthletes(); }
+function searchAthletes() { saveScrollPosition(); loadAthletes(); }
 
 // ==================== 列管理（与称重管理界面统一） ====================
 
@@ -976,6 +1077,7 @@ const ATHLETES_COLUMNS = [
     { key: 'gender', label: '性别' },
     { key: 'unit', label: '代表队' },
     { key: 'ageGroup', label: '组别' },
+    { key: 'ageGroupSelect', label: '修改组别' },
     { key: 'category', label: '级别' },
     { key: 'weightClassSelect', label: '级别选择' },
     { key: 'action', label: '操作' }

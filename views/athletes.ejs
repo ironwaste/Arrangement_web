@@ -30,8 +30,9 @@
                             <th style="text-align: center; color: #fff; background: transparent;">性别</th>
                             <th style="text-align: center; color: #fff; background: transparent;">单位</th>
                             <th style="text-align: center; color: #fff; background: transparent;">组别</th>
-                            <th style="text-align: center; color: #fff; background: transparent;">级别</th>
-                            <th style="text-align: center; color: #fff; background: transparent;">修改级别</th>
+            <th style="text-align: center; color: #fff; background: transparent;">修改组别</th>
+            <th style="text-align: center; color: #fff; background: transparent;">级别</th>
+            <th style="text-align: center; color: #fff; background: transparent;">修改级别</th>
                             <th style="text-align: center; color: #fff; background: transparent;">操作</th>
                         </tr>
                     </thead>
@@ -41,3 +42,18 @@
         </div>
     </div>
 </div>
+
+<script>
+    // 页面初始化时恢复滚动位置
+    document.addEventListener('DOMContentLoaded', function() {
+        // 等待 loadAthletes 函数执行完成后再恢复滚动位置
+        // loadAthletes 会在数据加载完成后调用 restoreScrollPosition
+        // 这里额外确保一次，防止特殊情况
+        setTimeout(function() {
+            const container = document.querySelector('.table-container');
+            if (container && container.scrollHeight > container.clientHeight) {
+                restoreScrollPosition();
+            }
+        }, 500);
+    });
+</script>
